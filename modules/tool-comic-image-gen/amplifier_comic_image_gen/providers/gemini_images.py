@@ -20,13 +20,63 @@ class GeminiImageBackend:
         self.provider = provider
         self.client = provider.client
 
+    @staticmethod
+    def _build_content_config(
+        prompt: str,
+        reference_images: list[str] | None = None,
+    ) -> tuple[Any, Any]:
+        """Build (contents, config) for generate_content.
+
+        Uses google.genai types when available, falling back to plain dicts.
+        When *reference_images* are provided, they are prepended as inline_data
+        parts before the text prompt for multimodal input.
+        """
+        try:
+            from google.genai import types
+
+            config = types.GenerateContentConfig(
+                response_modalities=["IMAGE", "TEXT"],
+            )
+            parts: list[Any] = []
+            if reference_images:
+                for img_path in reference_images:
+                    image_bytes = Path(img_path).read_bytes()
+                    parts.append(
+                        types.Part(
+                            inline_data=types.Blob(
+                                mime_type="image/png",
+                                data=image_bytes,
+                            )
+                        )
+                    )
+            parts.append(types.Part(text=prompt))
+            contents = types.Content(parts=parts)
+        except (ImportError, ModuleNotFoundError):
+            config = {"response_modalities": ["IMAGE", "TEXT"]}
+            parts_list: list[dict[str, Any]] = []
+            if reference_images:
+                for img_path in reference_images:
+                    image_bytes = Path(img_path).read_bytes()
+                    parts_list.append(
+                        {
+                            "inline_data": {
+                                "mime_type": "image/png",
+                                "data": base64.b64encode(image_bytes).decode(),
+                            }
+                        }
+                    )
+            parts_list.append({"text": prompt})
+            contents = {"parts": parts_list}
+        return contents, config
+
     async def generate(
         self,
         prompt: str,
         output_path: str | Path,
-        size: str = "1024x1024",  # ignored — Gemini doesn't support explicit dimensions
+        size: str = "square",  # accepted for interface compatibility; Gemini ignores dimensions
         style: str | None = None,
         model: str = "gemini-2.0-flash-exp",
+        reference_images: list[str] | None = None,
     ) -> dict[str, Any]:
         """Generate an image and write it to *output_path*.
 
@@ -34,20 +84,7 @@ class GeminiImageBackend:
         """
         out = Path(output_path)
         try:
-            # Try to import google.genai types for proper config objects
-            try:
-                from google.genai import types
-
-                config = types.GenerateContentConfig(
-                    response_modalities=["IMAGE", "TEXT"],
-                )
-                contents = types.Content(
-                    parts=[types.Part(text=prompt)],
-                )
-            except (ImportError, ModuleNotFoundError):
-                # Fall back to dict-based config if google.genai is unavailable
-                config = {"response_modalities": ["IMAGE", "TEXT"]}  # type: ignore[assignment]
-                contents = {"parts": [{"text": prompt}]}  # type: ignore[assignment]
+            contents, config = self._build_content_config(prompt, reference_images)
 
             response = await self.client.aio.models.generate_content(
                 model=model,

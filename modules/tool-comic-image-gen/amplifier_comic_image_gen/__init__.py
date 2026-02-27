@@ -78,13 +78,18 @@ class ComicImageGenTool:
                 },
                 "size": {
                     "type": "string",
-                    "description": "Image dimensions.",
-                    "default": "1024x1024",
-                    "enum": ["1024x1024", "1792x1024", "1024x1792"],
+                    "description": "Image aspect ratio.",
+                    "default": "square",
+                    "enum": ["landscape", "portrait", "square"],
                 },
                 "style": {
                     "type": "string",
                     "description": "Image style (DALL-E only).",
+                },
+                "reference_images": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "File paths to character reference images for visual consistency.",
                 },
             },
             "required": ["prompt", "output_path"],
@@ -104,8 +109,9 @@ class ComicImageGenTool:
 
         prompt: str = params["prompt"]
         output_path: str = params["output_path"]
-        size: str = params.get("size", "1024x1024")
+        size: str = params.get("size", "square")
         style: str | None = params.get("style")
+        reference_images: list[str] | None = params.get("reference_images")
         preferred_provider: str | None = params.get("preferred_provider")
 
         backends = list(self._backends)
@@ -123,7 +129,13 @@ class ComicImageGenTool:
 
         errors: list[str] = []
         for backend in backends:
-            result = await backend.generate(prompt, output_path, size, style)
+            result = await backend.generate(
+                prompt=prompt,
+                output_path=output_path,
+                size=size,
+                style=style,
+                reference_images=reference_images,
+            )
             if result["success"]:
                 return ToolResult(success=True, output=result)
             errors.append(f"{backend.provider.name}: {result['error']}")

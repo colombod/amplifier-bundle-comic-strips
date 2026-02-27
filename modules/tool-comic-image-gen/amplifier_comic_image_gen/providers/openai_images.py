@@ -11,6 +11,13 @@ from pathlib import Path
 from typing import Any
 
 
+ASPECT_RATIO_MAP: dict[str, str] = {
+    "landscape": "1536x1024",
+    "portrait": "1024x1536",
+    "square": "1024x1024",
+}
+
+
 class OpenAIImageBackend:
     """Generate images via an Amplifier OpenAI provider."""
 
@@ -22,20 +29,25 @@ class OpenAIImageBackend:
         self,
         prompt: str,
         output_path: str | Path,
-        size: str = "1024x1024",
+        size: str = "square",
         style: str | None = None,
         model: str = "gpt-image-1",
+        reference_images: list[str] | None = None,
     ) -> dict[str, Any]:
         """Generate an image and write it to *output_path*.
+
+        *size* is an aspect ratio name (landscape, portrait, square) which is
+        mapped to pixel dimensions via :data:`ASPECT_RATIO_MAP`.
 
         Returns a result dict with keys: success, provider_used, path, error.
         """
         out = Path(output_path)
         try:
+            pixel_size = ASPECT_RATIO_MAP.get(size, ASPECT_RATIO_MAP["square"])
             kwargs: dict[str, Any] = {
                 "model": model,
                 "prompt": prompt,
-                "size": size,
+                "size": pixel_size,
                 "response_format": "b64_json",
                 "quality": "high",
             }

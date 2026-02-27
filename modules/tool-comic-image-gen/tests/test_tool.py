@@ -87,10 +87,12 @@ async def test_execute_generates_image(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio(loop_scope="function")
-async def test_execute_with_no_backends() -> None:
+async def test_execute_with_no_backends(tmp_path: Path) -> None:
     tool = ComicImageGenTool(backends=[])
 
-    result = await tool.execute({"prompt": "A panel", "output_path": "/tmp/out.png"})
+    result = await tool.execute(
+        {"prompt": "A panel", "output_path": str(tmp_path / "out.png")}
+    )
 
     assert result.success is False
     assert "no image" in result.output.lower()
@@ -129,3 +131,31 @@ async def test_execute_missing_required_params() -> None:
 
     assert result.success is False
     assert "output_path" in result.output.lower()
+
+
+# ── Schema tests ─────────────────────────────────────────────────────
+
+
+def test_tool_size_enum_uses_aspect_ratios() -> None:
+    tool = ComicImageGenTool(backends=[])
+    schema = tool.input_schema
+    size_prop = schema["properties"]["size"]
+
+    assert size_prop["enum"] == ["landscape", "portrait", "square"]
+    assert size_prop["default"] == "square"
+
+
+def test_tool_schema_has_reference_images_param() -> None:
+    """reference_images should be an optional array of strings in the schema."""
+    tool = ComicImageGenTool(backends=[])
+    schema = tool.input_schema
+
+    # Must exist in properties
+    assert "reference_images" in schema["properties"]
+
+    ref_prop = schema["properties"]["reference_images"]
+    assert ref_prop["type"] == "array"
+    assert ref_prop["items"]["type"] == "string"
+
+    # Must NOT be in the required list
+    assert "reference_images" not in schema["required"]

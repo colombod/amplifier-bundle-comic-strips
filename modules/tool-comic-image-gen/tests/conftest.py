@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import base64
 from unittest.mock import AsyncMock, MagicMock
 
-# 1x1 red PNG encoded as base64 — used by OpenAI and tool tests
+# 1x1 red PNG encoded as base64 — used by OpenAI, Gemini, and tool tests
 TINY_PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+
+# Same image as raw bytes — derived from the shared base64 constant
+TINY_PNG_BYTES = base64.b64decode(TINY_PNG_B64)
 
 
 def make_openai_provider(name: str = "provider-openai") -> MagicMock:
@@ -17,4 +21,29 @@ def make_openai_provider(name: str = "provider-openai") -> MagicMock:
     response.data = [MagicMock(b64_json=TINY_PNG_B64)]
 
     provider.client.images.generate = AsyncMock(return_value=response)
+    return provider
+
+
+def make_gemini_provider(name: str = "provider-google") -> MagicMock:
+    """Create a mock provider mimicking the Amplifier Google/Gemini provider."""
+    provider = MagicMock()
+    provider.name = name
+
+    # Build response: candidates[0].content.parts = [text_part, image_part]
+    text_part = MagicMock()
+    text_part.inline_data = None
+    text_part.text = "Here is the generated image."
+
+    image_part = MagicMock()
+    image_part.inline_data.data = TINY_PNG_BYTES
+    image_part.inline_data.mime_type = "image/png"
+    image_part.text = None
+
+    candidate = MagicMock()
+    candidate.content.parts = [text_part, image_part]
+
+    response = MagicMock()
+    response.candidates = [candidate]
+
+    provider.client.aio.models.generate_content = AsyncMock(return_value=response)
     return provider

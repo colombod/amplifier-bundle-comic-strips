@@ -39,6 +39,7 @@ async def test_openai_backend_generates_image(tmp_path: Path) -> None:
 
     # Verify result dict
     assert result["success"] is True
+    assert result["error"] is None
     assert result["provider_used"] == "provider-openai"
     assert result["path"] == str(output_path)
     assert output_path.exists()
@@ -65,6 +66,7 @@ async def test_openai_backend_passes_style_parameter(tmp_path: Path) -> None:
 
     call_kwargs = provider.client.images.generate.call_args.kwargs
     assert call_kwargs["size"] == "1792x1024"
+    assert "style" not in call_kwargs
 
 
 @pytest.mark.asyncio(loop_scope="function")

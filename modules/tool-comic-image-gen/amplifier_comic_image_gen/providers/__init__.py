@@ -14,9 +14,9 @@ from .openai_images import OpenAIImageBackend
 
 logger = logging.getLogger(__name__)
 
-_PROVIDER_BACKEND_MAP: dict[
-    str, type[OpenAIImageBackend] | type[GeminiImageBackend]
-] = {
+ImageBackend = OpenAIImageBackend | GeminiImageBackend
+
+_PROVIDER_BACKEND_MAP: dict[str, type[ImageBackend]] = {
     "openai": OpenAIImageBackend,
     "google": GeminiImageBackend,
     "gemini": GeminiImageBackend,
@@ -26,7 +26,7 @@ _PROVIDER_BACKEND_MAP: dict[
 def discover_image_backends(
     providers: dict[str, Any],
     preferred: str | None = None,
-) -> list[OpenAIImageBackend | GeminiImageBackend]:
+) -> list[ImageBackend]:
     """Discover image-capable backends from the available providers.
 
     Iterates *providers*, matching provider names against known keys in
@@ -35,7 +35,7 @@ def discover_image_backends(
     If *preferred* is set and more than one backend is found, the list is
     sorted so that the preferred provider appears first.
     """
-    backends: list[OpenAIImageBackend | GeminiImageBackend] = []
+    backends: list[ImageBackend] = []
 
     for provider_name, provider in providers.items():
         name_lower = provider_name.lower()

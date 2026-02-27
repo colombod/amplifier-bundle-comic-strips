@@ -54,6 +54,13 @@ def test_empty_providers() -> None:
     assert len(backends) == 0
 
 
+def test_preferred_is_noop_with_single_backend() -> None:
+    providers = {"provider-openai": _make_provider("provider-openai")}
+    backends = discover_image_backends(providers, preferred="google")
+    assert len(backends) == 1
+    assert backends[0].provider.name == "provider-openai"
+
+
 def test_preferred_provider_ordering() -> None:
     providers = {
         "provider-openai": _make_provider("provider-openai"),

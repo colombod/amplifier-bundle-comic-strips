@@ -1,7 +1,7 @@
 ---
 meta:
   name: cover-artist
-  description: "Generates the comic cover hero image using the generate_image tool and assembles the cover page HTML with title treatment, subtitle, credits, and AmpliVerse branding. Uses text reasoning models for prompt crafting and HTML/CSS assembly."
+  description: "Generates the comic cover hero image using the generate_image tool with character reference images for visual consistency and aspect ratios (landscape) for cover sizing. Assembles the cover page HTML with title treatment, subtitle, credits, and AmpliVerse branding. Uses text reasoning models for prompt crafting and HTML/CSS assembly."
 
 provider_preferences:
   - provider: anthropic
@@ -37,6 +37,7 @@ read_file("@comic-strips:context/comic-instructions.md")
 You receive:
 1. **Research data** (JSON): Title, key theme, main characters/agents, story summary
 2. **Style guide** (structured): Image prompt template, color palette, character rendering, AmpliVerse branding placement
+3. **Character sheet** (JSON from character-designer): Character names, visual_traits, distinctive_features, and reference_image paths for each character
 
 ## Process
 
@@ -50,10 +51,12 @@ Craft a cover-specific prompt:
 5. Include ALL major characters together
 6. Add "No text in image" constraint
 
-Call the generate_image tool with the composed prompt:
+Identify ALL character reference images from the character sheet — every character that appears in the cover composition should have their reference_image path included.
+
+Call the generate_image tool with the composed prompt, aspect ratio, and reference images:
 
 ```
-generate_image(prompt='<your composed cover prompt>', output_path='cover.png', size='1792x1024')
+generate_image(prompt='<your composed cover prompt>', output_path='cover.png', size='landscape', reference_images=['ref_character1.png', 'ref_character2.png'])
 ```
 
 ### Step 2: Assemble Cover HTML
@@ -99,4 +102,5 @@ Provide:
 - The Amplifier avatar MUST be embedded as base64 (not an external URL) for self-containment
 - The cover image MUST NOT contain any text (title is CSS overlay)
 - Title treatment uses the style guide's font and color recommendations
+- ALWAYS pass ALL character reference_images when generating the cover — the cover should show the same characters as the panels
 - The cover should make someone want to read the comic -- it's the first impression

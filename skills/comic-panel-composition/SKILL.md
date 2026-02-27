@@ -1,7 +1,7 @@
 ---
-name: 'comic-panel-composition'
-description: 'Use when laying out comic panels, deciding panel sizes, arranging visual flow, or assembling panels into a page. Covers rule of thirds, reading direction, gutter sizing, panel weight, pacing, and quality checklists for panel generation and strip assembly review.'
-version: '2.0.0'
+name: comic-panel-composition
+description: "Use when laying out comic panels, deciding panel sizes, arranging visual flow, or assembling panels into a page. Covers rule of thirds, reading direction, gutter sizing, panel weight, pacing, and quality checklists for panel generation and strip assembly review."
+version: "2.0.0"
 ---
 
 # Comic Panel Composition

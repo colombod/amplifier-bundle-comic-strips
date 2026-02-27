@@ -12,7 +12,7 @@ includes:
 
 # Comic Strips Bundle
 
-Transform Amplifier sessions and project stories into visually compelling comic strips using AI-powered visual storytelling.
+Transform Amplifier sessions and project stories into visually compelling multi-page comic strips with consistent characters using AI-powered visual storytelling.
 
 ## What This Bundle Provides
 
@@ -27,15 +27,16 @@ Six distinct visual styles for comic generation:
 - **Ligne Claire** - European clear-line style inspired by Herge and Franco-Belgian comics
 - **Retro Americana** - Vintage mid-century American illustration with halftone dots and warm palettes
 
-### Specialist Agents
+### Specialist Agents (6)
 
-Five dedicated agents handle different aspects of comic creation:
+Six dedicated agents handle different aspects of comic creation:
 
-- **style-curator** - Selects and configures the visual style based on story content and tone
-- **storyboard-writer** - Breaks narratives into panel sequences with pacing and dialogue
-- **panel-artist** - Generates individual panel artwork using image generation APIs
-- **cover-artist** - Creates eye-catching cover pages and title cards for comic series
-- **strip-compositor** - Assembles panels, speech bubbles, and captions into final comic layouts
+- **style-curator** - Visual style definition and adaptation
+- **storyboard-writer** - Panel breakdown, dialogue, and pacing
+- **character-designer** - Visual character reference sheets for consistency
+- **panel-artist** - Panel image generation with character references
+- **cover-artist** - Cover page image generation with character references
+- **strip-compositor** - Multi-page HTML assembly with SVG layouts and visual QA
 
 ### Automated Workflows
 
@@ -43,12 +44,14 @@ Five dedicated agents handle different aspects of comic creation:
 
 ## Quick Start
 
-Create comics from your Amplifier sessions:
+Create multi-page comics with consistent characters from your Amplifier sessions:
 
 > "Turn my last debugging session into a manga-style comic strip"
 
 > "Create a superhero comic showing how we built the authentication feature"
 
 > "Generate a newspaper strip summarizing today's code review"
+
+Characters are automatically given visual reference sheets so they look consistent across every panel and page.
 
 @comic-strips:context/comic-instructions.md

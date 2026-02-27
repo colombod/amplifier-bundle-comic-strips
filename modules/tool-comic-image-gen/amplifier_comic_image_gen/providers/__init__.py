@@ -47,6 +47,7 @@ def discover_image_backends(
 
     if preferred is not None and len(backends) > 1:
         preferred_lower = preferred.lower()
+        # False (0) sorts before True (1), so preferred match comes first
         backends.sort(key=lambda b: preferred_lower not in b.provider.name.lower())
 
     if not backends:

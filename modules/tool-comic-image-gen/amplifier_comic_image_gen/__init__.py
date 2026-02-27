@@ -96,21 +96,21 @@ class ComicImageGenTool:
 
     # ── Execution ────────────────────────────────────────────────
 
-    async def execute(self, input: dict[str, Any]) -> ToolResult:
+    async def execute(self, params: dict[str, Any]) -> ToolResult:
         """Run the image generation tool."""
         # Validate required parameters
-        missing = [k for k in ("prompt", "output_path") if k not in input]
+        missing = [k for k in ("prompt", "output_path") if k not in params]
         if missing:
             return ToolResult(
                 success=False,
                 output=f"Missing required parameters: {', '.join(missing)}",
             )
 
-        prompt: str = input["prompt"]
-        output_path: str = input["output_path"]
-        size: str = input.get("size", "1024x1024")
-        style: str | None = input.get("style")
-        preferred_provider: str | None = input.get("preferred_provider")
+        prompt: str = params["prompt"]
+        output_path: str = params["output_path"]
+        size: str = params.get("size", "1024x1024")
+        style: str | None = params.get("style")
+        preferred_provider: str | None = params.get("preferred_provider")
 
         backends = list(self._backends)
 

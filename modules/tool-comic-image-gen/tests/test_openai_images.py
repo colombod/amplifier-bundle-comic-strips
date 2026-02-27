@@ -4,30 +4,18 @@ from __future__ import annotations
 
 import base64
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
 from amplifier_comic_image_gen.providers.openai_images import OpenAIImageBackend
 
-from .conftest import TINY_PNG_B64
-
-
-def _make_mock_provider() -> MagicMock:
-    """Create a mock provider mimicking the Amplifier OpenAI provider."""
-    provider = MagicMock()
-    provider.name = "provider-openai"
-
-    response = MagicMock()
-    response.data = [MagicMock(b64_json=TINY_PNG_B64)]
-
-    provider.client.images.generate = AsyncMock(return_value=response)
-    return provider
+from .conftest import TINY_PNG_B64, make_openai_provider
 
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_openai_backend_generates_image(tmp_path: Path) -> None:
-    provider = _make_mock_provider()
+    provider = make_openai_provider()
     backend = OpenAIImageBackend(provider)
 
     output_path = tmp_path / "panel_01.png"
@@ -54,7 +42,7 @@ async def test_openai_backend_generates_image(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_openai_backend_passes_style_parameter(tmp_path: Path) -> None:
-    provider = _make_mock_provider()
+    provider = make_openai_provider()
     backend = OpenAIImageBackend(provider)
 
     output_path = tmp_path / "panel_02.png"
@@ -75,7 +63,7 @@ async def test_openai_backend_passes_style_parameter(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_openai_backend_handles_api_error(tmp_path: Path) -> None:
-    provider = _make_mock_provider()
+    provider = make_openai_provider()
     provider.client.images.generate = AsyncMock(
         side_effect=Exception("Rate limit exceeded"),
     )

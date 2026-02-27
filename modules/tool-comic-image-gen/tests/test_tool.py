@@ -10,7 +10,7 @@ import pytest
 from amplifier_comic_image_gen import ComicImageGenTool, mount
 from amplifier_comic_image_gen.providers.openai_images import OpenAIImageBackend
 
-from .conftest import TINY_PNG_B64
+from .conftest import make_openai_provider
 
 
 def _make_coordinator(
@@ -29,18 +29,6 @@ def _make_coordinator(
     coord.get_capability = MagicMock(return_value=working_dir)
     coord.mount = AsyncMock()
     return coord
-
-
-def _make_openai_provider() -> MagicMock:
-    """Create a full mock OpenAI provider with images.generate AsyncMock."""
-    provider = MagicMock()
-    provider.name = "provider-openai"
-
-    response = MagicMock()
-    response.data = [MagicMock(b64_json=TINY_PNG_B64)]
-
-    provider.client.images.generate = AsyncMock(return_value=response)
-    return provider
 
 
 # ── Property tests ───────────────────────────────────────────────
@@ -63,7 +51,7 @@ def test_tool_has_required_properties() -> None:
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_mount_registers_tool() -> None:
-    provider = _make_openai_provider()
+    provider = make_openai_provider()
     coord = _make_coordinator({"provider-openai": provider})
 
     await mount(coord, config=None)
@@ -88,7 +76,7 @@ async def test_mount_with_no_providers() -> None:
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_execute_generates_image(tmp_path: Path) -> None:
-    provider = _make_openai_provider()
+    provider = make_openai_provider()
     backend = OpenAIImageBackend(provider)
     tool = ComicImageGenTool(backends=[backend], working_dir=str(tmp_path))
 
@@ -123,11 +111,7 @@ async def test_execute_falls_back_on_failure(tmp_path: Path) -> None:
     failing_backend = OpenAIImageBackend(failing_provider)
 
     # Second backend succeeds
-    backup_provider = MagicMock()
-    backup_provider.name = "provider-openai-backup"
-    response = MagicMock()
-    response.data = [MagicMock(b64_json=TINY_PNG_B64)]
-    backup_provider.client.images.generate = AsyncMock(return_value=response)
+    backup_provider = make_openai_provider(name="provider-openai-backup")
     backup_backend = OpenAIImageBackend(backup_provider)
 
     tool = ComicImageGenTool(

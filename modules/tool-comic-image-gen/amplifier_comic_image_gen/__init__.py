@@ -11,7 +11,6 @@ Issue #90 lands a native solution.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -34,8 +33,6 @@ __amplifier_module_type__ = "tool"
 
 __all__ = ["mount", "ComicImageGenTool"]
 
-logger = logging.getLogger(__name__)
-
 
 class ComicImageGenTool:
     """Bridge tool that generates images from text prompts (Issue #90).
@@ -45,9 +42,8 @@ class ComicImageGenTool:
     images without knowing which provider fulfills the request.
     """
 
-    def __init__(self, backends: list[Any], working_dir: str = ".") -> None:
+    def __init__(self, backends: list[Any]) -> None:
         self._backends = list(backends)
-        self._working_dir = working_dir
 
     # ── Tool protocol properties ─────────────────────────────────
 
@@ -143,16 +139,7 @@ class ComicImageGenTool:
 
 async def mount(coordinator: Any, config: Any = None) -> None:
     """Amplifier module entry point — discover backends and register tool."""
-    working_dir: str = "."
-    if config and hasattr(config, "get") and config.get("working_dir"):
-        working_dir = config["working_dir"]
-    else:
-        try:
-            working_dir = coordinator.get_capability("session.working_dir") or "."
-        except Exception as exc:
-            logger.debug("Could not get working_dir capability: %s", exc)
-
     providers: dict[str, Any] = coordinator.get("providers") or {}
     backends = discover_image_backends(providers)
-    tool = ComicImageGenTool(backends, working_dir)
+    tool = ComicImageGenTool(backends)
     await coordinator.mount("tools", tool, name=tool.name)

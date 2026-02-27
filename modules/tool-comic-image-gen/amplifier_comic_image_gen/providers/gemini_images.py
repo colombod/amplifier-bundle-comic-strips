@@ -13,13 +13,6 @@ from pathlib import Path
 from typing import Any
 
 
-# Available for model validation by callers
-GEMINI_IMAGE_MODELS = [
-    "gemini-2.0-flash-exp",
-    "gemini-2.0-flash-preview-image-generation",
-]
-
-
 class GeminiImageBackend:
     """Generate images via an Amplifier Google/Gemini provider."""
 
@@ -31,7 +24,7 @@ class GeminiImageBackend:
         self,
         prompt: str,
         output_path: str | Path,
-        size: str = "1024x1024",
+        size: str = "1024x1024",  # ignored — Gemini doesn't support explicit dimensions
         style: str | None = None,
         model: str = "gemini-2.0-flash-exp",
     ) -> dict[str, Any]:

@@ -13,10 +13,7 @@ from amplifier_comic_image_gen.providers.openai_images import OpenAIImageBackend
 from .conftest import make_openai_provider
 
 
-def _make_coordinator(
-    providers: dict[str, object],
-    working_dir: str = "/tmp",
-) -> MagicMock:
+def _make_coordinator(providers: dict[str, object]) -> MagicMock:
     """Create a MagicMock coordinator for testing mount()."""
     coord = MagicMock()
 
@@ -26,7 +23,6 @@ def _make_coordinator(
         return {}
 
     coord.get = MagicMock(side_effect=_get_side_effect)
-    coord.get_capability = MagicMock(return_value=working_dir)
     coord.mount = AsyncMock()
     return coord
 
@@ -35,7 +31,7 @@ def _make_coordinator(
 
 
 def test_tool_has_required_properties() -> None:
-    tool = ComicImageGenTool(backends=[], working_dir="/tmp")
+    tool = ComicImageGenTool(backends=[])
 
     assert tool.name == "generate_image"
     assert "image" in tool.description.lower()
@@ -78,7 +74,7 @@ async def test_mount_with_no_providers() -> None:
 async def test_execute_generates_image(tmp_path: Path) -> None:
     provider = make_openai_provider()
     backend = OpenAIImageBackend(provider)
-    tool = ComicImageGenTool(backends=[backend], working_dir=str(tmp_path))
+    tool = ComicImageGenTool(backends=[backend])
 
     output_path = str(tmp_path / "panel_01.png")
     result = await tool.execute(
@@ -92,7 +88,7 @@ async def test_execute_generates_image(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_execute_with_no_backends() -> None:
-    tool = ComicImageGenTool(backends=[], working_dir="/tmp")
+    tool = ComicImageGenTool(backends=[])
 
     result = await tool.execute({"prompt": "A panel", "output_path": "/tmp/out.png"})
 
@@ -116,7 +112,6 @@ async def test_execute_falls_back_on_failure(tmp_path: Path) -> None:
 
     tool = ComicImageGenTool(
         backends=[failing_backend, backup_backend],
-        working_dir=str(tmp_path),
     )
 
     output_path = str(tmp_path / "panel_fallback.png")
@@ -128,7 +123,7 @@ async def test_execute_falls_back_on_failure(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_execute_missing_required_params() -> None:
-    tool = ComicImageGenTool(backends=[], working_dir="/tmp")
+    tool = ComicImageGenTool(backends=[])
 
     result = await tool.execute({"prompt": "A panel"})
 

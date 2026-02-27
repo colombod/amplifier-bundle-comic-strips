@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from amplifier_comic_image_gen.providers import discover_image_backends
 
 
@@ -54,18 +56,12 @@ def test_empty_providers() -> None:
     assert len(backends) == 0
 
 
-def test_preferred_is_noop_with_single_backend() -> None:
-    providers = {"provider-openai": _make_provider("provider-openai")}
-    backends = discover_image_backends(providers, preferred="google")
-    assert len(backends) == 1
-    assert backends[0].provider.name == "provider-openai"
-
-
-def test_preferred_provider_ordering() -> None:
+def test_discovery_does_not_accept_preferred_parameter() -> None:
+    """preferred-provider sorting was moved to execute(); discovery is pure."""
     providers = {
         "provider-openai": _make_provider("provider-openai"),
         "provider-google": _make_provider("provider-google"),
     }
-    backends = discover_image_backends(providers, preferred="google")
-    assert backends[0].provider.name == "provider-google"
-    assert backends[1].provider.name == "provider-openai"
+    # discover_image_backends no longer accepts a 'preferred' kwarg
+    with pytest.raises(TypeError):
+        discover_image_backends(providers, preferred="google")  # type: ignore[call-arg]

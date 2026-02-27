@@ -26,15 +26,14 @@ _PROVIDER_BACKEND_MAP: dict[str, type[ImageBackend]] = {
 
 def discover_image_backends(
     providers: dict[str, Any],
-    preferred: str | None = None,
 ) -> list[ImageBackend]:
     """Discover image-capable backends from the available providers.
 
     Iterates *providers*, matching provider names against known keys in
     ``_PROVIDER_BACKEND_MAP``.  Returns instantiated backend objects.
 
-    If *preferred* is set and more than one backend is found, the list is
-    sorted so that the preferred provider appears first.
+    Note: preferred-provider ordering is handled by
+    :meth:`ComicImageGenTool.execute` at call time, not at discovery time.
     """
     backends: list[ImageBackend] = []
 
@@ -44,11 +43,6 @@ def discover_image_backends(
             if key in name_lower:
                 backends.append(backend_cls(provider))
                 break  # avoid matching same provider twice
-
-    if preferred is not None and len(backends) > 1:
-        preferred_lower = preferred.lower()
-        # False (0) sorts before True (1), so preferred match comes first
-        backends.sort(key=lambda b: preferred_lower not in b.provider.name.lower())
 
     if not backends:
         logger.warning("No image generation backends discovered from providers")

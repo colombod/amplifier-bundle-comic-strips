@@ -98,5 +98,5 @@ class GeminiImageBackend:
                     # Handle base64-encoded string case
                     if isinstance(data, str):
                         return base64.b64decode(data)
-                    return bytes(data)
+                    raise TypeError(f"Unexpected inline_data.data type: {type(data)}")
         return None

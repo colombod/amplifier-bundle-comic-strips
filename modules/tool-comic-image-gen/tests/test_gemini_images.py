@@ -124,3 +124,21 @@ async def test_gemini_backend_handles_api_error(tmp_path: Path) -> None:
 
     assert result["success"] is False
     assert "Quota exceeded" in result["error"]
+
+
+def test_extract_image_raises_on_unexpected_data_type() -> None:
+    """_extract_image should raise TypeError for non-bytes/non-str data."""
+    backend = GeminiImageBackend.__new__(GeminiImageBackend)
+
+    # Build a response where inline_data.data is an integer — not bytes or str
+    part = MagicMock()
+    part.inline_data.data = 42  # unexpected type
+
+    candidate = MagicMock()
+    candidate.content.parts = [part]
+
+    response = MagicMock()
+    response.candidates = [candidate]
+
+    with pytest.raises(TypeError, match="Unexpected inline_data.data type"):
+        backend._extract_image(response)

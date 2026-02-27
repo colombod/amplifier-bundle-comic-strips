@@ -14,6 +14,7 @@ from .openai_images import OpenAIImageBackend
 
 logger = logging.getLogger(__name__)
 
+# Union of all supported image backends
 ImageBackend = OpenAIImageBackend | GeminiImageBackend
 
 _PROVIDER_BACKEND_MAP: dict[str, type[ImageBackend]] = {

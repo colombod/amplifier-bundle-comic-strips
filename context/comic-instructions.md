@@ -20,6 +20,27 @@ Every comic strip cover must include AmpliVerse branding. The placement varies b
 | Ligne Claire | Top-center clean banner |
 | Retro Americana | Circular badge top-right |
 
+### Logo Requirements (Non-Negotiable)
+
+The AmpliVerse logo MUST be the actual Amplifier GitHub avatar image:
+- Source: `https://github.com/microsoft-amplifier.png`
+- Format: PNG image fetched and embedded as base64 `<img>` tag
+- NOT CSS text, NOT a colored badge, NOT a `<div>` with styling
+- The actual pixel image from the GitHub avatar URL
+
+## Character Selection Rules
+
+Characters represent agents from the actual session transcript, not inventions.
+
+- **Main characters (3-4 max)**: Agents with the most tool calls and delegation activity that drove key moments
+- **Supporting characters (1-2)**: Agents with one meaningful moment but not central
+- **Antagonists**: Real session obstacles (errors, rate limits, failures) visualized as ENVIRONMENTAL THREATS -- walls, storms, barriers. NOT as characters with portraits or dialogue.
+- **Cut entirely**: Agents that appeared briefly or did routine work
+
+### Bundle-as-Affiliation Mapping
+
+Agents from the same bundle share visual team markers (color accents, insignia, uniform elements). Different bundles have distinct visual identities.
+
 ## Evidence-Based Storytelling
 
 All comic narratives must follow these rules:
@@ -28,6 +49,12 @@ All comic narratives must follow these rules:
 - **Never fabricate** - Do not fabricate events, dialogue, or outcomes. All depicted scenarios must reflect real actions that occurred in the source material.
 - **Visualize technical concepts** - Transform abstract technical concepts (deployments, refactors, debugging) into visual metaphors that are accurate and accessible.
 - **Characters represent agents not real people** - Comic characters depict Amplifier agents, tools, and system components. They do not represent or caricature real individuals.
+
+### Dialogue Rules
+
+- **Speech bubbles contain ONLY natural character dialogue** -- characters speak as characters, not as data readouts
+- **NEVER in speech bubbles**: UUIDs, session IDs, file paths, line numbers, token counts, raw error messages, JSON
+- **Factual anchors in CAPTION BOXES only** -- the narrator provides metrics and context, characters provide drama
 
 ## Output Format Requirements
 

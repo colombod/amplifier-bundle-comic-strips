@@ -41,9 +41,9 @@ You receive 5 inputs:
 
 The HTML output is organized into discrete pages, not one scrollable document:
 
-- **Page 1: Cover page** — hero image + title overlay + AmpliVerse branding (from cover-artist HTML)
-- **Page 2: Character intro page** — each character with reference image (base64 embedded), name, role, and description from the character sheet
-- **Pages 3+: Story pages** — 3-5 panels each, split based on the storyboard's `page_break_after` markers
+- **Page 1: Cover page** -- hero image + title overlay + AmpliVerse branding (from cover-artist HTML)
+- **Page 2: Character intro page** -- each character with reference image (base64 embedded), name, role, and description from the character sheet
+- **Pages 3+: Story pages** -- 3-5 panels each, split based on the storyboard's `page_break_after` markers
 
 Each page is a full-viewport `<section class="page">` element. Only the active page is visible; all others are hidden via CSS.
 
@@ -80,7 +80,7 @@ Determine the page breakdown:
 
 ### Step 3: Embed Images as Base64
 
-Convert all image file paths to `data:image/png;base64,{...}` data URIs. Every image in the final HTML must be a base64 data URI — no external file references.
+Convert all image file paths to `data:image/png;base64,{...}` data URIs. Every image in the final HTML must be a base64 data URI -- no external file references.
 
 ### Step 4: Apply Style Guide
 
@@ -101,7 +101,7 @@ For each panel, look up its `emotional_beat` from the storyboard and select the 
 - **Caption boxes**: Positioned at top or bottom of panels
 - **Sound effects (SFX)**: Bold, rotated text overlays with the style guide's SFX styling
 
-All text is CSS/HTML — never baked into images.
+All text is CSS/HTML -- never baked into images.
 
 ### Step 7: Add Navigation JavaScript
 
@@ -111,34 +111,91 @@ Add the page navigation system (see Navigation JS section below).
 
 Build the final self-contained HTML file using the template below.
 
-### Step 9: Visual QA
+### Step 9: Quality Review (Assembly Review)
 
-Delegate to `browser-tester:visual-documenter` for quality verification:
+Delegate to `browser-tester:visual-documenter` with SPECIFIC quality criteria:
 
-```
-Take screenshots of the generated HTML file at desktop width (1200px).
-Navigate through each page and capture:
+"""
+Open the generated HTML file and take screenshots of EVERY page at desktop width (1200px).
+Navigate through each page and capture it.
 
-Verify:
-1. Cover page displays with title, hero image, and AmpliVerse branding
-2. Character intro page shows all characters with reference images, names, roles, descriptions
-3. Story pages have panels with correct clip-path shapes applied
-4. Speech bubbles are readable and properly positioned
-5. Navigation works: arrow keys, click zones, nav dots, page counter
-6. Page transitions are smooth (slide animation)
-7. No overlapping elements or broken layout
-8. Text is crisp and readable (CSS overlays, not baked into images)
+For each screenshot, evaluate against these SPECIFIC criteria:
 
-Report any issues found.
-```
+**Cover page:**
+- Is there a dramatic hero image that looks like an actual comic book cover? (not generic)
+- Is the AmpliVerse logo visible as an actual IMAGE (not text or a colored badge)?
+- Is the title readable and visually integrated?
+- Are main characters visible with faces unobstructed?
 
-If issues are found, fix the HTML and re-verify.
+**Character intro page:**
+- Are there 3-6 characters displayed (not 13+)?
+- Does each character have a reference image, name, role, and description?
+- Are characters visually distinct from each other?
 
-### Step 10: Save Final Output
+**Story pages:**
+- Do speech bubbles avoid covering character faces?
+- Is dialogue natural character speech (not raw data like UUIDs or file paths)?
+- Do panels have clear focal points?
+- Is there visual consistency across panels (same characters look similar)?
+- Do clip-path shapes match the panel's emotional tone?
+
+**Overall:**
+- Does navigation work (arrow keys, click zones, nav dots)?
+- Is the page count correct?
+- Rate the overall quality 1-10.
+
+Report each finding with: page number, check, PASS/FAIL, details.
+"""
+
+If issues are found:
+- For HTML/CSS issues (bubble placement, layout): fix directly and re-verify
+- For panel quality issues (face cut off, wrong style): report which panels need regeneration
+- Maximum 2 assembly review iterations
+
+### Step 10: Cleanup Intermediate Files
+
+After the final HTML is assembled, verified, and saved:
+
+1. List all intermediate files: panel_*.png, ref_*.png, cover.png, avatar.png, any temp files
+2. Verify each image is embedded as base64 in the final HTML (grep for the filename in the HTML)
+3. Delete intermediate files that are confirmed embedded
+4. Keep: final HTML file only
+5. Report: "Cleaned up N intermediate files. Final output: {filename}.html ({size})"
+
+This keeps the working directory clean. The HTML is self-contained with all images as base64.
+
+### Step 11: Save Final Output
 
 Save the HTML file to the working directory:
 - Filename: `{output_name}.html` or `comic-{timestamp}.html`
 - Verify the file is self-contained (no external dependencies except optional Google Fonts)
+
+## Assembly Review Report
+
+After QA, report in this format:
+
+```
+Assembly Review - Iteration 1/2
+
+Cover Page: PASS
+  - Hero image: dramatic composition with 4 characters
+  - AmpliVerse logo: actual avatar image embedded
+  - Title: readable, styled per superhero pack
+
+Character Intro: PASS
+  - 4 main + 1 supporting characters displayed
+  - All have reference images, names, roles
+
+Story Page 1: PARTIAL
+  - Panel 2: speech bubble covers the Explorer's face -> FIXING
+  - Panels 1, 3, 4: PASS
+
+Story Page 2: PASS
+
+Overall Quality: 7/10
+
+Fixing 1 issue, then re-verifying...
+```
 
 ## HTML Template
 
@@ -407,24 +464,28 @@ For each character in the character sheet:
 4. Display a brief **description** (body text style)
 5. Lay out all characters in a responsive grid or gallery, styled per the active style pack
 
-The character intro page gives readers context before the story begins — who they're about to follow and what they look like.
+The character intro page gives readers context before the story begins -- who they're about to follow and what they look like.
 
 ## Output
 
 Provide:
 1. Path to the final HTML file
 2. Summary: page count, panel count, character count, style used
-3. QA result from visual-documenter
+3. Assembly review report from visual-documenter
+4. Cleanup report (intermediate files removed)
 
 ## Rules
 
 - ALL images MUST be base64 data URIs (self-contained HTML, no external file references)
 - ALL text MUST be CSS/HTML overlays (never baked into images)
-- Speech bubble positioning should avoid covering important visual elements
+- Speech bubble positioning should avoid covering character faces
 - The HTML must work when opened directly in a browser (no server needed)
 - Self-contained: the only external resource allowed is Google Fonts `<link>`
 - Responsive design: panels and character grid should reflow on smaller screens
-- AmpliVerse branding on the cover page MUST be visible and correctly placed
+- AmpliVerse branding on the cover page MUST be visible as an actual avatar image (not text or badge)
 - Each `<section class="page">` must fill the viewport and only the active page is visible
 - Panel clip-path shapes must match the emotional_beat from the storyboard
 - Navigation must support: arrow keys, click zones, touch swipe, nav dots, page counter
+- QA must use SPECIFIC quality criteria (not just "does it render") -- see Step 9
+- Maximum 2 assembly review iterations
+- Clean up intermediate files after final HTML is verified -- see Step 10

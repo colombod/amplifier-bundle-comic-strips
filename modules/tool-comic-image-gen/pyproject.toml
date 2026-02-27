@@ -19,3 +19,4 @@ tool-comic-image-gen = "amplifier_comic_image_gen:mount"
 testpaths = ["tests"]
 addopts = "--import-mode=importlib"
 asyncio_mode = "strict"
+

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -43,6 +44,7 @@ async def test_openai_backend_generates_image(tmp_path: Path) -> None:
     assert result["provider_used"] == "provider-openai"
     assert result["path"] == str(output_path)
     assert output_path.exists()
+    assert output_path.read_bytes() == base64.b64decode(TINY_PNG_B64)
 
     # Verify SDK was called correctly
     call_kwargs = provider.client.images.generate.call_args.kwargs

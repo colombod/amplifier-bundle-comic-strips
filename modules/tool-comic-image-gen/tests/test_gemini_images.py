@@ -10,10 +10,10 @@ import pytest
 
 from amplifier_comic_image_gen.providers.gemini_images import GeminiImageBackend
 
-# 1x1 red PNG as raw bytes
-TINY_PNG_BYTES = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
-)
+from .conftest import TINY_PNG_B64
+
+# 1x1 red PNG as raw bytes — derived from the shared base64 constant
+TINY_PNG_BYTES = base64.b64decode(TINY_PNG_B64)
 
 
 def _make_mock_provider() -> MagicMock:

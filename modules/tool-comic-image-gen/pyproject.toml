@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "amplifier-module-tool-comic-image-gen"
+version = "0.1.0"
+requires-python = ">=3.11"
+
+[project.optional-dependencies]
+openai = ["openai>=1.0.0"]
+google = ["google-genai>=1.0.0"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24"]
+
+[project.entry-points."amplifier.modules"]
+tool-comic-image-gen = "amplifier_comic_image_gen:mount"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--import-mode=importlib"
+asyncio_mode = "strict"

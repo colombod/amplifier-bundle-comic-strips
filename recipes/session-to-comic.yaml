@@ -1,0 +1,166 @@
+name: "session-to-comic"
+description: "Transform an Amplifier session into an illustrated comic strip with cover page"
+version: "1.0.0"
+author: "amplifier-comic-strips"
+tags: ["comic", "visual-storytelling", "session-analysis", "image-generation"]
+
+# Usage:
+#   amplifier run "execute session-to-comic with session_file=~/.amplifier/sessions/2026-02-27/events.jsonl style=superhero"
+#   amplifier run "execute session-to-comic with session_file=./my-session.jsonl style=manga output_name=my-comic"
+
+context:
+  session_file: ""        # Required: path to events.jsonl session file or session ID
+  style: "superhero"      # Style name (manga, superhero, indie, newspaper, ligne-claire, retro-americana) or custom description
+  output_name: ""         # Optional: custom output filename (defaults to comic-{timestamp})
+
+steps:
+  # ============================================
+  # STEP 1: RESEARCH - Data Extraction
+  # ============================================
+  - id: "research"
+    agent: "stories:story-researcher"
+    prompt: |
+      Analyze the Amplifier session at: {{session_file}}
+
+      Extract structured data for comic strip creation:
+
+      **Session Metadata:**
+      - Session ID, duration, date
+      - Agents used and their roles
+      - Tools called and frequency
+      - Number of user interactions
+
+      **Key Moments (for comic panels):**
+      - The initial challenge or goal (what started the session?)
+      - Breakthrough moments (problems solved, discoveries made)
+      - Agent collaboration highlights (which agents worked together?)
+      - The final outcome or deliverable
+      - Any dramatic failures or unexpected turns
+
+      **Characters:**
+      - Map each agent to a character with a brief visual description
+      - Identify the "protagonist" (main agent driving the story)
+      - Identify any "antagonists" (bugs, errors, blockers)
+
+      **Metrics:**
+      - Quantified achievements (files created, tests passed, etc.)
+      - Session duration and effort indicators
+
+      Output as structured JSON with: title, subtitle, timeline, key_moments, characters, metrics, outcome.
+    output: "research_data"
+    timeout: 600
+
+  # ============================================
+  # STEP 2: STYLE CURATION
+  # ============================================
+  - id: "style-curation"
+    agent: "comic-strips:style-curator"
+    prompt: |
+      Define the visual style for this comic strip.
+
+      Style requested: {{style}}
+
+      Research data (for context about the story):
+      {{research_data}}
+
+      If "{{style}}" matches a predefined style name (manga, superhero, indie, newspaper, ligne-claire, retro-americana), load the corresponding style pack and adapt it for this specific story.
+
+      If it's a custom description, interpret it and generate a complete style guide.
+
+      Output the full structured style guide.
+    output: "style_guide"
+    timeout: 300
+
+  # ============================================
+  # STEP 3: STORYBOARD
+  # ============================================
+  - id: "storyboard"
+    agent: "comic-strips:storyboard-writer"
+    prompt: |
+      Create a panel-by-panel storyboard for this comic strip.
+
+      Research Data:
+      {{research_data}}
+
+      Style Guide:
+      {{style_guide}}
+
+      Break the story into 4-8 panels following the style guide's conventions.
+      Output the complete panel sequence as structured JSON.
+    output: "storyboard"
+    timeout: 600
+
+  # ============================================
+  # STEP 4a: ART GENERATION - Panel Art
+  # ============================================
+  - id: "generate-panels"
+    agent: "comic-strips:panel-artist"
+    prompt: |
+      You are generating panel art for a comic strip.
+
+      Style Guide:
+      {{style_guide}}
+
+      Storyboard:
+      {{storyboard}}
+
+      Research Data:
+      {{research_data}}
+
+      Generate one image per panel from the storyboard.
+      Follow your agent instructions to generate the appropriate images.
+    output: "panel_results"
+    timeout: 900
+
+  # ============================================
+  # STEP 4b: ART GENERATION - Cover Art
+  # ============================================
+  - id: "generate-cover"
+    agent: "comic-strips:cover-artist"
+    prompt: |
+      You are generating cover art for a comic strip.
+
+      Style Guide:
+      {{style_guide}}
+
+      Storyboard:
+      {{storyboard}}
+
+      Research Data:
+      {{research_data}}
+
+      Generate a single cover hero image and assemble cover HTML with AmpliVerse branding.
+    output: "cover_results"
+    timeout: 900
+
+  # ============================================
+  # STEP 5: COMPOSITION + QA
+  # ============================================
+  - id: "composition"
+    agent: "comic-strips:strip-compositor"
+    prompt: |
+      Assemble the final comic strip HTML.
+
+      Panel Art Results:
+      {{panel_results}}
+
+      Cover Art Results:
+      {{cover_results}}
+
+      Storyboard (for dialogue, captions, sound effects):
+      {{storyboard}}
+
+      Style Guide (for layout, fonts, colors, borders):
+      {{style_guide}}
+
+      Research Data (for title and metadata):
+      {{research_data}}
+
+      Output filename: {{output_name}}
+
+      Assemble the cover page and all panel images into a single self-contained HTML file.
+      Apply speech bubbles, captions, and sound effects as CSS overlays.
+      Run visual QA by delegating to browser-tester:visual-documenter.
+      Save the final HTML file.
+    output: "final_output"
+    timeout: 900

@@ -1,12 +1,12 @@
 ---
 name: 'comic-panel-composition'
-description: 'Use when laying out comic panels, deciding panel sizes, arranging visual flow, or assembling panels into a page. Covers rule of thirds, reading direction, gutter sizing, panel weight, and pacing.'
-version: '1.0.0'
+description: 'Use when laying out comic panels, deciding panel sizes, arranging visual flow, or assembling panels into a page. Covers rule of thirds, reading direction, gutter sizing, panel weight, pacing, and quality checklists for panel generation and strip assembly review.'
+version: '2.0.0'
 ---
 
 # Comic Panel Composition
 
-A skill for laying out comic panels with intentional composition, visual flow, and narrative pacing.
+A skill for laying out comic panels with intentional composition, visual flow, narrative pacing, and structured quality review.
 
 ## Rule of Thirds
 
@@ -54,3 +54,36 @@ The space between panels is not dead space — it communicates temporal and spat
 - **Wide gutter = time passed**: Expanded space between panels tells the reader that time has elapsed — minutes, hours, or longer. The wider the gutter, the greater the implied gap.
 - **Black gutter = location change**: A solid black gutter signals a shift in location or a hard scene break. The darkness acts as a curtain between two distinct spaces.
 - **No gutter or overlap = simultaneous action or chaos**: When panels share edges or overlap, it conveys simultaneous events or chaotic, overwhelming moments where boundaries dissolve.
+
+## Panel Quality Checklist (for Panel-Artist Self-Review)
+
+After generating each panel image, run through this checklist before accepting it:
+
+| # | Check | PASS | FAIL |
+|---|-------|------|------|
+| 1 | Characters fully visible? | All named characters in the scene are present and not cropped out of the frame | One or more characters missing, cut off, or obscured by the frame edge |
+| 2 | Faces unobstructed? | Every character's face is clearly visible with recognizable expression | A face is hidden behind another character, object, or panel element |
+| 3 | Clear focal point? | The panel has one obvious area that draws the eye first, matching the story beat | The eye wanders with no dominant subject — composition feels flat or cluttered |
+| 4 | Tells story without dialogue? | The image alone communicates the action or emotion of the beat | Without the caption you cannot tell what is happening in the scene |
+| 5 | Characters match references? | Characters are recognizable against their reference sheets (hair, outfit, build) | A character looks noticeably different from their established design |
+| 6 | Space for text overlays? | There is open sky, wall, or low-detail area where speech bubbles can be placed | Every area is busy — overlaying text would obscure important detail |
+| 7 | Style consistent? | Art style matches the chosen style guide for this strip (line weight, palette, rendering) | Panel looks like it came from a different comic — jarring style mismatch |
+| 8 | No text artifacts? | The image is free of garbled letters, watermarks, or AI-generated text strings | Visible gibberish text, phantom lettering, or unwanted watermarks appear |
+
+**Regeneration rule:** If checks 1, 2, or 3 fail, regenerate the panel with an adjusted prompt that addresses the failure. Maximum 3 attempts per panel. If all 3 attempts fail, use the best one and flag it for manual review.
+
+## Assembly Review Checklist (for Strip-Compositor)
+
+After assembling all panels, covers, and pages into the final strip, run this checklist:
+
+| # | Check | PASS | FAIL |
+|---|-------|------|------|
+| 1 | Panel flow reads as a narrative? | Reading the panels in order tells a coherent story with clear beginning, middle, and end | Panels feel random or out of order — the narrative thread is lost |
+| 2 | Speech bubbles readable? | All speech bubbles have legible text, correct tail pointing, and proper reading order | Text is too small, overlaps art, or bubble tails point to the wrong character |
+| 3 | Visual consistency? | All panels share a consistent art style, color palette, and character rendering | Panels clash visually — inconsistent styles break immersion |
+| 4 | Cover looks like a comic cover? | The cover has a title, key art, and feels like an authentic comic book cover | The cover is just another panel or lacks title/branding treatment |
+| 5 | AmpliVerse logo visible? | The AmpliVerse logo appears on the cover in a clear, unobstructed position | Logo is missing, cropped, or placed where it cannot be read |
+| 6 | Character intro complete? | Each character has an introduction panel or caption on their first appearance | A character appears with no context — the reader doesn't know who they are |
+| 7 | Navigation works? | Page order is correct and any page-turn transitions make narrative sense | Pages are misordered or a page break lands in the middle of a connected beat |
+
+**Iteration rule:** Max 2 assembly review iterations. Run the checklist, fix failures, and run it once more. If checks still fail after 2 iterations, output the strip with a warning listing the unresolved items.

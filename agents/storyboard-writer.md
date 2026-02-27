@@ -58,8 +58,7 @@ Your output MUST be a structured panel sequence in this exact format:
 {
   "title": "Comic strip title",
   "subtitle": "Short tagline",
-  "panel_count": 6,
-  "layout": "2x3 grid",
+  "panel_count": 8,
   "panels": [
     {
       "number": 1,
@@ -71,7 +70,28 @@ Your output MUST be a structured panel sequence in this exact format:
         {"speaker": "Developer", "text": "These tests have been failing for three days..."}
       ],
       "caption": "It started like any other debugging session...",
-      "sound_effects": []
+      "sound_effects": [],
+      "page_break_after": false
+    },
+    {
+      "number": 2,
+      "size": "standard",
+      "scene_description": "Close-up of the developer's face illuminated by monitor light, eyes narrowing with determination.",
+      "camera_angle": "close-up",
+      "emotional_beat": "rising tension",
+      "dialogue": [
+        {"speaker": "Developer", "text": "Wait... what if the problem isn't in the code?"}
+      ],
+      "caption": "",
+      "sound_effects": [],
+      "page_break_after": true
+    }
+  ],
+  "characters": [
+    {
+      "name": "Developer",
+      "role": "protagonist",
+      "description": "A focused software engineer in casual clothes, mid-30s, with tired but determined eyes and a coffee mug always nearby."
     }
   ]
 }
@@ -84,6 +104,28 @@ Your output MUST be a structured panel sequence in this exact format:
 - `standard` panels for dialogue and general scenes
 - `tall` panels for reveals and dramatic moments
 - `square` panels for emotional close-ups
+
+## Page Breaks
+
+The `page_break_after` boolean on each panel object marks where a page ends. When `page_break_after` is `true`, the strip-compositor will insert a page break after that panel.
+
+Placement rules:
+
+- Place a page break every 3-5 panels to maintain readable page lengths
+- Place breaks after dramatic beats, cliffhangers, or scene transitions to build suspense
+- Climax panels should appear just before a page break for maximum impact
+- The first break should come after the opening panels (panels 1-3) to establish the setup
+- Never place a break mid-action-sequence -- finish the action before breaking
+
+## Characters Section
+
+The `characters` array at the root level is required. It lists every character that appears in the storyboard so the character-designer agent can generate consistent visual reference sheets.
+
+Each character object contains:
+
+- **`name`**: The character's display name (used in dialogue speaker fields)
+- **`role`**: The character's story role (e.g., protagonist, antagonist, mentor, supporting)
+- **`description`**: A visual description for the character-designer -- describe appearance, clothing, distinguishing features, and mood
 
 ## Rules
 

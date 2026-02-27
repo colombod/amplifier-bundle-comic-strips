@@ -59,12 +59,15 @@ async def test_openai_backend_passes_style_parameter(tmp_path: Path) -> None:
     backend = OpenAIImageBackend(provider)
 
     output_path = tmp_path / "panel_02.png"
-    await backend.generate(
+    result = await backend.generate(
         prompt="A sunset over mountains",
         output_path=output_path,
         style="natural",
         size="1792x1024",
     )
+
+    assert result["success"] is True
+    assert result["error"] is None
 
     call_kwargs = provider.client.images.generate.call_args.kwargs
     assert call_kwargs["size"] == "1792x1024"

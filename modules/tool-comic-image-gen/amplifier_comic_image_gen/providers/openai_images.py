@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 
+# Available for model validation by callers
 OPENAI_IMAGE_MODELS = ["gpt-image-1", "dall-e-3", "dall-e-2"]
 
 

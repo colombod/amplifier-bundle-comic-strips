@@ -7,6 +7,7 @@ agents:
   include:
     - comic-strips:style-curator
     - comic-strips:storyboard-writer
+    - comic-strips:character-designer
     - comic-strips:panel-artist
     - comic-strips:cover-artist
     - comic-strips:strip-compositor

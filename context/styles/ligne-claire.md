@@ -52,3 +52,4 @@ Clean, precise palette with flat bright fills on uniform black outlines.
 - **Placement**: Clean banner positioned top center of the page — a precise title area anchoring the composition
 - **Avatar**: AmpliVerse avatar placed left of title within the banner — small and neatly integrated
 - **Color treatment**: Clean black on white for all branding elements — matching the precise aesthetic of the ligne claire style
+

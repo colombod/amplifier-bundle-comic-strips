@@ -1,6 +1,6 @@
 name: "session-to-comic"
-description: "Transform an Amplifier session into an illustrated comic strip with character consistency and cover page"
-version: "2.0.0"
+description: "Transform an Amplifier session into an illustrated comic strip with quality review, character consistency, dramatized storytelling, and AmpliVerse publisher branding"
+version: "3.0.0"
 author: "amplifier-comic-strips"
 tags: ["comic", "visual-storytelling", "session-analysis", "image-generation"]
 
@@ -29,6 +29,12 @@ steps:
       - Agents used and their roles
       - Tools called and frequency
       - Number of user interactions
+
+      **Agent Activity Analysis (CRITICAL for character selection):**
+      - Rank each agent by activity level: count tool calls, delegations sent, delegations received
+      - Identify which bundle each agent belongs to (e.g., foundation:explorer -> foundation bundle)
+      - Map bundle memberships so the storyboard writer can assign team affiliations
+      - Flag the top 3-4 most active agents and note their key contributions
 
       **Key Moments (for comic panels):**
       - The initial challenge or goal (what started the session?)
@@ -85,10 +91,30 @@ steps:
       Style Guide:
       {{style_guide}}
 
+      CRITICAL: Start by selecting characters from the session transcript.
+      Analyze the research data for agent activity -- tool calls, delegations, key moments.
+      Select 3-4 main characters (most active agents) + 1-2 supporting (one key moment).
+      Do NOT create more than 6 characters total. Do NOT include every agent mentioned.
+
+      All dialogue must be natural, dramatized character speech. NO raw session data
+      (UUIDs, file paths, file sizes, token counts, raw error messages) in speech bubbles.
+      Use caption boxes for factual anchors. Technical events become visual metaphors.
+
+      Set page breaks every 3-5 panels, after dramatic beats.
+
       Break the story into 4-8 panels following the style guide's conventions.
       Output the complete panel sequence as structured JSON.
     output: "storyboard"
     timeout: 600
+
+  # ============================================
+  # STEP 3.5: STORYBOARD APPROVAL (Optional Gate)
+  # ============================================
+  # This is where a user can review the character cast and narrative arc
+  # before expensive image generation begins. The storyboard output is
+  # available for review in {{storyboard}}.
+  # To pause here: cancel the recipe session and resume after review.
+  # To auto-approve: let execution continue without interruption.
 
   # ============================================
   # STEP 4: CHARACTER DESIGN - Reference Sheets
@@ -104,12 +130,16 @@ steps:
       Style Guide:
       {{style_guide}}
 
-      For each character in the storyboard's characters array, generate a reference image
-      that captures their visual design in the style defined by the style guide.
+      IMPORTANT: Design ONLY the selected characters from the storyboard's characters array.
+      Generate reference images for 3-4 main characters + 1-2 supporting characters only.
+      Do NOT generate sheets for every agent mentioned in the session.
+
+      Each character should have bundle-affiliation visual markers -- characters from the
+      same bundle share team colors, insignia, or uniform elements.
 
       Output a structured character sheet with image paths and descriptions for each character.
     output: "character_sheet"
-    timeout: 600
+    timeout: 900
 
   # ============================================
   # STEP 5a: ART GENERATION - Panel Art
@@ -132,9 +162,14 @@ steps:
       {{research_data}}
 
       Generate one image per panel from the storyboard.
-      Follow your agent instructions to generate the appropriate images.
+      For EACH panel: generate the image, then self-review it using vision.
+      Check: are faces visible and unobstructed? Is there a clear focal point?
+      Does it tell the story visually? Does it match the style?
+      ALWAYS pass reference_images from the character sheet for consistency.
+      If a panel fails review, regenerate with an adjusted prompt (max 3 attempts per panel).
+      Report which panels passed on first attempt and which needed regeneration.
     output: "panel_results"
-    timeout: 900
+    timeout: 1200
 
   # ============================================
   # STEP 5b: ART GENERATION - Cover Art
@@ -157,11 +192,16 @@ steps:
       {{research_data}}
 
       Generate a single cover hero image and assemble cover HTML with AmpliVerse branding.
+      CRITICAL: The AmpliVerse logo MUST be the ACTUAL Amplifier avatar image fetched from
+      https://github.com/microsoft-amplifier.png and embedded as a base64 <img> tag.
+      Do NOT use CSS text or a colored badge as a substitute.
+      Self-review the cover image using vision before assembling HTML (max 3 attempts).
+      Ensure main characters are in a dramatic pose with faces visible.
     output: "cover_results"
     timeout: 900
 
   # ============================================
-  # STEP 6: COMPOSITION + QA
+  # STEP 6: COMPOSITION + QA + CLEANUP
   # ============================================
   - id: "composition"
     agent: "comic-strips:strip-compositor"
@@ -190,7 +230,17 @@ steps:
 
       Assemble the cover page and all panel images into a single self-contained HTML file.
       Apply speech bubbles, captions, and sound effects as CSS overlays.
-      Run visual QA by delegating to browser-tester:visual-documenter.
-      Save the final HTML file.
+
+      Run visual QA by delegating to browser-tester:visual-documenter with SPECIFIC criteria:
+      - Cover: dramatic hero image? AmpliVerse logo as actual image (not CSS text)? Title readable?
+      - Character intro: 3-6 characters displayed? Each with image, name, role?
+      - Story pages: bubbles not covering faces? Natural dialogue (no UUIDs/raw data)? Visual consistency?
+      - Overall: navigation works? Page count correct? Rate overall quality 1-10.
+
+      Fix any issues found (max 2 assembly review iterations).
+
+      After final HTML is verified, clean up intermediate files:
+      delete panel_*.png, ref_*.png, cover.png, avatar.png, and any other temp files.
+      Keep only the final HTML file. The HTML is self-contained with all images as base64.
     output: "final_output"
-    timeout: 900
+    timeout: 1200

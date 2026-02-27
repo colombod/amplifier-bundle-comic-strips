@@ -149,8 +149,8 @@ async def mount(coordinator: Any, config: Any = None) -> None:
     else:
         try:
             working_dir = coordinator.get_capability("session.working_dir") or "."
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Could not get working_dir capability: %s", exc)
 
     providers: dict[str, Any] = coordinator.get("providers") or {}
     backends = discover_image_backends(providers)

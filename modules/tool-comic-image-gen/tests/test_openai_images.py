@@ -10,8 +10,7 @@ import pytest
 
 from amplifier_comic_image_gen.providers.openai_images import OpenAIImageBackend
 
-# 1x1 red PNG encoded as base64
-TINY_PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+from .conftest import TINY_PNG_B64
 
 
 def _make_mock_provider() -> MagicMock:

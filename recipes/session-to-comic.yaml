@@ -1,6 +1,6 @@
 name: "session-to-comic"
-description: "Transform an Amplifier session into an illustrated comic strip with cover page"
-version: "1.0.0"
+description: "Transform an Amplifier session into an illustrated comic strip with character consistency and cover page"
+version: "2.0.0"
 author: "amplifier-comic-strips"
 tags: ["comic", "visual-storytelling", "session-analysis", "image-generation"]
 
@@ -91,7 +91,28 @@ steps:
     timeout: 600
 
   # ============================================
-  # STEP 4a: ART GENERATION - Panel Art
+  # STEP 4: CHARACTER DESIGN - Reference Sheets
+  # ============================================
+  - id: "character-design"
+    agent: "comic-strips:character-designer"
+    prompt: |
+      Create character reference sheets for this comic strip.
+
+      Storyboard (contains character list):
+      {{storyboard}}
+
+      Style Guide:
+      {{style_guide}}
+
+      For each character in the storyboard's characters array, generate a reference image
+      that captures their visual design in the style defined by the style guide.
+
+      Output a structured character sheet with image paths and descriptions for each character.
+    output: "character_sheet"
+    timeout: 600
+
+  # ============================================
+  # STEP 5a: ART GENERATION - Panel Art
   # ============================================
   - id: "generate-panels"
     agent: "comic-strips:panel-artist"
@@ -104,6 +125,9 @@ steps:
       Storyboard:
       {{storyboard}}
 
+      Character Sheet (reference images for visual consistency):
+      {{character_sheet}}
+
       Research Data:
       {{research_data}}
 
@@ -113,7 +137,7 @@ steps:
     timeout: 900
 
   # ============================================
-  # STEP 4b: ART GENERATION - Cover Art
+  # STEP 5b: ART GENERATION - Cover Art
   # ============================================
   - id: "generate-cover"
     agent: "comic-strips:cover-artist"
@@ -126,6 +150,9 @@ steps:
       Storyboard:
       {{storyboard}}
 
+      Character Sheet (reference images for visual consistency):
+      {{character_sheet}}
+
       Research Data:
       {{research_data}}
 
@@ -134,7 +161,7 @@ steps:
     timeout: 900
 
   # ============================================
-  # STEP 5: COMPOSITION + QA
+  # STEP 6: COMPOSITION + QA
   # ============================================
   - id: "composition"
     agent: "comic-strips:strip-compositor"
@@ -149,6 +176,9 @@ steps:
 
       Storyboard (for dialogue, captions, sound effects):
       {{storyboard}}
+
+      Character Sheet (for character intro page):
+      {{character_sheet}}
 
       Style Guide (for layout, fonts, colors, borders):
       {{style_guide}}

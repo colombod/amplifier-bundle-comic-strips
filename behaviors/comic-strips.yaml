@@ -1,0 +1,23 @@
+bundle:
+  name: comic-strips-behavior
+  version: 1.0.0
+  description: Comic strip creation agents and visual storytelling capabilities
+
+agents:
+  include:
+    - comic-strips:style-curator
+    - comic-strips:storyboard-writer
+    - comic-strips:panel-artist
+    - comic-strips:cover-artist
+    - comic-strips:strip-compositor
+
+recipes:
+  session-to-comic:
+    path: comic-strips:recipes/session-to-comic.yaml
+
+tools:
+  - module: tool-skills
+    source: git+https://github.com/microsoft/amplifier-module-tool-skills@main
+    config:
+      skills:
+        - "@comic-strips:skills"

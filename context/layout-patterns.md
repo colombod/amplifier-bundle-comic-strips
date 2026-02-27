@@ -50,3 +50,40 @@ A reference guide for panel layout patterns in comic strips and graphic narrativ
 - **Few panels = dramatic emphasis**: Fewer panels per page give each moment more weight and significance.
 - **Silent panels = emotional resonance**: Wordless panels let artwork carry the emotional beat without dialogue.
 - **Full-bleed panels = breaking the fourth wall**: Borderless panels that extend to page edges shatter the narrative frame, creating direct impact.
+
+## SVG Clip-Path Panel Shapes
+
+Panel images are always generated as standard rectangles. The strip-compositor applies SVG clip-paths to create non-rectangular visible shapes. The style guide's Panel Shapes section defines which shapes are available.
+
+### Shape Reference
+
+| Shape | CSS | Use For |
+|-------|-----|---------|
+| **Rectangular** | `clip-path: inset(0)` | Default, dialogue, general scenes |
+| **Rounded** | `clip-path: inset(0 round 12px)` | Soft moments, retro styles |
+| **Diagonal** | `clip-path: polygon(0 0, 100% 0, 100% 85%, 0 100%)` | Action, dynamic energy |
+| **Circular** | `clip-path: circle(45% at 50% 50%)` | Character focus, portraits |
+| **Elliptical** | `clip-path: ellipse(48% 45% at 50% 50%)` | Intimate, vignette framing |
+| **Irregular** | `clip-path: polygon(3% 0, 100% 2%, 97% 100%, 0 98%)` | Tension, instability |
+| **Borderless bleed** | No clip-path, negative margin | Atmospheric, establishing |
+
+### Applying Shapes
+
+The strip-compositor reads the style guide's Panel Shapes section and applies the appropriate clip-path based on the panel's `emotional_beat` from the storyboard:
+
+| Emotional Beat | Suggested Shape |
+|---------------|----------------|
+| setup / establishing | Wide rectangular or borderless bleed |
+| dialogue / conversation | Rectangular (default) |
+| action / conflict | Diagonal or angled |
+| revelation / climax | Wide splash or circular |
+| emotional / intimate | Elliptical or rounded |
+| tension / unease | Irregular or torn edge |
+| impact / maximum | Full-width splash or broken border |
+
+### Implementation Notes
+
+- Clip-paths are applied to the panel's container `<div>`, not to the `<img>` directly
+- Speech bubbles and text overlays are positioned OUTSIDE the clip-path area so they're never clipped
+- The base image should be slightly larger than the panel container to avoid white edges at clip boundaries
+- Transitions between panel shapes create visual rhythm across the page

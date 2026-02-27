@@ -32,6 +32,15 @@ Manga is strictly monochrome. No color is used at any stage.
 - **Splash panels**: Use splash panels for dramatic reveals and climactic moments — a single panel spanning the full page or half-page
 - **Panel count**: 4-8 per page in an irregular grid layout; vary panel size to control pacing and emphasis
 
+## Panel Shapes
+
+Available SVG clip-path shapes for this style:
+- **Rectangular** (default): `clip-path: inset(0)` -- standard panels
+- **Angled cut** (action): `clip-path: polygon(0 0, 100% 0, 100% 85%, 0 100%)` -- dynamic action sequences
+- **Reverse angle** (counter-action): `clip-path: polygon(0 15%, 100% 0, 100% 100%, 0 100%)` -- opposing force
+- **Broken border** (impact): No clip-path, use `border: none` with `box-shadow` for shattered effect -- maximum impact moments
+- **Irregular** (tension): `clip-path: polygon(3% 0, 100% 2%, 97% 100%, 0 98%)` -- unease, instability
+
 ## Text Treatment
 
 - **Speech bubbles**: Spiky/angular bubbles for shouting and intense emotion; round smooth bubbles for normal dialogue; cloud-shaped bubbles for thought

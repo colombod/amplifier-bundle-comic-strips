@@ -34,6 +34,13 @@ Warm, nostalgic colors inspired by mid-century American print advertising.
 - **Grid layout**: Regular 2x2 or 2x3 grid for consistent, clean composition
 - **Panel count**: 4-6 per page in an orderly arrangement reflecting the structured feel of mid-century print ads
 
+## Panel Shapes
+
+Available SVG clip-path shapes for this style:
+- **Rectangular** (default): `clip-path: inset(0 round 12px)` -- ALL panels have rounded corners by default
+- **Circular badge** (spotlight): `clip-path: circle(45% at 50% 50%)` -- character introductions, product shots
+- **Starburst** (emphasis): `clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)` -- exclamation moments
+
 ## Text Treatment
 
 - **Speech bubbles**: Round, thick, cheerful outlines with cream fill; tail points toward speaker with a friendly rounded shape

@@ -35,6 +35,15 @@ Muted, desaturated tones with selective vivid accents for dramatic emphasis.
 - **Splash panels**: Atmospheric establishing shots — wide cinematic panels that set mood and environment before action
 - **Panel count**: 3-6 per page in an asymmetric layout; variable sizing creates visual rhythm and pacing control
 
+## Panel Shapes
+
+Available SVG clip-path shapes for this style:
+- **Rectangular** (default): `clip-path: inset(0)` -- standard panels
+- **Organic** (mood): `clip-path: polygon(5% 0, 100% 3%, 95% 100%, 0 97%)` -- subtle irregularity
+- **Borderless bleed** (atmosphere): No clip-path, no border, `margin: -8px` to bleed into gutters -- atmospheric establishing shots
+- **Torn edge** (tension): `clip-path: polygon(0 0, 98% 2%, 100% 100%, 2% 98%)` -- distressed feel
+- **Vignette** (intimate): `clip-path: ellipse(48% 45% at 50% 50%)` -- soft oval framing
+
 ## Text Treatment
 
 - **Speech bubbles**: Irregular hand-drawn bubbles with rough edges; organic imperfect shapes that feel sketched and authentic

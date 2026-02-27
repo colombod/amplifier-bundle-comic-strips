@@ -30,6 +30,13 @@ Clean, precise palette with flat bright fills on uniform black outlines.
 - **Format**: European album format with larger panels than American comics — generous space for detailed backgrounds and precise linework
 - **Panel count**: 4-8 per page across 2-3 rows — flexible grid allowing narrative pacing within a structured framework
 
+## Panel Shapes
+
+Available SVG clip-path shapes for this style:
+- **Rectangular** (default): `clip-path: inset(0)` -- standard panels
+- **Wide rectangular** (establishing): Full-width panel, `clip-path: inset(0)` -- establishing shots and landscapes
+- **Rounded rectangular** (soft): `clip-path: inset(0 round 8px)` -- gentle moments, character close-ups
+
 ## Text Treatment
 
 - **Speech bubbles**: Clean round white bubbles with uniform outline matching art weight — seamless integration with the linework

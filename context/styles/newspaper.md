@@ -30,6 +30,12 @@ Clean, minimal palette with flat pastels on a black-and-white foundation.
 - **Panel count**: 3-4 panel strip in classic newspaper format — the standard daily strip length
 - **Layout**: Strictly regular grid — no overlapping, no bleeds, no asymmetry
 
+## Panel Shapes
+
+Available SVG clip-path shapes for this style:
+- **Rectangular** (default): `clip-path: inset(0)` -- ALL panels use this shape
+- No other shapes. Newspaper strips are strictly rectangular with uniform panel sizes.
+
 ## Text Treatment
 
 - **Speech bubbles**: Simple round white bubbles with thin black outline — clean and unobtrusive

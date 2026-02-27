@@ -33,6 +33,15 @@ Bold, saturated colors with high contrast and dramatic lighting.
 - **Splash panels**: Full-page splash panels for dramatic reveals, power-ups, and climactic confrontations
 - **Panel count**: 4-6 per page in a regular grid layout; vary for pacing with occasional wide or tall panels
 
+## Panel Shapes
+
+Available SVG clip-path shapes for this style:
+- **Rectangular** (default): `clip-path: inset(0)` -- standard panels
+- **Diagonal splash** (action): `clip-path: polygon(0 0, 100% 0, 100% 80%, 0 100%)` -- dynamic action
+- **Wide splash** (climax): Full-width panel, no clip-path -- maximum impact
+- **Overlapping** (intensity): `clip-path: inset(-5%)` with `z-index` layering -- panels bleeding into each other
+- **Circular** (focus): `clip-path: circle(45% at 50% 50%)` -- character spotlight
+
 ## Text Treatment
 
 - **Speech bubbles**: Smooth rounded white bubbles with thin black border; tail points toward speaker

@@ -103,7 +103,7 @@ class TestImageRequirementsYAMLBlock:
         )
 
 
-# Build parametrize args: (filename, field, expected_value) for AC3-AC8
+# Flatten EXPECTED dict to (filename, field, value) triples for parametrize (AC3-AC8)
 _VALUE_TEST_CASES = [
     (filename, field, value)
     for filename, fields in EXPECTED.items()

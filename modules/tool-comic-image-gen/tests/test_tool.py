@@ -159,3 +159,69 @@ def test_tool_schema_has_reference_images_param() -> None:
 
     # Must NOT be in the required list
     assert "reference_images" not in schema["required"]
+
+
+def test_tool_schema_has_model_param() -> None:
+    """model should be an optional string parameter for explicit model override."""
+    tool = ComicImageGenTool(backends=[])
+    schema = tool.input_schema
+
+    # Must exist in properties with type string
+    assert "model" in schema["properties"]
+    model_prop = schema["properties"]["model"]
+    assert model_prop["type"] == "string"
+
+    # Must NOT be in the required list
+    assert "model" not in schema["required"]
+
+
+def test_tool_schema_has_requirements_param() -> None:
+    """requirements should be an optional object with sub-properties."""
+    tool = ComicImageGenTool(backends=[])
+    schema = tool.input_schema
+
+    # Must exist in properties with type object
+    assert "requirements" in schema["properties"]
+    req_prop = schema["properties"]["requirements"]
+    assert req_prop["type"] == "object"
+
+    # Must have the three sub-properties
+    sub_props = req_prop["properties"]
+    assert "needs_reference_images" in sub_props
+    assert sub_props["needs_reference_images"]["type"] == "boolean"
+    assert "style_category" in sub_props
+    assert sub_props["style_category"]["type"] == "string"
+    assert "detail_level" in sub_props
+    assert sub_props["detail_level"]["type"] == "string"
+    assert sub_props["detail_level"]["enum"] == ["low", "medium", "high", "ultra"]
+
+    # Must NOT be in the required list
+    assert "requirements" not in schema["required"]
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_execute_with_explicit_model_passes_to_backend(tmp_path: Path) -> None:
+    """When params contain 'model', it should be passed to backend.generate()."""
+    backend = MagicMock()
+    backend.provider.name = "mock-provider"
+    backend.generate = AsyncMock(
+        return_value={
+            "success": True,
+            "provider_used": "mock-provider",
+            "path": str(tmp_path / "out.png"),
+            "error": None,
+        }
+    )
+    tool = ComicImageGenTool(backends=[backend])
+
+    await tool.execute(
+        {
+            "prompt": "A hero panel",
+            "output_path": str(tmp_path / "out.png"),
+            "model": "dall-e-3",
+        }
+    )
+
+    backend.generate.assert_awaited_once()
+    call_kwargs = backend.generate.call_args.kwargs
+    assert call_kwargs["model"] == "dall-e-3"

@@ -91,6 +91,29 @@ class ComicImageGenTool:
                     "items": {"type": "string"},
                     "description": "File paths to character reference images for visual consistency.",
                 },
+                "model": {
+                    "type": "string",
+                    "description": "Explicit model ID override, bypasses auto-selection.",
+                },
+                "requirements": {
+                    "type": "object",
+                    "description": "Generation requirements for model selection.",
+                    "properties": {
+                        "needs_reference_images": {
+                            "type": "boolean",
+                            "description": "Whether the generation needs reference image support.",
+                        },
+                        "style_category": {
+                            "type": "string",
+                            "description": "Style category for the image.",
+                        },
+                        "detail_level": {
+                            "type": "string",
+                            "description": "Level of detail required.",
+                            "enum": ["low", "medium", "high", "ultra"],
+                        },
+                    },
+                },
             },
             "required": ["prompt", "output_path"],
         }
@@ -113,6 +136,7 @@ class ComicImageGenTool:
         style: str | None = params.get("style")
         reference_images: list[str] | None = params.get("reference_images")
         preferred_provider: str | None = params.get("preferred_provider")
+        explicit_model: str | None = params.get("model")
 
         backends = list(self._backends)
 
@@ -127,15 +151,19 @@ class ComicImageGenTool:
                 output="No image-capable providers available. Configure an OpenAI or Google provider.",
             )
 
+        gen_kwargs: dict[str, Any] = {
+            "prompt": prompt,
+            "output_path": output_path,
+            "size": size,
+            "style": style,
+            "reference_images": reference_images,
+        }
+        if explicit_model is not None:
+            gen_kwargs["model"] = explicit_model
+
         errors: list[str] = []
         for backend in backends:
-            result = await backend.generate(
-                prompt=prompt,
-                output_path=output_path,
-                size=size,
-                style=style,
-                reference_images=reference_images,
-            )
+            result = await backend.generate(**gen_kwargs)
             if result["success"]:
                 return ToolResult(success=True, output=result)
             errors.append(f"{backend.provider.name}: {result['error']}")

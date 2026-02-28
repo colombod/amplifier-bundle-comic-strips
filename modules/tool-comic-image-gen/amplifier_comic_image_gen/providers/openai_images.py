@@ -7,8 +7,11 @@ provider-agnostic generate() interface used by the comic image tool.
 from __future__ import annotations
 
 import base64
+import logging
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 ASPECT_RATIO_MAP: dict[str, str] = {
@@ -87,6 +90,7 @@ class OpenAIImageBackend:
                 "error": None,
             }
         except Exception as exc:
+            logger.exception("OpenAI image generation failed for model %s", model)
             return {
                 "success": False,
                 "provider_used": self.provider.name,

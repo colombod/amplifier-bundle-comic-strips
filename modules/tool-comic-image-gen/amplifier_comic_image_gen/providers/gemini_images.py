@@ -127,6 +127,7 @@ class GeminiImageBackend:
                 "error": None,
             }
         except Exception as exc:
+            logger.exception("Imagen generation failed for model %s", model)
             return {
                 "success": False,
                 "provider_used": self.provider.name,
@@ -171,6 +172,7 @@ class GeminiImageBackend:
                 "error": None,
             }
         except Exception as exc:
+            logger.exception("Gemini content generation failed for model %s", model)
             return {
                 "success": False,
                 "provider_used": self.provider.name,

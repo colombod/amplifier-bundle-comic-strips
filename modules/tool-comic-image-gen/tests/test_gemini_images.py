@@ -9,7 +9,7 @@ import pytest
 
 from amplifier_comic_image_gen.providers.gemini_images import GeminiImageBackend
 
-from .conftest import TINY_PNG_BYTES, make_gemini_provider
+from .conftest import TINY_PNG_BYTES, make_gemini_provider, make_gemini_imagen_provider
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -179,3 +179,105 @@ async def test_gemini_backend_reference_images_default_none(tmp_path: Path) -> N
 
     assert result["success"] is True
     assert output_path.exists()
+
+
+# ── Imagen 4 / default-model tests (Task 2.2) ──────────────────────────
+
+
+def test_gemini_default_model_is_flash_image() -> None:
+    """Default model parameter should be 'gemini-2.5-flash-image'."""
+    import inspect
+
+    sig = inspect.signature(GeminiImageBackend.generate)
+    default = sig.parameters["model"].default
+    assert default == "gemini-2.5-flash-image", (
+        f"Expected default model 'gemini-2.5-flash-image', got '{default}'"
+    )
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_imagen_model_uses_generate_images(tmp_path: Path) -> None:
+    """Imagen models should call generateImages, not generateContent."""
+    provider = make_gemini_imagen_provider()
+    backend = GeminiImageBackend(provider)
+
+    output_path = tmp_path / "imagen_panel.png"
+    result = await backend.generate(
+        prompt="A comic panel with a hero",
+        output_path=output_path,
+        model="imagen-4.0-generate-preview-06-06",
+    )
+
+    assert result["success"] is True
+    assert output_path.read_bytes() == TINY_PNG_BYTES
+    provider.client.aio.models.generate_images.assert_awaited_once()
+    provider.client.aio.models.generate_content.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_imagen_model_ignores_reference_images(tmp_path: Path) -> None:
+    """Imagen models should silently ignore reference_images (text-to-image only)."""
+    ref_image = tmp_path / "ref.png"
+    ref_image.write_bytes(TINY_PNG_BYTES)
+
+    provider = make_gemini_imagen_provider()
+    backend = GeminiImageBackend(provider)
+
+    output_path = tmp_path / "imagen_ref_ignored.png"
+    result = await backend.generate(
+        prompt="A warrior",
+        output_path=output_path,
+        model="imagen-4.0-generate-preview-06-06",
+        reference_images=[str(ref_image)],
+    )
+
+    assert result["success"] is True
+    # Verify generate_images was called with just prompt, no reference data
+    call_kwargs = provider.client.aio.models.generate_images.call_args.kwargs
+    assert "contents" not in call_kwargs  # no multimodal contents
+    provider.client.aio.models.generate_images.assert_awaited_once()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+@pytest.mark.parametrize(
+    "model_id",
+    [
+        "imagen-4.0-generate-preview-06-06",
+        "imagen-4.0-ultra-generate-preview-06-06",
+        "imagen-4.0-flash-preview-05-20",
+    ],
+)
+async def test_all_imagen_model_ids_route_to_generate_images(
+    tmp_path: Path, model_id: str
+) -> None:
+    """All three Imagen model IDs should route to generateImages."""
+    provider = make_gemini_imagen_provider()
+    backend = GeminiImageBackend(provider)
+
+    output_path = tmp_path / f"panel_{model_id}.png"
+    result = await backend.generate(
+        prompt="A test image",
+        output_path=output_path,
+        model=model_id,
+    )
+
+    assert result["success"] is True
+    provider.client.aio.models.generate_images.assert_awaited_once()
+    provider.client.aio.models.generate_content.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_non_imagen_model_still_uses_generate_content(tmp_path: Path) -> None:
+    """Non-Imagen Gemini models should still use generateContent path."""
+    provider = make_gemini_provider()
+    backend = GeminiImageBackend(provider)
+
+    output_path = tmp_path / "panel_gemini.png"
+    result = await backend.generate(
+        prompt="A regular Gemini image",
+        output_path=output_path,
+        model="gemini-2.5-flash-image",
+    )
+
+    assert result["success"] is True
+    provider.client.aio.models.generate_content.assert_awaited_once()

@@ -48,3 +48,21 @@ def make_gemini_provider(name: str = "provider-google") -> MagicMock:
 
     provider.client.aio.models.generate_content = AsyncMock(return_value=response)
     return provider
+
+
+def make_gemini_imagen_provider(name: str = "provider-google") -> MagicMock:
+    """Create a mock provider mimicking Gemini Imagen (generateImages endpoint)."""
+    provider = MagicMock()
+    provider.name = name
+
+    # Build response: generated_images[0].image.image_bytes = TINY_PNG_BYTES
+    generated_image = MagicMock()
+    generated_image.image.image_bytes = TINY_PNG_BYTES
+
+    response = MagicMock()
+    response.generated_images = [generated_image]
+
+    provider.client.aio.models.generate_images = AsyncMock(return_value=response)
+    # Also provide generate_content so we can assert it was NOT called
+    provider.client.aio.models.generate_content = AsyncMock()
+    return provider

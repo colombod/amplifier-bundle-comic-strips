@@ -69,19 +69,76 @@ class GeminiImageBackend:
             contents = {"parts": parts_list}
         return contents, config
 
+    @staticmethod
+    def _is_imagen_model(model: str) -> bool:
+        """Return True if *model* is an Imagen model (uses generateImages)."""
+        return model.startswith("imagen-")
+
     async def generate(
         self,
         prompt: str,
         output_path: str | Path,
         size: str = "square",  # accepted for interface compatibility; Gemini ignores dimensions
         style: str | None = None,
-        model: str = "gemini-2.0-flash-exp",
+        model: str = "gemini-2.5-flash-image",
         reference_images: list[str] | None = None,
     ) -> dict[str, Any]:
         """Generate an image and write it to *output_path*.
 
+        Routes to the appropriate endpoint based on model type:
+        - Imagen models -> generateImages (text-to-image only)
+        - Other Gemini models -> generateContent (supports reference images)
+
         Returns a result dict with keys: success, provider_used, path, error.
         """
+        if self._is_imagen_model(model):
+            return await self._generate_imagen(prompt, output_path, model)
+        return await self._generate_content(
+            prompt, output_path, model, reference_images
+        )
+
+    async def _generate_imagen(
+        self,
+        prompt: str,
+        output_path: str | Path,
+        model: str,
+    ) -> dict[str, Any]:
+        """Generate an image via the Imagen generateImages endpoint."""
+        out = Path(output_path)
+        try:
+            response = await self.client.aio.models.generate_images(
+                model=model,
+                prompt=prompt,
+                config={"number_of_images": 1},
+            )
+
+            image_bytes = response.generated_images[0].image.image_bytes
+
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_bytes(image_bytes)
+
+            return {
+                "success": True,
+                "provider_used": self.provider.name,
+                "path": str(out),
+                "error": None,
+            }
+        except Exception as exc:
+            return {
+                "success": False,
+                "provider_used": self.provider.name,
+                "path": str(out),
+                "error": str(exc),
+            }
+
+    async def _generate_content(
+        self,
+        prompt: str,
+        output_path: str | Path,
+        model: str,
+        reference_images: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Generate an image via the generateContent endpoint."""
         out = Path(output_path)
         try:
             contents, config = self._build_content_config(prompt, reference_images)

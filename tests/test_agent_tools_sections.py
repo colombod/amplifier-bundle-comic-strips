@@ -15,18 +15,21 @@ EXPECTED_TOOLS = {
 }
 
 
-def _parse_frontmatter(agent_name: str) -> dict:
-    """Parse YAML frontmatter from an agent markdown file."""
+def _read_frontmatter(agent_name: str) -> str:
+    """Read raw YAML frontmatter text from an agent markdown file."""
     file_path = AGENTS_DIR / f"{agent_name}.md"
     content = file_path.read_text()
     assert content.startswith("---"), f"{agent_name}.md does not start with ---"
-    # Find the closing ---
     try:
         end = content.index("---", 3)
     except ValueError:
         raise ValueError(f"{agent_name}.md has no closing --- delimiter") from None
-    frontmatter = content[3:end]
-    return yaml.safe_load(frontmatter)
+    return content[3:end]
+
+
+def _parse_frontmatter(agent_name: str) -> dict:
+    """Parse YAML frontmatter from an agent markdown file."""
+    return yaml.safe_load(_read_frontmatter(agent_name))
 
 
 def test_all_six_agent_files_have_tools_section():
@@ -99,14 +102,7 @@ def test_all_six_files_parse_as_valid_yaml():
 def test_tools_section_present_in_all_agent_files_via_grep():
     """AC9: grep for 'tools' finds tools in all 6 agent files."""
     for agent_name in EXPECTED_TOOLS:
-        file_path = AGENTS_DIR / f"{agent_name}.md"
-        content = file_path.read_text()
-        # Extract frontmatter only
-        try:
-            end = content.index("---", 3)
-        except ValueError:
-            raise ValueError(f"{agent_name}.md has no closing --- delimiter") from None
-        frontmatter = content[3:end]
+        frontmatter = _read_frontmatter(agent_name)
         assert "tools:" in frontmatter, (
             f"{agent_name}.md frontmatter does not contain 'tools:'"
         )

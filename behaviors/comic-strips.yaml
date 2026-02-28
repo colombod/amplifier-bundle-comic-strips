@@ -18,7 +18,7 @@ recipes:
 
 tools:
   - module: tool-comic-image-gen
-    source: comic-strips:modules/tool-comic-image-gen
+    source: git+https://github.com/colombod/amplifier-bundle-comic-strips@main#subdirectory=modules/tool-comic-image-gen
   - module: tool-skills
     source: git+https://github.com/microsoft/amplifier-module-tool-skills@main
     config:

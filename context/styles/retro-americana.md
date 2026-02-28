@@ -74,3 +74,4 @@ image_requirements:
   detail_level: medium
   text_avoidance: fair
 ```
+

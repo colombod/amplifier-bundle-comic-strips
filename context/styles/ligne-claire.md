@@ -68,4 +68,3 @@ image_requirements:
   detail_level: high
   text_avoidance: excellent
 ```
-

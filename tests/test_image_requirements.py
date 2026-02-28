@@ -103,136 +103,32 @@ class TestImageRequirementsYAMLBlock:
         )
 
 
-class TestMangaValues:
-    """AC3: manga has style_category='manga-lineart', detail_level='medium'."""
+# Build parametrize args: (filename, field, expected_value) for AC3-AC8
+_VALUE_TEST_CASES = [
+    (filename, field, value)
+    for filename, fields in EXPECTED.items()
+    for field, value in fields.items()
+]
 
-    def test_manga_style_category(self):
-        content = _read_style("manga.md")
+
+class TestStylePackValues:
+    """AC3-AC8: Each style pack has correct image_requirements values."""
+
+    @pytest.mark.parametrize(
+        ("filename", "field", "expected_value"),
+        _VALUE_TEST_CASES,
+        ids=[f"{f}-{k}" for f, fields in EXPECTED.items() for k in fields],
+    )
+    def test_field_value(self, filename: str, field: str, expected_value: str):
+        content = _read_style(filename)
         parsed = _extract_image_requirements(content)
-        assert parsed is not None
-        assert parsed["image_requirements"]["style_category"] == "manga-lineart"
-
-    def test_manga_detail_level(self):
-        content = _read_style("manga.md")
-        parsed = _extract_image_requirements(content)
-        assert parsed is not None
-        assert parsed["image_requirements"]["detail_level"] == "medium"
-
-    def test_manga_text_avoidance(self):
-        content = _read_style("manga.md")
-        parsed = _extract_image_requirements(content)
-        assert parsed is not None
-        assert parsed["image_requirements"]["text_avoidance"] == "critical"
-
-
-class TestSuperheroValues:
-    """AC4: superhero has style_category='superhero', detail_level='high'."""
-
-    def test_superhero_style_category(self):
-        content = _read_style("superhero.md")
-        parsed = _extract_image_requirements(content)
-        assert parsed is not None
-        assert parsed["image_requirements"]["style_category"] == "superhero"
-
-    def test_superhero_detail_level(self):
-        content = _read_style("superhero.md")
-        parsed = _extract_image_requirements(content)
-        assert parsed is not None
-        assert parsed["image_requirements"]["detail_level"] == "high"
-
-    def test_superhero_text_avoidance(self):
-        content = _read_style("superhero.md")
-        parsed = _extract_image_requirements(content)
-        assert parsed is not None
-        assert parsed["image_requirements"]["text_avoidance"] == "good"
-
-
-class TestIndieValues:
-    """AC5: indie has style_category='indie', detail_level='high'."""
-
-    def test_indie_style_category(self):
-        content = _read_style("indie.md")
-        parsed = _extract_image_requirements(content)
-        assert parsed is not None
-        assert parsed["image_requirements"]["style_category"] == "indie"
-
-    def test_indie_detail_level(self):
-        content = _read_style("indie.md")
-        parsed = _extract_image_requirements(content)
-        assert parsed is not None
-        assert parsed["image_requirements"]["detail_level"] == "high"
-
-    def test_indie_text_avoidance(self):
-        content = _read_style("indie.md")
-        parsed = _extract_image_requirements(content)
-        assert parsed is not None
-        assert parsed["image_requirements"]["text_avoidance"] == "good"
-
-
-class TestNewspaperValues:
-    """AC6: newspaper has style_category='cartoon', detail_level='low'."""
-
-    def test_newspaper_style_category(self):
-        content = _read_style("newspaper.md")
-        parsed = _extract_image_requirements(content)
-        assert parsed is not None
-        assert parsed["image_requirements"]["style_category"] == "cartoon"
-
-    def test_newspaper_detail_level(self):
-        content = _read_style("newspaper.md")
-        parsed = _extract_image_requirements(content)
-        assert parsed is not None
-        assert parsed["image_requirements"]["detail_level"] == "low"
-
-    def test_newspaper_text_avoidance(self):
-        content = _read_style("newspaper.md")
-        parsed = _extract_image_requirements(content)
-        assert parsed is not None
-        assert parsed["image_requirements"]["text_avoidance"] == "fair"
-
-
-class TestLigneClaireValues:
-    """AC7: ligne-claire has style_category='ligne-claire', detail_level='high'."""
-
-    def test_ligne_claire_style_category(self):
-        content = _read_style("ligne-claire.md")
-        parsed = _extract_image_requirements(content)
-        assert parsed is not None
-        assert parsed["image_requirements"]["style_category"] == "ligne-claire"
-
-    def test_ligne_claire_detail_level(self):
-        content = _read_style("ligne-claire.md")
-        parsed = _extract_image_requirements(content)
-        assert parsed is not None
-        assert parsed["image_requirements"]["detail_level"] == "high"
-
-    def test_ligne_claire_text_avoidance(self):
-        content = _read_style("ligne-claire.md")
-        parsed = _extract_image_requirements(content)
-        assert parsed is not None
-        assert parsed["image_requirements"]["text_avoidance"] == "excellent"
-
-
-class TestRetroAmericanaValues:
-    """AC8: retro-americana has style_category='illustration', detail_level='medium'."""
-
-    def test_retro_americana_style_category(self):
-        content = _read_style("retro-americana.md")
-        parsed = _extract_image_requirements(content)
-        assert parsed is not None
-        assert parsed["image_requirements"]["style_category"] == "illustration"
-
-    def test_retro_americana_detail_level(self):
-        content = _read_style("retro-americana.md")
-        parsed = _extract_image_requirements(content)
-        assert parsed is not None
-        assert parsed["image_requirements"]["detail_level"] == "medium"
-
-    def test_retro_americana_text_avoidance(self):
-        content = _read_style("retro-americana.md")
-        parsed = _extract_image_requirements(content)
-        assert parsed is not None
-        assert parsed["image_requirements"]["text_avoidance"] == "fair"
+        assert parsed is not None, (
+            f"{filename} has no parseable YAML block in Image Requirements"
+        )
+        actual = parsed["image_requirements"][field]
+        assert actual == expected_value, (
+            f"{filename}: expected {field}='{expected_value}', got '{actual}'"
+        )
 
 
 class TestGrepDiscoverability:

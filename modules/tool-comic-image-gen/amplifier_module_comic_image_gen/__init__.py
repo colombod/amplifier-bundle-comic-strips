@@ -179,7 +179,53 @@ class ComicImageGenTool:
 
 async def mount(coordinator: Any, config: Any = None) -> None:
     """Amplifier module entry point — discover backends and register tool."""
+    import logging
+
+    _log = logging.getLogger(__name__)
+
     providers: dict[str, Any] = coordinator.get("providers") or {}
+
+    # Diagnostic: show what providers the coordinator exposes
+    if providers:
+        _log.info(
+            "generate_image: coordinator providers available: %s",
+            list(providers.keys()),
+        )
+        for pname, pobj in providers.items():
+            obj_name = getattr(pobj, "name", None)
+            _log.info(
+                "  provider key=%r  .name=%r  type=%s",
+                pname,
+                obj_name,
+                type(pobj).__name__,
+            )
+    else:
+        _log.warning(
+            "generate_image: coordinator.get('providers') returned empty or None"
+        )
+
     backends = discover_image_backends(providers)
+
+    if backends:
+        _log.info(
+            "generate_image: discovered %d image backend(s): %s",
+            len(backends),
+            [type(b).__name__ for b in backends],
+        )
+    else:
+        provider_keys = list(providers.keys())
+        msg = (
+            "Comic strip generation requires an image-generation provider (OpenAI or Google/Gemini), "
+            "but none were found. "
+            + (
+                f"Configured provider keys {provider_keys!r} did not match 'openai', 'google', or 'gemini'."
+                if provider_keys
+                else "No providers are configured. Add an OpenAI or Google provider to your settings."
+            )
+            + " Comics cannot be created without image generation access."
+        )
+        _log.error("generate_image: %s", msg)
+        raise RuntimeError(msg)
+
     tool = ComicImageGenTool(backends)
     await coordinator.mount("tools", tool, name=tool.name)

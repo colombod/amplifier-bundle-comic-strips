@@ -51,7 +51,20 @@ You generate the visual panel images for the comic strip. Each panel is a separa
 
 ## Before You Start
 
-Load your domain knowledge:
+### Step 0: Verify Image Generation is Available
+
+Before doing ANY work, verify the `generate_image` tool is available by attempting a trivial check. If `generate_image` is not in your available tools list, STOP IMMEDIATELY and return this exact message:
+
+> **COMIC PIPELINE BLOCKED: No image generation capability available.**
+>
+> The `generate_image` tool is not loaded. This means no image-capable provider (OpenAI or Google/Gemini) was discovered at startup. Comics cannot be created without image generation access.
+>
+> **To fix:** Ensure your `~/.amplifier/settings.yaml` includes an OpenAI or Google/Gemini provider with a valid API key. The provider module name must contain "openai", "google", or "gemini".
+
+Do NOT proceed with any other work. Do NOT attempt to generate panels. The entire comic pipeline depends on image generation.
+
+### Step 1: Load Domain Knowledge
+
 ```
 load_skill(skill_name="image-prompt-engineering")
 ```

@@ -1,7 +1,7 @@
-"""Tests for Task 4.1: Recipe improvements for session-to-comic v4.0.0.
+"""Tests for Task 4.1: Recipe improvements for session-to-comic v4.
 
 Acceptance criteria:
-  AC1: Recipe version is 4.0.0
+  AC1: Recipe version is in the 4.0.x series
   AC2: generate-panels and generate-cover run in parallel
   AC3: Storyboard approval gate exists between storyboard and character-design
   AC4: Model requirements present in character-design, generate-panels, generate-cover
@@ -66,25 +66,54 @@ def _stage_index_of_step(recipe: dict, step_id: str) -> int:
     return -1
 
 
+def _parse_flat_requirements(flat_str: str) -> dict:
+    """Parse a flat requirements string like 'needs_reference_images=true, detail_level=high'.
+
+    Returns a dict with typed values: 'true'/'false' become bools, rest stay as strings.
+    """
+    result = {}
+    for pair in flat_str.split(","):
+        pair = pair.strip()
+        if "=" not in pair:
+            continue
+        k, v = pair.split("=", 1)
+        k, v = k.strip(), v.strip()
+        if v.lower() == "true":
+            result[k] = True
+        elif v.lower() == "false":
+            result[k] = False
+        else:
+            result[k] = v
+    return result
+
+
 def _get_step_requirements(recipe: dict, step_id: str) -> dict | None:
     """Extract requirements for a step from recipe-level or step-level sources.
 
     Requirements may live in:
-    1. Top-level context.requirements dict keyed by step name (snake_case of step id)
-    2. Direct requirements field on the step
-    3. Step-level context.requirements
+    1. Top-level context flat string: '{step_key}_requirements' (v4.0.3+ flat format)
+    2. Top-level context.requirements nested dict keyed by snake_case of step id (v4.0.0)
+    3. Direct requirements field on the step
+    4. Step-level context.requirements
 
     This multi-location search is intentional: the recipe format allows authors
-    to place requirements at any of these levels for flexibility.  If a test
-    fails to find requirements after a recipe restructure, check which of the
-    three locations the recipe is actually using.
+    to place requirements at any of these levels for flexibility.
     """
     # Derive the snake_case key from step id (e.g. "character-design" -> "character_design")
     key = step_id.replace("-", "_")
 
-    # Check top-level context.requirements
     ctx = recipe.get("context", {})
     if isinstance(ctx, dict):
+        # v4.0.3+ flat string format: '{key}_requirements' at top-level context
+        flat_key = f"{key}_requirements"
+        if flat_key in ctx:
+            val = ctx[flat_key]
+            if isinstance(val, str):
+                return _parse_flat_requirements(val)
+            if isinstance(val, dict):
+                return val
+
+        # v4.0.0 nested dict format: context.requirements.{key}
         reqs = ctx.get("requirements", {})
         if isinstance(reqs, dict) and key in reqs:
             return reqs[key]
@@ -106,11 +135,16 @@ def _get_step_requirements(recipe: dict, step_id: str) -> dict | None:
 # ============================================
 
 
-def test_version_is_4_0_0():
-    """Recipe version must be bumped to 4.0.0."""
+def test_version_is_4_0_x():
+    """Recipe version must be in the 4.0.x series (currently 4.0.3)."""
     recipe = _load_recipe()
-    assert recipe["version"] == "4.0.0", (
-        f"Expected version 4.0.0, got {recipe['version']}"
+    assert recipe["version"].startswith("4.0."), (
+        f"Expected version in the 4.0.x series, got {recipe['version']}"
+    )
+    # Verify it's at least 4.0.3 (flat context workaround for engine bug)
+    parts = recipe["version"].split(".")
+    assert int(parts[2]) >= 3, (
+        f"Expected version >= 4.0.3 (flat context fix), got {recipe['version']}"
     )
 
 

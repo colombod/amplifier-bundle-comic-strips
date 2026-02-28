@@ -1,6 +1,6 @@
 name: "session-to-comic"
 description: "Transform an Amplifier session into an illustrated comic strip with quality review, character consistency, dramatized storytelling, and AmpliVerse publisher branding"
-version: "4.0.1"
+version: "4.0.4"
 author: "amplifier-comic-strips"
 tags: ["comic", "visual-storytelling", "session-analysis", "image-generation"]
 
@@ -8,21 +8,28 @@ tags: ["comic", "visual-storytelling", "session-analysis", "image-generation"]
 # CHANGELOG
 # =============================================================================
 #
-# v4.0.1 (2026-02-28):
-#   - BUGFIX: Recipe fails at runtime with 'str' object has no attribute 'get'
-#     * ROOT CAUSE: Nested dict objects under context.requirements caused the
-#       recipe engine's context processing to fail. The context field supports
-#       "any values" per schema, but nested dicts break during session state
-#       serialization or context iteration paths that expect flat values.
-#       Additionally, the validator's check_variable_references only iterates
-#       recipe.steps (empty for staged recipes), so the issue was not caught
-#       during validation.
-#     * FIX: Flattened nested requirements into separate top-level string
-#       context variables (character_design_requirements,
-#       panel_generation_requirements, cover_generation_requirements).
-#     * RESULT: All context values are now flat strings, compatible with all
-#       recipe engine processing paths. Prompts updated to reference the new
-#       variable names.
+# v4.0.4 (2026-02-28):
+#   - FIX: Flatten requirements further to individual typed keys instead of
+#     packed comma-separated strings. Each requirement is now its own context
+#     variable with proper YAML types (bool/string) instead of a single
+#     string like "needs_reference_images=false, detail_level=high".
+#     This gives agents direct access to typed values via template vars.
+#
+# v4.0.3 (2026-02-28):
+#   - FIX: Flatten nested context dicts to avoid recipe engine runtime crash.
+#     The recipe engine's substitute_variables() converts nested dicts to
+#     strings before prompt substitution. When a prompt references
+#     {{requirements.character_design}}, the engine first stringifies the
+#     parent "requirements" dict, then tries .get("character_design") on
+#     the resulting string → 'str' object has no attribute 'get'.
+#     WORKAROUND: Replace nested requirements dict with flat string vars
+#     (character_design_requirements, panel_generation_requirements,
+#     cover_generation_requirements) and update prompt references.
+#     Filed engine bug as amplifier-support#91 for proper staged recipe
+#     validation.
+#
+# v4.0.0-v4.0.2: Prior iterations exploring nested vs flat context.
+#   See amplifier-support#91 for full history.
 #
 # v4.0.0:
 #   - Initial v4 staged recipe with approval gate between storyboard review
@@ -38,10 +45,15 @@ context:
   session_file: ""        # Required: path to events.jsonl session file or session ID
   style: "superhero"      # Style name (manga, superhero, indie, newspaper, ligne-claire, retro-americana) or custom description
   output_name: ""         # Optional: custom output filename (defaults to comic-{timestamp})
-  # Pipeline step requirements for generate_image tool parameters (flattened to avoid nested dict issues)
-  character_design_requirements: "needs_reference_images=false, detail_level=high"
-  panel_generation_requirements: "needs_reference_images=true, detail_level=medium"
-  cover_generation_requirements: "needs_reference_images=true, detail_level=high"
+  # Pipeline step requirements for generate_image tool parameters.
+  # Flattened to individual keys to avoid nested dict serialization issues
+  # in the recipe engine's substitute_variables() (see amplifier-support#91).
+  character_design_needs_reference_images: false
+  character_design_detail_level: "high"
+  generate_panels_needs_reference_images: true
+  generate_panels_detail_level: "medium"
+  generate_cover_needs_reference_images: true
+  generate_cover_detail_level: "high"
 
 stages:
   # ==========================================================================
@@ -188,7 +200,7 @@ stages:
         prompt: |
           Create character reference sheets for this comic strip.
 
-          Pipeline requirements for this step: {{character_design_requirements}}
+          Pipeline requirements for this step: needs_reference_images={{character_design_needs_reference_images}}, detail_level={{character_design_detail_level}}
 
           Storyboard (contains character list):
           {{storyboard}}
@@ -216,7 +228,7 @@ stages:
         prompt: |
           You are generating panel art for a comic strip.
 
-          Pipeline requirements for this step: {{panel_generation_requirements}}
+          Pipeline requirements for this step: needs_reference_images={{generate_panels_needs_reference_images}}, detail_level={{generate_panels_detail_level}}
 
           Style Guide:
           {{style_guide}}
@@ -249,7 +261,7 @@ stages:
         prompt: |
           You are generating cover art for a comic strip.
 
-          Pipeline requirements for this step: {{cover_generation_requirements}}
+          Pipeline requirements for this step: needs_reference_images={{generate_cover_needs_reference_images}}, detail_level={{generate_cover_detail_level}}
 
           Style Guide:
           {{style_guide}}

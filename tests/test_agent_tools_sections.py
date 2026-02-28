@@ -7,7 +7,7 @@ AGENTS_DIR = Path(__file__).parent.parent / "agents"
 
 EXPECTED_TOOLS = {
     "style-curator": ["read_file"],
-    "storyboard-writer": ["load_skill", "read_file"],
+    "storyboard-writer": ["load_skill", "read_file", "delegate"],
     "character-designer": ["generate_image", "load_skill"],
     "panel-artist": ["generate_image", "load_skill"],
     "cover-artist": ["generate_image", "load_skill", "read_file", "web_fetch", "bash"],
@@ -46,9 +46,9 @@ def test_style_curator_tools():
 
 
 def test_storyboard_writer_tools():
-    """AC3: storyboard-writer has ['load_skill', 'read_file']."""
+    """AC3: storyboard-writer has ['load_skill', 'read_file', 'delegate']."""
     data = _parse_frontmatter("storyboard-writer")
-    assert data["tools"] == ["load_skill", "read_file"]
+    assert data["tools"] == ["load_skill", "read_file", "delegate"]
 
 
 def test_character_designer_tools():

@@ -37,6 +37,7 @@ provider_preferences:
 tools:
   - load_skill
   - read_file
+  - delegate
 ---
 
 # Storyboard Writer

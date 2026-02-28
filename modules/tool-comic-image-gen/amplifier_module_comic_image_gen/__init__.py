@@ -214,18 +214,17 @@ async def mount(coordinator: Any, config: Any = None) -> None:
         )
     else:
         provider_keys = list(providers.keys())
-        msg = (
-            "Comic strip generation requires an image-generation provider (OpenAI or Google/Gemini), "
-            "but none were found. "
-            + (
-                f"Configured provider keys {provider_keys!r} did not match 'openai', 'google', or 'gemini'."
-                if provider_keys
-                else "No providers are configured. Add an OpenAI or Google provider to your settings."
-            )
-            + " Comics cannot be created without image generation access."
+        detail = (
+            f"Configured provider keys {provider_keys!r} did not match 'openai', 'google', or 'gemini'."
+            if provider_keys
+            else "No image-generation providers available at mount time."
         )
-        _log.error("generate_image: %s", msg)
-        raise RuntimeError(msg)
+        _log.warning(
+            "generate_image: %s "
+            "The generate_image tool will mount but calls will fail until "
+            "an OpenAI or Google/Gemini provider is reachable.",
+            detail,
+        )
 
     tool = ComicImageGenTool(backends)
     await coordinator.mount("tools", tool, name=tool.name)

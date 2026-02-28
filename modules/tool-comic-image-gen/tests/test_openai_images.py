@@ -203,3 +203,117 @@ async def test_openai_backend_reference_images_default_none(tmp_path: Path) -> N
 
     assert result["success"] is True
     assert output_path.exists()
+
+
+# --- Task 2.1: images.edit routing tests ---
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_edit_endpoint_called_with_refs(tmp_path: Path) -> None:
+    """images.edit is called when reference_images are provided with gpt-image-1."""
+    ref_image = tmp_path / "ref.png"
+    ref_image.write_bytes(TINY_PNG_BYTES)
+
+    provider = make_openai_provider()
+    backend = OpenAIImageBackend(provider)
+
+    output_path = tmp_path / "panel_edit.png"
+    result = await backend.generate(
+        prompt="A hero in consistent style",
+        output_path=output_path,
+        reference_images=[str(ref_image)],
+        model="gpt-image-1",
+    )
+
+    assert result["success"] is True
+    provider.client.images.edit.assert_called_once()
+    provider.client.images.generate.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_generate_endpoint_called_without_refs(tmp_path: Path) -> None:
+    """images.generate is called when no reference_images are provided."""
+    provider = make_openai_provider()
+    backend = OpenAIImageBackend(provider)
+
+    output_path = tmp_path / "panel_gen.png"
+    result = await backend.generate(
+        prompt="A hero flying",
+        output_path=output_path,
+        model="gpt-image-1",
+    )
+
+    assert result["success"] is True
+    provider.client.images.generate.assert_called_once()
+    provider.client.images.edit.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_edit_passes_image_file_bytes(tmp_path: Path) -> None:
+    """Reference image file bytes are passed correctly as 'image' kwarg list."""
+    ref_image = tmp_path / "character.png"
+    ref_image.write_bytes(TINY_PNG_BYTES)
+
+    provider = make_openai_provider()
+    backend = OpenAIImageBackend(provider)
+
+    output_path = tmp_path / "panel_bytes.png"
+    await backend.generate(
+        prompt="A character",
+        output_path=output_path,
+        reference_images=[str(ref_image)],
+        model="gpt-image-1",
+    )
+
+    call_kwargs = provider.client.images.edit.call_args.kwargs
+    assert "image" in call_kwargs
+    assert call_kwargs["image"] == [TINY_PNG_BYTES]
+
+
+@pytest.mark.asyncio(loop_scope="function")
+@pytest.mark.parametrize(
+    "model",
+    ["gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini", "dall-e-2"],
+)
+async def test_all_edit_capable_models_use_edit(tmp_path: Path, model: str) -> None:
+    """All gpt-image-1.5/1/1-mini and dall-e-2 models route to images.edit with refs."""
+    ref_image = tmp_path / "ref.png"
+    ref_image.write_bytes(TINY_PNG_BYTES)
+
+    provider = make_openai_provider()
+    backend = OpenAIImageBackend(provider)
+
+    output_path = tmp_path / f"panel_{model}.png"
+    result = await backend.generate(
+        prompt="A hero",
+        output_path=output_path,
+        reference_images=[str(ref_image)],
+        model=model,
+    )
+
+    assert result["success"] is True
+    provider.client.images.edit.assert_called_once()
+    edit_kwargs = provider.client.images.edit.call_args.kwargs
+    assert edit_kwargs["model"] == model
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_dall_e_3_falls_back_to_generate_with_refs(tmp_path: Path) -> None:
+    """dall-e-3 falls back to images.generate even when refs are provided."""
+    ref_image = tmp_path / "ref.png"
+    ref_image.write_bytes(TINY_PNG_BYTES)
+
+    provider = make_openai_provider()
+    backend = OpenAIImageBackend(provider)
+
+    output_path = tmp_path / "panel_dalle3.png"
+    result = await backend.generate(
+        prompt="A sunset",
+        output_path=output_path,
+        reference_images=[str(ref_image)],
+        model="dall-e-3",
+    )
+
+    assert result["success"] is True
+    provider.client.images.generate.assert_called_once()
+    provider.client.images.edit.assert_not_called()

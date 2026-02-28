@@ -21,6 +21,7 @@ def make_openai_provider(name: str = "provider-openai") -> MagicMock:
     response.data = [MagicMock(b64_json=TINY_PNG_B64)]
 
     provider.client.images.generate = AsyncMock(return_value=response)
+    provider.client.images.edit = AsyncMock(return_value=response)
     return provider
 
 

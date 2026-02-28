@@ -1,6 +1,6 @@
 name: "session-to-comic"
 description: "Transform an Amplifier session into an illustrated comic strip with quality review, character consistency, dramatized storytelling, and AmpliVerse publisher branding"
-version: "3.0.0"
+version: "4.0.0"
 author: "amplifier-comic-strips"
 tags: ["comic", "visual-storytelling", "session-analysis", "image-generation"]
 
@@ -12,235 +12,281 @@ context:
   session_file: ""        # Required: path to events.jsonl session file or session ID
   style: "superhero"      # Style name (manga, superhero, indie, newspaper, ligne-claire, retro-americana) or custom description
   output_name: ""         # Optional: custom output filename (defaults to comic-{timestamp})
+  # Pipeline step requirements for generate_image tool parameters
+  requirements:
+    character_design:
+      needs_reference_images: false
+      detail_level: "high"
+    generate_panels:
+      needs_reference_images: true
+      detail_level: "medium"
+    generate_cover:
+      needs_reference_images: true
+      detail_level: "high"
 
-steps:
-  # ============================================
-  # STEP 1: RESEARCH - Data Extraction
-  # ============================================
-  - id: "research"
-    agent: "stories:story-researcher"
-    prompt: |
-      Analyze the Amplifier session at: {{session_file}}
+stages:
+  # ==========================================================================
+  # STAGE 1: RESEARCH & STORYBOARD
+  # Cheap text-only steps: extract data, curate style, write storyboard.
+  # Approval gate at the end lets the user review character cast and narrative
+  # arc before committing to expensive image generation.
+  # ==========================================================================
+  - name: "research-and-storyboard"
+    steps:
+      # ============================================
+      # STEP 1: RESEARCH - Data Extraction
+      # ============================================
+      - id: "research"
+        agent: "stories:story-researcher"
+        prompt: |
+          Analyze the Amplifier session at: {{session_file}}
 
-      Extract structured data for comic strip creation:
+          Extract structured data for comic strip creation:
 
-      **Session Metadata:**
-      - Session ID, duration, date
-      - Agents used and their roles
-      - Tools called and frequency
-      - Number of user interactions
+          **Session Metadata:**
+          - Session ID, duration, date
+          - Agents used and their roles
+          - Tools called and frequency
+          - Number of user interactions
 
-      **Agent Activity Analysis (CRITICAL for character selection):**
-      - Rank each agent by activity level: count tool calls, delegations sent, delegations received
-      - Identify which bundle each agent belongs to (e.g., foundation:explorer -> foundation bundle)
-      - Map bundle memberships so the storyboard writer can assign team affiliations
-      - Flag the top 3-4 most active agents and note their key contributions
+          **Agent Activity Analysis (CRITICAL for character selection):**
+          - Rank each agent by activity level: count tool calls, delegations sent, delegations received
+          - Identify which bundle each agent belongs to (e.g., foundation:explorer -> foundation bundle)
+          - Map bundle memberships so the storyboard writer can assign team affiliations
+          - Flag the top 3-4 most active agents and note their key contributions
 
-      **Key Moments (for comic panels):**
-      - The initial challenge or goal (what started the session?)
-      - Breakthrough moments (problems solved, discoveries made)
-      - Agent collaboration highlights (which agents worked together?)
-      - The final outcome or deliverable
-      - Any dramatic failures or unexpected turns
+          **Key Moments (for comic panels):**
+          - The initial challenge or goal (what started the session?)
+          - Breakthrough moments (problems solved, discoveries made)
+          - Agent collaboration highlights (which agents worked together?)
+          - The final outcome or deliverable
+          - Any dramatic failures or unexpected turns
 
-      **Characters:**
-      - Map each agent to a character with a brief visual description
-      - Identify the "protagonist" (main agent driving the story)
-      - Identify any "antagonists" (bugs, errors, blockers)
+          **Characters:**
+          - Map each agent to a character with a brief visual description
+          - Identify the "protagonist" (main agent driving the story)
+          - Identify any "antagonists" (bugs, errors, blockers)
 
-      **Metrics:**
-      - Quantified achievements (files created, tests passed, etc.)
-      - Session duration and effort indicators
+          **Metrics:**
+          - Quantified achievements (files created, tests passed, etc.)
+          - Session duration and effort indicators
 
-      Output as structured JSON with: title, subtitle, timeline, key_moments, characters, metrics, outcome.
-    output: "research_data"
-    timeout: 600
+          Output as structured JSON with: title, subtitle, timeline, key_moments, characters, metrics, outcome.
+        output: "research_data"
+        timeout: 600
 
-  # ============================================
-  # STEP 2: STYLE CURATION
-  # ============================================
-  - id: "style-curation"
-    agent: "comic-strips:style-curator"
-    prompt: |
-      Define the visual style for this comic strip.
+      # ============================================
+      # STEP 2: STYLE CURATION
+      # ============================================
+      - id: "style-curation"
+        agent: "comic-strips:style-curator"
+        prompt: |
+          Define the visual style for this comic strip.
 
-      Style requested: {{style}}
+          Style requested: {{style}}
 
-      Research data (for context about the story):
-      {{research_data}}
+          Research data (for context about the story):
+          {{research_data}}
 
-      If "{{style}}" matches a predefined style name (manga, superhero, indie, newspaper, ligne-claire, retro-americana), load the corresponding style pack and adapt it for this specific story.
+          If "{{style}}" matches a predefined style name (manga, superhero, indie, newspaper, ligne-claire, retro-americana), load the corresponding style pack and adapt it for this specific story.
 
-      If it's a custom description, interpret it and generate a complete style guide.
+          If it's a custom description, interpret it and generate a complete style guide.
 
-      Output the full structured style guide.
-    output: "style_guide"
-    timeout: 300
+          Output the full structured style guide.
+        output: "style_guide"
+        timeout: 300
 
-  # ============================================
-  # STEP 3: STORYBOARD
-  # ============================================
-  - id: "storyboard"
-    agent: "comic-strips:storyboard-writer"
-    prompt: |
-      Create a panel-by-panel storyboard for this comic strip.
+      # ============================================
+      # STEP 3: STORYBOARD
+      # ============================================
+      - id: "storyboard"
+        agent: "comic-strips:storyboard-writer"
+        prompt: |
+          Create a panel-by-panel storyboard for this comic strip.
 
-      Research Data:
-      {{research_data}}
+          Research Data:
+          {{research_data}}
 
-      Style Guide:
-      {{style_guide}}
+          Style Guide:
+          {{style_guide}}
 
-      CRITICAL: Start by selecting characters from the session transcript.
-      Analyze the research data for agent activity -- tool calls, delegations, key moments.
-      Select 3-4 main characters (most active agents) + 1-2 supporting (one key moment).
-      Do NOT create more than 6 characters total. Do NOT include every agent mentioned.
+          CRITICAL: Start by selecting characters from the session transcript.
+          Analyze the research data for agent activity -- tool calls, delegations, key moments.
+          Select 3-4 main characters (most active agents) + 1-2 supporting (one key moment).
+          Do NOT create more than 6 characters total. Do NOT include every agent mentioned.
 
-      All dialogue must be natural, dramatized character speech. NO raw session data
-      (UUIDs, file paths, file sizes, token counts, raw error messages) in speech bubbles.
-      Use caption boxes for factual anchors. Technical events become visual metaphors.
+          All dialogue must be natural, dramatized character speech. NO raw session data
+          (UUIDs, file paths, file sizes, token counts, raw error messages) in speech bubbles.
+          Use caption boxes for factual anchors. Technical events become visual metaphors.
 
-      Set page breaks every 3-5 panels, after dramatic beats.
+          Set page breaks every 3-5 panels, after dramatic beats.
 
-      Break the story into 4-8 panels following the style guide's conventions.
-      Output the complete panel sequence as structured JSON.
-    output: "storyboard"
-    timeout: 600
+          Break the story into 4-8 panels following the style guide's conventions.
+          Output the complete panel sequence as structured JSON.
+        output: "storyboard"
+        timeout: 600
 
-  # ============================================
-  # STEP 3.5: STORYBOARD APPROVAL (Optional Gate)
-  # ============================================
-  # This is where a user can review the character cast and narrative arc
-  # before expensive image generation begins. The storyboard output is
-  # available for review in {{storyboard}}.
-  # To pause here: cancel the recipe session and resume after review.
-  # To auto-approve: let execution continue without interruption.
+    # ------------------------------------------------------------------
+    # APPROVAL GATE: Storyboard Review
+    # This is the last cheap checkpoint before expensive image generation.
+    # The user can review the character cast and narrative arc, then
+    # approve to proceed or deny to stop and revise.
+    # ------------------------------------------------------------------
+    approval:
+      required: true
+      prompt: |
+        Storyboard complete. Please review the character cast and narrative arc
+        before approving expensive image generation.
 
-  # ============================================
-  # STEP 4: CHARACTER DESIGN - Reference Sheets
-  # ============================================
-  - id: "character-design"
-    agent: "comic-strips:character-designer"
-    prompt: |
-      Create character reference sheets for this comic strip.
+        Storyboard output:
+        {{storyboard}}
 
-      Storyboard (contains character list):
-      {{storyboard}}
+        Approve to proceed with character design and panel art generation.
+        Deny to stop and revise the storyboard.
+      timeout: 0
+      default: "deny"
 
-      Style Guide:
-      {{style_guide}}
+  # ==========================================================================
+  # STAGE 2: ART GENERATION & COMPOSITION
+  # Expensive image generation steps: character sheets, panel art, cover art,
+  # and final HTML assembly with QA.
+  # ==========================================================================
+  - name: "art-generation"
+    steps:
+      # ============================================
+      # STEP 4: CHARACTER DESIGN - Reference Sheets
+      # ============================================
+      - id: "character-design"
+        agent: "comic-strips:character-designer"
+        prompt: |
+          Create character reference sheets for this comic strip.
 
-      IMPORTANT: Design ONLY the selected characters from the storyboard's characters array.
-      Generate reference images for 3-4 main characters + 1-2 supporting characters only.
-      Do NOT generate sheets for every agent mentioned in the session.
+          Pipeline requirements for this step: {{requirements.character_design}}
 
-      Each character should have bundle-affiliation visual markers -- characters from the
-      same bundle share team colors, insignia, or uniform elements.
+          Storyboard (contains character list):
+          {{storyboard}}
 
-      Output a structured character sheet with image paths and descriptions for each character.
-    output: "character_sheet"
-    timeout: 900
+          Style Guide:
+          {{style_guide}}
 
-  # ============================================
-  # STEP 5a: ART GENERATION - Panel Art
-  # ============================================
-  - id: "generate-panels"
-    agent: "comic-strips:panel-artist"
-    prompt: |
-      You are generating panel art for a comic strip.
+          IMPORTANT: Design ONLY the selected characters from the storyboard's characters array.
+          Generate reference images for 3-4 main characters + 1-2 supporting characters only.
+          Do NOT generate sheets for every agent mentioned in the session.
 
-      Style Guide:
-      {{style_guide}}
+          Each character should have bundle-affiliation visual markers -- characters from the
+          same bundle share team colors, insignia, or uniform elements.
 
-      Storyboard:
-      {{storyboard}}
+          Output a structured character sheet with image paths and descriptions for each character.
+        output: "character_sheet"
+        timeout: 900
 
-      Character Sheet (reference images for visual consistency):
-      {{character_sheet}}
+      # ============================================
+      # STEP 5a: ART GENERATION - Panel Art
+      # ============================================
+      - id: "generate-panels"
+        agent: "comic-strips:panel-artist"
+        depends_on: ["character-design"]
+        prompt: |
+          You are generating panel art for a comic strip.
 
-      Research Data:
-      {{research_data}}
+          Pipeline requirements for this step: {{requirements.generate_panels}}
 
-      Generate one image per panel from the storyboard.
-      For EACH panel: generate the image, then self-review it using vision.
-      Check: are faces visible and unobstructed? Is there a clear focal point?
-      Does it tell the story visually? Does it match the style?
-      ALWAYS pass reference_images from the character sheet for consistency.
-      If a panel fails review, regenerate with an adjusted prompt (max 3 attempts per panel).
-      Report which panels passed on first attempt and which needed regeneration.
-    output: "panel_results"
-    timeout: 1200
+          Style Guide:
+          {{style_guide}}
 
-  # ============================================
-  # STEP 5b: ART GENERATION - Cover Art
-  # ============================================
-  - id: "generate-cover"
-    agent: "comic-strips:cover-artist"
-    prompt: |
-      You are generating cover art for a comic strip.
+          Storyboard:
+          {{storyboard}}
 
-      Style Guide:
-      {{style_guide}}
+          Character Sheet (reference images for visual consistency):
+          {{character_sheet}}
 
-      Storyboard:
-      {{storyboard}}
+          Research Data:
+          {{research_data}}
 
-      Character Sheet (reference images for visual consistency):
-      {{character_sheet}}
+          Generate one image per panel from the storyboard.
+          For EACH panel: generate the image, then self-review it using vision.
+          Check: are faces visible and unobstructed? Is there a clear focal point?
+          Does it tell the story visually? Does it match the style?
+          ALWAYS pass reference_images from the character sheet for consistency.
+          If a panel fails review, regenerate with an adjusted prompt (max 3 attempts per panel).
+          Report which panels passed on first attempt and which needed regeneration.
+        output: "panel_results"
+        timeout: 1200
 
-      Research Data:
-      {{research_data}}
+      # ============================================
+      # STEP 5b: ART GENERATION - Cover Art
+      # ============================================
+      - id: "generate-cover"
+        agent: "comic-strips:cover-artist"
+        depends_on: ["character-design"]
+        prompt: |
+          You are generating cover art for a comic strip.
 
-      Generate a single cover hero image and assemble cover HTML with AmpliVerse branding.
-      CRITICAL: The AmpliVerse logo MUST be the ACTUAL Amplifier avatar image fetched from
-      https://github.com/microsoft-amplifier.png and embedded as a base64 <img> tag.
-      Do NOT use CSS text or a colored badge as a substitute.
-      Self-review the cover image using vision before assembling HTML (max 3 attempts).
-      Ensure main characters are in a dramatic pose with faces visible.
-    output: "cover_results"
-    timeout: 900
+          Pipeline requirements for this step: {{requirements.generate_cover}}
 
-  # ============================================
-  # STEP 6: COMPOSITION + QA + CLEANUP
-  # ============================================
-  - id: "composition"
-    agent: "comic-strips:strip-compositor"
-    prompt: |
-      Assemble the final comic strip HTML.
+          Style Guide:
+          {{style_guide}}
 
-      Panel Art Results:
-      {{panel_results}}
+          Storyboard:
+          {{storyboard}}
 
-      Cover Art Results:
-      {{cover_results}}
+          Character Sheet (reference images for visual consistency):
+          {{character_sheet}}
 
-      Storyboard (for dialogue, captions, sound effects):
-      {{storyboard}}
+          Research Data:
+          {{research_data}}
 
-      Character Sheet (for character intro page):
-      {{character_sheet}}
+          Generate a single cover hero image and assemble cover HTML with AmpliVerse branding.
+          CRITICAL: The AmpliVerse logo MUST be the ACTUAL Amplifier avatar image fetched from
+          https://github.com/microsoft-amplifier.png and embedded as a base64 <img> tag.
+          Do NOT use CSS text or a colored badge as a substitute.
+          Self-review the cover image using vision before assembling HTML (max 3 attempts).
+          Ensure main characters are in a dramatic pose with faces visible.
+        output: "cover_results"
+        timeout: 900
 
-      Style Guide (for layout, fonts, colors, borders):
-      {{style_guide}}
+      # ============================================
+      # STEP 6: COMPOSITION + QA + CLEANUP
+      # ============================================
+      - id: "composition"
+        agent: "comic-strips:strip-compositor"
+        depends_on: ["generate-panels", "generate-cover"]
+        prompt: |
+          Assemble the final comic strip HTML.
 
-      Research Data (for title and metadata):
-      {{research_data}}
+          Panel Art Results:
+          {{panel_results}}
 
-      Output filename: {{output_name}}
+          Cover Art Results:
+          {{cover_results}}
 
-      Assemble the cover page and all panel images into a single self-contained HTML file.
-      Apply speech bubbles, captions, and sound effects as CSS overlays.
+          Storyboard (for dialogue, captions, sound effects):
+          {{storyboard}}
 
-      Run visual QA by delegating to browser-tester:visual-documenter with SPECIFIC criteria:
-      - Cover: dramatic hero image? AmpliVerse logo as actual image (not CSS text)? Title readable?
-      - Character intro: 3-6 characters displayed? Each with image, name, role?
-      - Story pages: bubbles not covering faces? Natural dialogue (no UUIDs/raw data)? Visual consistency?
-      - Overall: navigation works? Page count correct? Rate overall quality 1-10.
+          Character Sheet (for character intro page):
+          {{character_sheet}}
 
-      Fix any issues found (max 2 assembly review iterations).
+          Style Guide (for layout, fonts, colors, borders):
+          {{style_guide}}
 
-      After final HTML is verified, clean up intermediate files:
-      delete panel_*.png, ref_*.png, cover.png, avatar.png, and any other temp files.
-      Keep only the final HTML file. The HTML is self-contained with all images as base64.
-    output: "final_output"
-    timeout: 1200
+          Research Data (for title and metadata):
+          {{research_data}}
+
+          Output filename: {{output_name}}
+
+          Assemble the cover page and all panel images into a single self-contained HTML file.
+          Apply speech bubbles, captions, and sound effects as CSS overlays.
+
+          Run visual QA by delegating to browser-tester:visual-documenter with SPECIFIC criteria:
+          - Cover: dramatic hero image? AmpliVerse logo as actual image (not CSS text)? Title readable?
+          - Character intro: 3-6 characters displayed? Each with image, name, role?
+          - Story pages: bubbles not covering faces? Natural dialogue (no UUIDs/raw data)? Visual consistency?
+          - Overall: navigation works? Page count correct? Rate overall quality 1-10.
+
+          Fix any issues found (max 2 assembly review iterations).
+
+          After final HTML is verified, clean up intermediate files:
+          delete panel_*.png, ref_*.png, cover.png, avatar.png, and any other temp files.
+          Keep only the final HTML file. The HTML is self-contained with all images as base64.
+        output: "final_output"
+        timeout: 1200

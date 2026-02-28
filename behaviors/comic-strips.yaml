@@ -23,4 +23,4 @@ tools:
     source: git+https://github.com/microsoft/amplifier-module-tool-skills@main
     config:
       skills:
-        - "@comic-strips:skills"
+        - "git+https://github.com/colombod/amplifier-bundle-comic-strips@main#subdirectory=skills"

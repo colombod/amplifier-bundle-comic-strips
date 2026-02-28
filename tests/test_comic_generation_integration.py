@@ -1,13 +1,14 @@
 """Integration test for Task 7.1: Generate 'How This Bundle Was Built' Comic.
 
 Validates the acceptance criteria for the comic generation deliverable:
-  AC1: Container created and bundle installed with all extras.
+  AC1: Shadow environment created and bundle installed.
   AC2: Comic generated successfully (or deferred if no API keys).
   AC3: Output is self-contained HTML with base64-embedded images.
   AC4: File size 5-20MB.
   AC5: Old example removed.
   AC6: New example saved as examples/comic-strips-v4-example.html.
-  AC7: Container destroyed.
+  AC7: Shadow environment destroyed.
+  AC9: Storyboard shows evidence of stories delegation (narrative arc + prose).
 
 These tests validate the OUTPUT ARTIFACT, not the generation process itself.
 The generation runs in a container via the session-to-comic recipe; these tests
@@ -133,4 +134,52 @@ class TestSelfContainedHTML:
         ext_css = _EXT_CSS_PATTERN.findall(html_content)
         assert len(ext_css) == 0, (
             f"Found external stylesheet references (not self-contained): {ext_css}"
+        )
+
+
+_PANEL_PATTERN = re.compile(r'<div class="comic-panel[^"]*"', re.IGNORECASE)
+_CAPTION_PATTERN = re.compile(
+    r'<div class="caption">(.*?)</div>', re.IGNORECASE | re.DOTALL
+)
+
+
+class TestStoriesDelegationEvidence:
+    """AC9: Storyboard shows evidence of stories delegation.
+
+    The comic should exhibit narrative arc (from content-strategist) and
+    prose-quality captions (from case-study-writer), not just raw data dumps.
+    """
+
+    @pytest.fixture(scope="class")
+    def html_content(self):
+        """Read the example HTML once for all tests in this class."""
+        return NEW_EXAMPLE.read_text(errors="replace")
+
+    @requires_generated_example
+    def test_has_multiple_panels(self, html_content):
+        """A stories-driven comic has multiple panels forming a narrative."""
+        panels = _PANEL_PATTERN.findall(html_content)
+        assert len(panels) >= 4, (
+            f"Expected at least 4 panels for a narrative arc, found {len(panels)}"
+        )
+
+    @requires_generated_example
+    def test_panels_have_narrative_captions(self, html_content):
+        """Each panel should have a prose caption (not just raw data)."""
+        captions = _CAPTION_PATTERN.findall(html_content)
+        assert len(captions) >= 4, (
+            f"Expected at least 4 captions for narrative, found {len(captions)}"
+        )
+        # Captions should be prose (>20 chars), not just labels
+        prose_captions = [c.strip() for c in captions if len(c.strip()) > 20]
+        assert len(prose_captions) >= 4, (
+            f"Expected at least 4 prose-quality captions (>20 chars), "
+            f"found {len(prose_captions)}"
+        )
+
+    @requires_generated_example
+    def test_has_cover_section(self, html_content):
+        """A stories-driven comic should have a cover (title page)."""
+        assert "cover" in html_content.lower(), (
+            "Expected a cover section indicating narrative framing"
         )

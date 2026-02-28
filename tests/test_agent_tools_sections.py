@@ -21,7 +21,10 @@ def _parse_frontmatter(agent_name: str) -> dict:
     content = file_path.read_text()
     assert content.startswith("---"), f"{agent_name}.md does not start with ---"
     # Find the closing ---
-    end = content.index("---", 3)
+    try:
+        end = content.index("---", 3)
+    except ValueError:
+        raise ValueError(f"{agent_name}.md has no closing --- delimiter") from None
     frontmatter = content[3:end]
     return yaml.safe_load(frontmatter)
 
@@ -99,7 +102,10 @@ def test_tools_section_present_in_all_agent_files_via_grep():
         file_path = AGENTS_DIR / f"{agent_name}.md"
         content = file_path.read_text()
         # Extract frontmatter only
-        end = content.index("---", 3)
+        try:
+            end = content.index("---", 3)
+        except ValueError:
+            raise ValueError(f"{agent_name}.md has no closing --- delimiter") from None
         frontmatter = content[3:end]
         assert "tools:" in frontmatter, (
             f"{agent_name}.md frontmatter does not contain 'tools:'"

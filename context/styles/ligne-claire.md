@@ -60,3 +60,12 @@ Available SVG clip-path shapes for this style:
 - **Avatar**: AmpliVerse avatar placed left of title within the banner — small and neatly integrated
 - **Color treatment**: Clean black on white for all branding elements — matching the precise aesthetic of the ligne claire style
 
+## Image Requirements
+
+```yaml
+image_requirements:
+  style_category: ligne-claire
+  detail_level: high
+  text_avoidance: excellent
+```
+

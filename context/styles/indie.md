@@ -66,3 +66,12 @@ Available SVG clip-path shapes for this style:
 - **Watermark**: Subtle watermark placed in the gutter space between panels, barely visible to maintain immersion
 - **Avatar**: AmpliVerse avatar positioned at the bottom center, small and understated to respect the artistic tone
 - **Color treatment**: Muted coloring matched to the issue's palette — branding should feel integrated, never intrusive
+
+## Image Requirements
+
+```yaml
+image_requirements:
+  style_category: indie
+  detail_level: high
+  text_avoidance: good
+```

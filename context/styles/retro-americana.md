@@ -65,3 +65,12 @@ Available SVG clip-path shapes for this style:
 - **Color treatment**: Red and cream colors matching the retro palette for badge design
 - **Badge text**: "APPROVED BY AMPLIVERSE" text arranged around the perimeter of the circular badge
 - **Style**: Designed to resemble a vintage product quality seal or "Good Housekeeping" style approval stamp
+
+## Image Requirements
+
+```yaml
+image_requirements:
+  style_category: illustration
+  detail_level: medium
+  text_avoidance: fair
+```

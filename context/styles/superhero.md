@@ -64,3 +64,12 @@ Available SVG clip-path shapes for this style:
 - **Corner box**: Top-left corner box in classic Marvel-style containing character headshot or icon
 - **Avatar**: AmpliVerse avatar placed above title on the cover
 - **Color treatment**: White text on colored background matching the issue's primary hero color
+
+## Image Requirements
+
+```yaml
+image_requirements:
+  style_category: superhero
+  detail_level: high
+  text_avoidance: good
+```

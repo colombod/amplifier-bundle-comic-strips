@@ -58,3 +58,12 @@ Available SVG clip-path shapes for this style:
 - **Masthead**: Masthead banner across top of the strip — clean title area spanning the full strip width
 - **Avatar**: AmpliVerse avatar positioned left of title in the masthead — small and integrated into the strip header
 - **Color treatment**: Clean black on white for all branding elements — matching the strip's minimal aesthetic
+
+## Image Requirements
+
+```yaml
+image_requirements:
+  style_category: cartoon
+  detail_level: low
+  text_avoidance: fair
+```

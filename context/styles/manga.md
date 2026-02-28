@@ -63,3 +63,12 @@ Available SVG clip-path shapes for this style:
 - **Publisher name**: Vertical bold condensed font spelling "AmpliVerse" along the right spine edge of the cover
 - **Avatar**: Small AmpliVerse avatar placed in the bottom-right corner of the cover
 - **Color treatment**: Black on white to maintain the monochrome manga aesthetic
+
+## Image Requirements
+
+```yaml
+image_requirements:
+  style_category: manga-lineart
+  detail_level: medium
+  text_avoidance: critical
+```

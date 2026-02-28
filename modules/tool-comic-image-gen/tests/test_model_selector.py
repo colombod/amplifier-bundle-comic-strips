@@ -56,6 +56,12 @@ class TestBasicSelection:
         assert result.model_id == "imagen-4.0-fast-generate-001"
         assert result.cost_tier == 1
 
+    def test_cheapest_viable_low_cost_tier(self) -> None:
+        """Cheapest viable model is always in a low cost tier."""
+        result = select_model(available_providers=["openai", "google"])
+        assert result.cost_tier is not None
+        assert result.cost_tier <= 2
+
 
 # ── Explicit model override ───────────────────────────────────────────
 
@@ -206,18 +212,6 @@ class TestFallbackBehavior:
             detail_level="ultra",
         )
         assert result.model_id == "imagen-4.0-fast-generate-001"
-
-
-# ── Cost minimization ─────────────────────────────────────────────────
-
-
-class TestCostMinimization:
-    """Selection always picks cheapest viable model."""
-
-    def test_cheapest_viable_no_constraints(self) -> None:
-        result = select_model(available_providers=["openai", "google"])
-        assert result.cost_tier is not None
-        assert result.cost_tier <= 2
 
 
 # ── Combined requirement scenarios ────────────────────────────────────

@@ -14,7 +14,7 @@ from .model_map import MODEL_MAP, ModelEntry
 _DETAIL_RANK: Final[dict[str, int]] = {"low": 1, "medium": 2, "high": 3, "ultra": 4}
 
 
-@dataclass
+@dataclass(frozen=True)
 class SelectionResult:
     """Outcome of a model selection request."""
 
@@ -96,6 +96,8 @@ def select_model(
 
     # (6) Detail-level filter (with fallback)
     if detail_level is not None:
+        # Unknown detail levels default to rank 0 (least restrictive),
+        # so unrecognised values effectively skip the filter.
         required_rank = _DETAIL_RANK.get(detail_level, 0)
         filtered = [
             e

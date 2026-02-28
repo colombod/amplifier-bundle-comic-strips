@@ -95,7 +95,9 @@ class TestImageRequirementsYAMLBlock:
     def test_yaml_block_with_key(self, filename: str):
         content = _read_style(filename)
         parsed = _extract_image_requirements(content)
-        assert parsed is not None, f"{filename} has no parseable YAML block in Image Requirements"
+        assert parsed is not None, (
+            f"{filename} has no parseable YAML block in Image Requirements"
+        )
         assert "image_requirements" in parsed, (
             f"{filename} YAML block missing 'image_requirements' key"
         )
@@ -107,16 +109,19 @@ class TestMangaValues:
     def test_manga_style_category(self):
         content = _read_style("manga.md")
         parsed = _extract_image_requirements(content)
+        assert parsed is not None
         assert parsed["image_requirements"]["style_category"] == "manga-lineart"
 
     def test_manga_detail_level(self):
         content = _read_style("manga.md")
         parsed = _extract_image_requirements(content)
+        assert parsed is not None
         assert parsed["image_requirements"]["detail_level"] == "medium"
 
     def test_manga_text_avoidance(self):
         content = _read_style("manga.md")
         parsed = _extract_image_requirements(content)
+        assert parsed is not None
         assert parsed["image_requirements"]["text_avoidance"] == "critical"
 
 
@@ -126,16 +131,19 @@ class TestSuperheroValues:
     def test_superhero_style_category(self):
         content = _read_style("superhero.md")
         parsed = _extract_image_requirements(content)
+        assert parsed is not None
         assert parsed["image_requirements"]["style_category"] == "superhero"
 
     def test_superhero_detail_level(self):
         content = _read_style("superhero.md")
         parsed = _extract_image_requirements(content)
+        assert parsed is not None
         assert parsed["image_requirements"]["detail_level"] == "high"
 
     def test_superhero_text_avoidance(self):
         content = _read_style("superhero.md")
         parsed = _extract_image_requirements(content)
+        assert parsed is not None
         assert parsed["image_requirements"]["text_avoidance"] == "good"
 
 
@@ -145,16 +153,19 @@ class TestIndieValues:
     def test_indie_style_category(self):
         content = _read_style("indie.md")
         parsed = _extract_image_requirements(content)
+        assert parsed is not None
         assert parsed["image_requirements"]["style_category"] == "indie"
 
     def test_indie_detail_level(self):
         content = _read_style("indie.md")
         parsed = _extract_image_requirements(content)
+        assert parsed is not None
         assert parsed["image_requirements"]["detail_level"] == "high"
 
     def test_indie_text_avoidance(self):
         content = _read_style("indie.md")
         parsed = _extract_image_requirements(content)
+        assert parsed is not None
         assert parsed["image_requirements"]["text_avoidance"] == "good"
 
 
@@ -164,16 +175,19 @@ class TestNewspaperValues:
     def test_newspaper_style_category(self):
         content = _read_style("newspaper.md")
         parsed = _extract_image_requirements(content)
+        assert parsed is not None
         assert parsed["image_requirements"]["style_category"] == "cartoon"
 
     def test_newspaper_detail_level(self):
         content = _read_style("newspaper.md")
         parsed = _extract_image_requirements(content)
+        assert parsed is not None
         assert parsed["image_requirements"]["detail_level"] == "low"
 
     def test_newspaper_text_avoidance(self):
         content = _read_style("newspaper.md")
         parsed = _extract_image_requirements(content)
+        assert parsed is not None
         assert parsed["image_requirements"]["text_avoidance"] == "fair"
 
 
@@ -183,16 +197,19 @@ class TestLigneClaireValues:
     def test_ligne_claire_style_category(self):
         content = _read_style("ligne-claire.md")
         parsed = _extract_image_requirements(content)
+        assert parsed is not None
         assert parsed["image_requirements"]["style_category"] == "ligne-claire"
 
     def test_ligne_claire_detail_level(self):
         content = _read_style("ligne-claire.md")
         parsed = _extract_image_requirements(content)
+        assert parsed is not None
         assert parsed["image_requirements"]["detail_level"] == "high"
 
     def test_ligne_claire_text_avoidance(self):
         content = _read_style("ligne-claire.md")
         parsed = _extract_image_requirements(content)
+        assert parsed is not None
         assert parsed["image_requirements"]["text_avoidance"] == "excellent"
 
 
@@ -202,16 +219,19 @@ class TestRetroAmericanaValues:
     def test_retro_americana_style_category(self):
         content = _read_style("retro-americana.md")
         parsed = _extract_image_requirements(content)
+        assert parsed is not None
         assert parsed["image_requirements"]["style_category"] == "illustration"
 
     def test_retro_americana_detail_level(self):
         content = _read_style("retro-americana.md")
         parsed = _extract_image_requirements(content)
+        assert parsed is not None
         assert parsed["image_requirements"]["detail_level"] == "medium"
 
     def test_retro_americana_text_avoidance(self):
         content = _read_style("retro-americana.md")
         parsed = _extract_image_requirements(content)
+        assert parsed is not None
         assert parsed["image_requirements"]["text_avoidance"] == "fair"
 
 

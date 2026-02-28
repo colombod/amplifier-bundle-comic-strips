@@ -77,9 +77,10 @@ Delegate to `stories:case-study-writer` with the research data AND the arc outli
    - **Challenge**: What problem or situation triggered the session? What was at stake?
    - **Approach**: How did the agents tackle the problem? What strategies, pivots, and collaborations occurred?
    - **Results**: What was the outcome? What was achieved, learned, or resolved?
-2. Identify the **key characters** (agents) and their roles in the narrative.
-3. Highlight the **dramatic moments** — breakthroughs, failures, pivots, and discoveries.
-4. Keep the prose vivid and human — this is storytelling, not a log summary.
+2. **Name every agent involved and describe their specific contribution.** For each agent, state: what it was called to do, what tools it used, what it produced, and how its work connected to the next step. This is critical -- the comic characters come from these agents and their roles must be concrete and specific.
+3. Highlight the **dramatic moments** — breakthroughs, failures, pivots, and discoveries. For each moment, name which agent was involved and what action they took.
+4. Include **quantified details** where available — files created, tests passed, lines changed, tokens used, time spent — so the comic's caption boxes have factual anchors.
+5. Keep the prose vivid and human — this is storytelling, not a log summary. But every claim must trace to the research data.
 
 The case-study-writer's output is a polished narrative that you will translate into comic panels in Phase 2.
 

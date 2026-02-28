@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comic-Strips v4: Origin Story</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial Black', 'Impact', sans-serif;
+            background: #0a0a0a;
+            color: #fff;
+            overflow-x: hidden;
+        }
+        
+        .comic-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            position: relative;
+        }
+        
+        .page {
+            display: none;
+            min-height: 100vh;
+            padding: 20px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #0a0a0a 100%);
+        }
+        
+        .page.active {
+            display: block;
+        }
+        
+        .cover-page {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 40px;
+            background: radial-gradient(circle at center, #2d3748 0%, #1a1a2e 50%, #0a0a0a 100%);
+        }
+        
+        .branding {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: white;
+            padding: 10px 15px;
+            border: 3px solid black;
+            border-radius: 5px;
+            z-index: 100;
+        }
+        
+        .branding img {
+            width: 40px;
+            height: 40px;
+            vertical-align: middle;
+            margin-right: 10px;
+        }
+        
+        .branding span {
+            color: black;
+            font-size: 16px;
+            font-weight: bold;
+            vertical-align: middle;
+        }
+        
+        .cover-title {
+            font-size: 64px;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: #ffd700;
+            text-shadow: 4px 4px 0 #d32f2f, 8px 8px 0 #1a4d8f;
+            margin: 40px 0 20px 0;
+            letter-spacing: 4px;
+        }
+        
+        .cover-subtitle {
+            font-size: 24px;
+            color: #00bcd4;
+            margin-bottom: 40px;
+            font-style: italic;
+        }
+        
+        .cover-hero-image {
+            width: 100%;
+            max-width: 800px;
+            height: 500px;
+            background: linear-gradient(135deg, #1a4d8f 0%, #7b1fa2 50%, #d32f2f 100%);
+            border: 6px solid #ffd700;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 20px 0;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .cover-hero-content {
+            text-align: center;
+            z-index: 2;
+            padding: 40px;
+        }
+        
+        .cover-hero-content h2 {
+            font-size: 36px;
+            color: #ffd700;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+        
+        .cover-hero-content p {
+            font-size: 18px;
+            line-height: 1.6;
+            color: #fff;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+        }
+        
+        .panel-grid {
+            display: grid;
+            gap: 20px;
+            padding: 20px;
+        }
+        
+        .panel {
+            background: #1a1a2e;
+            border: 4px solid #ffd700;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.6);
+        }
+        
+        .panel-large {
+            grid-column: span 2;
+            min-height: 400px;
+        }
+        
+        .panel-medium {
+            min-height: 300px;
+        }
+        
+        .panel-splash {
+            grid-column: span 2;
+            min-height: 500px;
+        }
+        
+        .panel-content {
+            width: 100%;
+            height: 100%;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            background: linear-gradient(135deg, #2d3748 0%, #1a1a2e 100%);
+        }
+        
+        .panel-scene {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-style: italic;
+            color: #00bcd4;
+            text-align: center;
+            line-height: 1.6;
+            padding: 20px;
+        }
+        
+        .caption-box {
+            background: #ffea00;
+            color: #000;
+            padding: 10px 15px;
+            font-size: 14px;
+            font-weight: bold;
+            text-transform: uppercase;
+            border: 2px solid #000;
+            margin-bottom: 10px;
+        }
+        
+        .speech-bubble {
+            background: white;
+            color: black;
+            padding: 15px 20px;
+            border: 3px solid black;
+            border-radius: 20px;
+            position: relative;
+            margin: 10px 0;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        
+        .speech-bubble::before {
+            content: '';
+            position: absolute;
+            bottom: -15px;
+            left: 30px;
+            width: 0;
+            height: 0;
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-top: 15px solid black;
+        }
+        
+        .speech-bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 33px;
+            width: 0;
+            height: 0;
+            border-left: 12px solid transparent;
+            border-right: 12px solid transparent;
+            border-top: 12px solid white;
+        }
+        
+        .speaker {
+            font-size: 12px;
+            font-weight: bold;
+            color: #ffd700;
+            margin-bottom: 5px;
+        }
+        
+        .navigation {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.9);
+            padding: 15px 30px;
+            border-radius: 50px;
+            border: 3px solid #ffd700;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .nav-btn {
+            background: #1a4d8f;
+            color: white;
+            border: 2px solid #ffd700;
+            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .nav-btn:hover {
+            background: #ffd700;
+            color: #000;
+            transform: scale(1.1);
+        }
+        
+        .nav-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        
+        .page-indicator {
+            color: #ffd700;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        
+        @media (max-width: 768px) {
+            .panel-grid {
+                grid-template-columns: 1fr !important;
+            }
+            
+            .panel-large, .panel-splash {
+                grid-column: span 1;
+            }
+            
+            .cover-title {
+                font-size: 36px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="comic-container">
+        <!-- Cover Page -->
+        <div class="page active" data-page="0">
+            <div class="cover-page">
+                <div class="branding">
+                    <img src="https://github.com/microsoft-amplifier.png" alt="AmpliVerse Logo">
+                    <span>AmpliVerse</span>
+                </div>
+                
+                <div class="cover-title">
+                    Comic-Strips v4<br>Origin Story
+                </div>
+                
+                <div class="cover-subtitle">
+                    The Epic Quest to Build the Perfect Comic Generation System
+                </div>
+                
+                <div class="cover-hero-image">
+                    <div class="cover-hero-content">
+                        <h2>13 Hours. 6 Agents. 1 Vision.</h2>
+                        <p><strong>The Story:</strong> Building the comic-strips bundle - designing model fitness maps, implementing stories bundle delegation, and creating requirement-based model selection.</p>
+                        <p style="margin-top: 20px;"><strong>Starring:</strong> Developer, Explorer, Plan-Writer, Research-Expert, Git-Ops, Brainstormer</p>
+                        <p style="margin-top: 20px; color: #ffd700;"><strong>Press NEXT to begin the adventure...</strong></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Page 1: The Call to Adventure -->
+        <div class="page" data-page="1">
+            <div class="panel-grid" style="grid-template-columns: 1fr 1fr;">
+                <!-- Panel 1 -->
+                <div class="panel panel-large">
+                    <div class="panel-content">
+                        <div class="caption-box">ACT 1: THE CALL TO ADVENTURE</div>
+                        <div class="caption-box">Feb 28, 2026 - 02:20 UTC</div>
+                        <div class="panel-scene">
+                            [Wide establishing shot: Developer at desk, three glowing recipe scrolls floating in air, terminal screen showing cascading errors in red]
+                        </div>
+                        <div class="speech-bubble">
+                            <div class="speaker">Developer</div>
+                            We need to validate this bundle... and figure out what's missing.
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Panel 2 -->
+                <div class="panel panel-medium">
+                    <div class="panel-content">
+                        <div class="panel-scene">
+                            [Dramatic low angle: Developer facing massive wall of dependency errors, broken chains visible (amplifier_foundation, hatchling)]
+                        </div>
+                        <div class="speech-bubble">
+                            <div class="speaker">Developer</div>
+                            Dependencies are missing... but where do they come from?
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Panel 3 -->
+                <div class="panel panel-medium">
+                    <div class="panel-content">
+                        <div class="panel-scene">
+                            [Side profile: Developer and AI assistant before decision tree with multiple glowing paths, dimmed ghosts of previous failed attempts in background]
+                        </div>
+                        <div class="speech-bubble">
+                            <div class="speaker">Developer</div>
+                            Previous runs had validation issues... We need a NEW approach.
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Panel 4 -->
+                <div class="panel panel-splash">
+                    <div class="panel-content">
+                        <div class="caption-box">ACT 2: THE GRAND STRATEGY</div>
+                        <div class="caption-box">⚡ THE MODEL FITNESS REVELATION ⚡</div>
+                        <div class="panel-scene">
+                            [DRAMATIC REVEAL: 3D holographic matrix grid materializing before them, photos of different comic art styles (Solo Leveling, modern, realistic) floating in the grid, model names glowing]
+                        </div>
+                        <div class="speech-bubble">
+                            <div class="speaker">Developer</div>
+                            Which model is BEST at which drawing style?
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Page 2: Team Assembly & Strategy -->
+        <div class="page" data-page="2">
+            <div class="panel-grid" style="grid-template-columns: 1fr 1fr;">
+                <!-- Panel 5 -->
+                <div class="panel panel-splash">
+                    <div class="panel-content">
+                        <div class="caption-box">🌟 THE TEAM ASSEMBLES 🌟</div>
+                        <div class="panel-scene">
+                            [Group shot from above: AI assistant splitting into 6 specialized agent forms in star pattern around Developer - Explorer (blue), Plan-Writer (green), Research-Expert (purple), Git-Ops (red), Brainstormer (yellow), each with unique color and visual identity, energy connections between them]
+                        </div>
+                        <div class="speech-bubble">
+                            <div class="speaker">Developer</div>
+                            We'll use DELEGATION - send each part to the expert who does it best!
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Panel 6 -->
+                <div class="panel panel-large">
+                    <div class="panel-content">
+                        <div class="panel-scene">
+                            [Close-up on interface: Task bubble floating into center of fitness map, requirements visible as glowing text: "needs reference images", "high complexity", "fast turnaround". Golden paths showing primary → fallback 1 → fallback 2]
+                        </div>
+                        <div class="speech-bubble">
+                            <div class="speaker">Plan-Writer</div>
+                            Each task tells us what it needs. The map tells us which model fits best.
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Panel 7 -->
+                <div class="panel panel-medium">
+                    <div class="panel-content">
+                        <div class="panel-scene">
+                            [Split panel: Two glowing portal gates side by side - OpenAI (left, teal glow) and Gemini (right, purple glow), information streams flowing through both in parallel]
+                        </div>
+                        <div class="speech-bubble">
+                            <div class="speaker">Developer</div>
+                            Keep them SEPARATE for easy composition.
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Panel 8 -->
+                <div class="panel panel-medium">
+                    <div class="panel-content">
+                        <div class="caption-box">ACT 3: CONSTRUCTION & REFINEMENT</div>
+                        <div class="panel-scene">
+                            [Overhead map view: Recipe scrolls interconnected like subway map, chains of light showing task dependencies, nodes glowing as they activate]
+                        </div>
+                        <div class="speech-bubble">
+                            <div class="speaker">Plan-Writer</div>
+                            The recipes tell the agents what to do.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Page 3: Testing & Iteration -->
+        <div class="page" data-page="3">
+            <div class="panel-grid" style="grid-template-columns: 1fr 1fr;">
+                <!-- Panel 9 -->
+                <div class="panel panel-large">
+                    <div class="panel-content">
+                        <div class="caption-box">🧪 SHADOW TESTING PIPELINE 🧪</div>
+                        <div class="panel-scene">
+                            [Interior of test chamber: Rapid comic generation cycles visible, green checkmarks over acceptable results, shadow testing framework active with holographic test displays]
+                        </div>
+                        <div class="speech-bubble">
+                            <div class="speaker">Explorer</div>
+                            These look good. Ready for real execution.
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Panel 10 -->
+                <div class="panel panel-medium">
+                    <div class="panel-content">
+                        <div class="panel-scene">
+                            [Close-up on blueprint: Blueprint updating with revisions, multiple iteration layers visible, Research-Expert and Explorer bringing glowing findings]
+                        </div>
+                        <div class="speech-bubble">
+                            <div class="speaker">Developer</div>
+                            Good idea - let's revise the plan and re-execute.
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Panel 11 -->
+                <div class="panel panel-medium">
+                    <div class="panel-content">
+                        <div class="panel-scene">
+                            [Heroic return: Explorer agent returning with stack of glowing findings and code fragments, knowledge streams flowing into central blueprint]
+                        </div>
+                        <div class="speech-bubble">
+                            <div class="speaker">Explorer</div>
+                            FOUND: model fitness dimensions, provider capabilities, requirement patterns!
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Panel 12 -->
+                <div class="panel panel-splash">
+                    <div class="panel-content">
+                        <div class="caption-box">ACT 4: DEPLOYMENT & VICTORY</div>
+                        <div class="caption-box">⚡ THE MOMENT OF TRUTH ⚡</div>
+                        <div class="panel-scene">
+                            [DRAMATIC LOW ANGLE: Developer before massive golden deploy button, entire architecture visible in glowing detail behind them - fitness maps, agent networks, recipe flows - green lights across all systems]
+                        </div>
+                        <div class="speech-bubble">
+                            <div class="speaker">Developer</div>
+                            All tests pass. The design is solid. Time for the REAL execution.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Page 4: Victory -->
+        <div class="page" data-page="4">
+            <div class="panel-grid" style="grid-template-columns: 1fr;">
+                <!-- Panel 13 -->
+                <div class="panel panel-large">
+                    <div class="panel-content">
+                        <div class="caption-box">🚀 DEPLOYMENT SUCCESS 🚀</div>
+                        <div class="panel-scene">
+                            [Action shot: Git-Ops agent launching code upward into glowing repository in sky, green waves of successful deployment spreading outward like ripples, git branch symbols and version tags visible]
+                        </div>
+                        <div class="speech-bubble">
+                            <div class="speaker">Git-Ops</div>
+                            Pushing to main... SUCCESS. The bundle is LIVE!
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Panel 14 -->
+                <div class="panel panel-splash">
+                    <div class="panel-content">
+                        <div class="caption-box">✨ THE BUNDLE AWAKENS ✨</div>
+                        <div class="panel-scene">
+                            [DRAMATIC REVEAL WIDE SHOT: Comic-Strips Bundle materializing as massive crystalline glowing structure in center, sample comics generating in real-time within energy field, thousands of possible combinations as branching rainbow pathways radiating outward, model fitness map visible as luminous grid, all six agents watching in awe]
+                        </div>
+                        <div class="speech-bubble">
+                            <div class="speaker">Developer</div>
+                            The Comic-Strips Bundle is LIVE. It's choosing the right model for every task!
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Panel 15 -->
+                <div class="panel panel-splash">
+                    <div class="panel-content">
+                        <div class="caption-box">13 HOURS. 6 AGENTS. 1 VISION.</div>
+                        <div class="caption-box">THE END... AND THE BEGINNING</div>
+                        <div class="panel-scene">
+                            [HEROIC GROUP SHOT: Developer and all 6 agents (Explorer-blue, Plan-Writer-green, Research-Expert-purple, Git-Ops-red, Brainstormer-yellow) standing together in circle around glowing bundle, silhouetted against brilliant golden light, all raising hands in unified victory gesture, bundle radiating rainbow energy streams]
+                        </div>
+                        <div class="speech-bubble">
+                            <div class="speaker">Developer</div>
+                            Together we built something AMAZING. The Comic-Strips Bundle is ready for the world!
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Navigation -->
+    <div class="navigation">
+        <button class="nav-btn" id="prevBtn" onclick="changePage(-1)">← PREV</button>
+        <span class="page-indicator" id="pageIndicator">Cover</span>
+        <button class="nav-btn" id="nextBtn" onclick="changePage(1)">NEXT →</button>
+    </div>
+    
+    <script>
+        let currentPage = 0;
+        const pages = document.querySelectorAll('.page');
+        const pageNames = ['Cover', 'Page 1: Call to Adventure', 'Page 2: Team Assembly', 'Page 3: Testing', 'Page 4: Victory'];
+        
+        function updatePage() {
+            pages.forEach((page, index) => {
+                page.classList.toggle('active', index === currentPage);
+            });
+            
+            document.getElementById('pageIndicator').textContent = pageNames[currentPage];
+            document.getElementById('prevBtn').disabled = currentPage === 0;
+            document.getElementById('nextBtn').disabled = currentPage === pages.length - 1;
+        }
+        
+        function changePage(delta) {
+            currentPage += delta;
+            if (currentPage < 0) currentPage = 0;
+            if (currentPage >= pages.length) currentPage = pages.length - 1;
+            updatePage();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft') changePage(-1);
+            if (e.key === 'ArrowRight') changePage(1);
+        });
+        
+        // Touch navigation
+        let touchStartX = 0;
+        document.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+        });
+        
+        document.addEventListener('touchend', (e) => {
+            const touchEndX = e.changedTouches[0].clientX;
+            const diff = touchStartX - touchEndX;
+            if (Math.abs(diff) > 50) {
+                if (diff > 0) changePage(1);
+                else changePage(-1);
+            }
+        });
+        
+        updatePage();
+    </script>
+</body>
+</html>

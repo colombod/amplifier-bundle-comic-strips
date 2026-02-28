@@ -64,7 +64,7 @@ class OpenAIImageBackend:
 
             use_edit = bool(reference_images) and model in _EDIT_CAPABLE_MODELS
 
-            if use_edit and reference_images is not None:
+            if use_edit:
                 response = await self._call_edit(
                     model=model,
                     prompt=prompt,

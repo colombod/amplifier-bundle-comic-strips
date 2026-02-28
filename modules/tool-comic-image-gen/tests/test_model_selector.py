@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from amplifier_module_comic_image_gen.model_selector import SelectionResult, select_model
+from amplifier_module_comic_image_gen.model_selector import (
+    SelectionResult,
+    select_model,
+)
 
 
 # ── SelectionResult dataclass ──────────────────────────────────────────
@@ -13,7 +16,11 @@ class TestSelectionResultDataclass:
 
     def test_has_all_expected_fields(self) -> None:
         r = SelectionResult(
-            model_id="m", provider="p", api_surface="a", cost_tier=1, rationale="r"
+            model_id="m",
+            provider="p",
+            api_surface="openai-images",
+            cost_tier=1,
+            rationale="r",
         )
         assert r.model_id == "m"
         assert r.provider == "p"

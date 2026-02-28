@@ -16,10 +16,10 @@ dependencies = [
 dev = ["pytest>=8.0", "pytest-asyncio>=0.24"]
 
 [project.entry-points."amplifier.modules"]
-tool-comic-image-gen = "amplifier_comic_image_gen:mount"
+tool-comic-image-gen = "amplifier_module_comic_image_gen:mount"
 
 [tool.hatch.build.targets.wheel]
-packages = ["amplifier_comic_image_gen"]
+packages = ["amplifier_module_comic_image_gen"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

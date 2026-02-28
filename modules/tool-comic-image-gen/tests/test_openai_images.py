@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from amplifier_comic_image_gen.providers.openai_images import (
+from amplifier_module_comic_image_gen.providers.openai_images import (
     ASPECT_RATIO_MAP,
     OpenAIImageBackend,
 )

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from amplifier_comic_image_gen.providers import discover_image_backends
+from amplifier_module_comic_image_gen.providers import discover_image_backends
 
 
 def _make_provider(name: str) -> MagicMock:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from amplifier_comic_image_gen.model_selector import SelectionResult, select_model
+from amplifier_module_comic_image_gen.model_selector import SelectionResult, select_model
 
 
 # ── SelectionResult dataclass ──────────────────────────────────────────

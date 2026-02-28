@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from amplifier_comic_image_gen import ComicImageGenTool, mount
-from amplifier_comic_image_gen.providers.openai_images import OpenAIImageBackend
+from amplifier_module_comic_image_gen import ComicImageGenTool, mount
+from amplifier_module_comic_image_gen.providers.openai_images import OpenAIImageBackend
 
 from .conftest import make_openai_provider
 

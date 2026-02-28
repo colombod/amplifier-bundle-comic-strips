@@ -6,7 +6,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from amplifier_comic_image_gen.model_map import MODEL_MAP, ModelEntry
+from amplifier_module_comic_image_gen.model_map import MODEL_MAP, ModelEntry
 
 
 # ── Structure & immutability ─────────────────────────────────────────

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from amplifier_comic_image_gen.providers.gemini_images import GeminiImageBackend
+from amplifier_module_comic_image_gen.providers.gemini_images import GeminiImageBackend
 
 from .conftest import TINY_PNG_BYTES, make_gemini_provider, make_gemini_imagen_provider
 

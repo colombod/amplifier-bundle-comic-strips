@@ -7,6 +7,13 @@ router can pick the best model for a given request.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
+
+ApiSurface = Literal[
+    "openai-images", "gemini-generate-content", "gemini-generate-images"
+]
+DetailCeiling = Literal["low", "medium", "high", "ultra"]
+TextAvoidance = Literal["poor", "fair", "good", "excellent"]
 
 
 @dataclass(frozen=True)
@@ -15,15 +22,13 @@ class ModelEntry:
 
     provider: str
     model_id: str
-    api_surface: (
-        str  # "openai-images" | "gemini-generate-content" | "gemini-generate-images"
-    )
+    api_surface: ApiSurface
     cost_tier: int  # 1 (cheapest) .. 5 (most expensive)
     reference_images: bool
     max_refs: int
     style_strengths: tuple[str, ...]
-    detail_ceiling: str  # "low" | "medium" | "high" | "ultra"
-    text_avoidance: str  # "poor" | "fair" | "good" | "excellent"
+    detail_ceiling: DetailCeiling
+    text_avoidance: TextAvoidance
 
 
 MODEL_MAP: dict[str, ModelEntry] = {

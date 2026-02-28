@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-from .model_map import MODEL_MAP, ModelEntry
+from .model_map import MODEL_MAP, ApiSurface, ModelEntry
 
 _DETAIL_RANK: Final[dict[str, int]] = {"low": 1, "medium": 2, "high": 3, "ultra": 4}
 
@@ -20,7 +20,7 @@ class SelectionResult:
 
     model_id: str | None
     provider: str | None
-    api_surface: str | None
+    api_surface: ApiSurface | None
     cost_tier: int | None
     rationale: str
 

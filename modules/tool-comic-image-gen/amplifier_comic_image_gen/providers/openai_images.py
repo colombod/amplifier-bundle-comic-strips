@@ -17,12 +17,14 @@ ASPECT_RATIO_MAP: dict[str, str] = {
     "square": "1024x1024",
 }
 
-_EDIT_CAPABLE_MODELS: set[str] = {
-    "gpt-image-1.5",
-    "gpt-image-1",
-    "gpt-image-1-mini",
-    "dall-e-2",
-}
+_EDIT_CAPABLE_MODELS: frozenset[str] = frozenset(
+    {
+        "gpt-image-1.5",
+        "gpt-image-1",
+        "gpt-image-1-mini",
+        "dall-e-2",
+    }
+)
 
 
 class OpenAIImageBackend:

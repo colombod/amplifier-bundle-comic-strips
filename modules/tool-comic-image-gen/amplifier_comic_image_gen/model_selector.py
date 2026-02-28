@@ -104,8 +104,8 @@ def select_model(
         if filtered:
             candidates = filtered
 
-    # (7) Sort by cost ascending, pick cheapest
-    candidates.sort(key=lambda e: e.cost_tier)
+    # (7) Sort by cost ascending, pick cheapest (model_id breaks ties deterministically)
+    candidates.sort(key=lambda e: (e.cost_tier, e.model_id))
     winner = candidates[0]
 
     return SelectionResult(

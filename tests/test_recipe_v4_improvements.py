@@ -9,14 +9,17 @@ Acceptance criteria:
   AC6: Composition step depends on both parallel steps completing
 """
 
+import functools
+
 import yaml
 from pathlib import Path
 
 RECIPE_PATH = Path(__file__).parent.parent / "recipes" / "session-to-comic.yaml"
 
 
+@functools.cache
 def _load_recipe() -> dict:
-    """Load and parse the recipe YAML."""
+    """Load and parse the recipe YAML once (cached across all callers)."""
     return yaml.safe_load(RECIPE_PATH.read_text())
 
 
@@ -234,21 +237,15 @@ def test_generate_cover_requirements():
 
 
 def test_composition_depends_on_both_parallel_steps():
-    """Composition step must depend on both generate-panels and generate-cover."""
+    """Composition step must explicitly depend on both parallel art generation steps.
+
+    Note: test_parallel_art_generation validates the full fork-join graph structure.
+    This test isolates the AC6 acceptance criterion for traceability.
+    """
     recipe = _load_recipe()
     step = _find_step(recipe, "composition")
     assert step is not None, "composition step not found"
 
-    prompt = step.get("prompt", "")
     depends = step.get("depends_on", [])
-
-    # Must reference both outputs via depends_on or prompt variables
-    has_panels = "panel_results" in prompt or "generate-panels" in depends
-    has_cover = "cover_results" in prompt or "generate-cover" in depends
-
-    assert has_panels, (
-        "composition must reference panel_results or depend on generate-panels"
-    )
-    assert has_cover, (
-        "composition must reference cover_results or depend on generate-cover"
-    )
+    assert "generate-panels" in depends, "composition must depend on generate-panels"
+    assert "generate-cover" in depends, "composition must depend on generate-cover"

@@ -1,8 +1,34 @@
 name: "session-to-comic"
 description: "Transform an Amplifier session into an illustrated comic strip with quality review, character consistency, dramatized storytelling, and AmpliVerse publisher branding"
-version: "4.0.0"
+version: "4.0.1"
 author: "amplifier-comic-strips"
 tags: ["comic", "visual-storytelling", "session-analysis", "image-generation"]
+
+# =============================================================================
+# CHANGELOG
+# =============================================================================
+#
+# v4.0.1 (2026-02-28):
+#   - BUGFIX: Recipe fails at runtime with 'str' object has no attribute 'get'
+#     * ROOT CAUSE: Nested dict objects under context.requirements caused the
+#       recipe engine's context processing to fail. The context field supports
+#       "any values" per schema, but nested dicts break during session state
+#       serialization or context iteration paths that expect flat values.
+#       Additionally, the validator's check_variable_references only iterates
+#       recipe.steps (empty for staged recipes), so the issue was not caught
+#       during validation.
+#     * FIX: Flattened nested requirements into separate top-level string
+#       context variables (character_design_requirements,
+#       panel_generation_requirements, cover_generation_requirements).
+#     * RESULT: All context values are now flat strings, compatible with all
+#       recipe engine processing paths. Prompts updated to reference the new
+#       variable names.
+#
+# v4.0.0:
+#   - Initial v4 staged recipe with approval gate between storyboard review
+#     and expensive art generation. Two stages: research-and-storyboard
+#     (text-only, cheap) and art-generation (image generation, expensive).
+#
 
 # Usage:
 #   amplifier run "execute session-to-comic with session_file=~/.amplifier/sessions/2026-02-27/events.jsonl style=superhero"
@@ -12,17 +38,10 @@ context:
   session_file: ""        # Required: path to events.jsonl session file or session ID
   style: "superhero"      # Style name (manga, superhero, indie, newspaper, ligne-claire, retro-americana) or custom description
   output_name: ""         # Optional: custom output filename (defaults to comic-{timestamp})
-  # Pipeline step requirements for generate_image tool parameters
-  requirements:
-    character_design:
-      needs_reference_images: false
-      detail_level: "high"
-    generate_panels:
-      needs_reference_images: true
-      detail_level: "medium"
-    generate_cover:
-      needs_reference_images: true
-      detail_level: "high"
+  # Pipeline step requirements for generate_image tool parameters (flattened to avoid nested dict issues)
+  character_design_requirements: "needs_reference_images=false, detail_level=high"
+  panel_generation_requirements: "needs_reference_images=true, detail_level=medium"
+  cover_generation_requirements: "needs_reference_images=true, detail_level=high"
 
 stages:
   # ==========================================================================
@@ -169,7 +188,7 @@ stages:
         prompt: |
           Create character reference sheets for this comic strip.
 
-          Pipeline requirements for this step: {{requirements.character_design}}
+          Pipeline requirements for this step: {{character_design_requirements}}
 
           Storyboard (contains character list):
           {{storyboard}}
@@ -197,7 +216,7 @@ stages:
         prompt: |
           You are generating panel art for a comic strip.
 
-          Pipeline requirements for this step: {{requirements.generate_panels}}
+          Pipeline requirements for this step: {{panel_generation_requirements}}
 
           Style Guide:
           {{style_guide}}
@@ -230,7 +249,7 @@ stages:
         prompt: |
           You are generating cover art for a comic strip.
 
-          Pipeline requirements for this step: {{requirements.generate_cover}}
+          Pipeline requirements for this step: {{cover_generation_requirements}}
 
           Style Guide:
           {{style_guide}}

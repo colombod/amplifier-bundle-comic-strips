@@ -110,8 +110,16 @@ stages:
           Style Guide:
           {{style_guide}}
 
-          CRITICAL: Start by selecting characters from the session transcript.
-          Analyze the research data for agent activity -- tool calls, delegations, key moments.
+          IMPORTANT: You are a TWO-PHASE agent.
+
+          **Phase 1 — Delegate Narrative Creation:**
+          First, delegate to stories:content-strategist with the research data to select
+          the best narrative arc (problem/solution/impact, journey/discovery, etc.).
+          Then delegate to stories:case-study-writer with the arc and research data to
+          generate Challenge → Approach → Results narrative prose.
+
+          **Phase 2 — Translate to Comic:**
+          Take the narrative prose from Phase 1 and translate it into comic panels.
           Select 3-4 main characters (most active agents) + 1-2 supporting (one key moment).
           Do NOT create more than 6 characters total. Do NOT include every agent mentioned.
 

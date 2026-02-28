@@ -254,3 +254,19 @@ def test_composition_depends_on_both_parallel_steps():
     depends = step.get("depends_on", [])
     assert "generate-panels" in depends, "composition must depend on generate-panels"
     assert "generate-cover" in depends, "composition must depend on generate-cover"
+
+
+# ============================================
+# AC7: Storyboard step prompt references stories delegation
+# ============================================
+
+
+def test_storyboard_step_mentions_delegation():
+    """Storyboard step prompt should reference stories bundle delegation."""
+    recipe = _load_recipe()
+    step = _find_step(recipe, "storyboard")
+    assert step is not None, "storyboard step not found"
+    prompt = step.get("prompt", "")
+    assert "stories:content-strategist" in prompt or "delegate" in prompt.lower(), (
+        "Storyboard step prompt should reference delegation to stories agents"
+    )

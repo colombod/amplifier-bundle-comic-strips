@@ -11,8 +11,8 @@ Validates the acceptance criteria for the comic generation deliverable:
   AC9: Storyboard shows evidence of stories delegation (narrative arc + prose).
 
 These tests validate the OUTPUT ARTIFACT, not the generation process itself.
-The generation runs in a container via the session-to-comic recipe; these tests
-validate what it produced.
+The generation runs in a shadow environment via the session-to-comic recipe;
+these tests validate what it produced.
 
 When the example file is absent, output-validation tests are skipped so the
 test suite remains green while documenting what still needs to be done.
@@ -90,22 +90,23 @@ _EXT_CSS_PATTERN = re.compile(
 _BASE64_IMG_PATTERN = re.compile(r"data:image/(png|jpeg|jpg|webp);base64,")
 
 
+@pytest.fixture(scope="session")
+def html_content():
+    """Read the example HTML once for the entire test session.
+
+    The generated example can be ~18MB; reading it once avoids redundant I/O
+    across the many tests that inspect its content.
+
+    Uses errors="replace" deliberately: these tests validate structural
+    properties (tags, patterns, URIs) not content fidelity, so tolerating
+    the occasional replacement character is preferable to a hard failure
+    on encoding edge-cases in base64 image blocks.
+    """
+    return NEW_EXAMPLE.read_text(errors="replace")
+
+
 class TestSelfContainedHTML:
     """AC3: Output must be self-contained HTML with base64-embedded images."""
-
-    @pytest.fixture(scope="class")
-    def html_content(self):
-        """Read the example HTML once for all tests in this class.
-
-        The generated example can be ~18MB; reading it once avoids ~72MB of
-        redundant I/O across the four tests that inspect its content.
-
-        Uses errors="replace" deliberately: these tests validate structural
-        properties (tags, patterns, URIs) not content fidelity, so tolerating
-        the occasional replacement character is preferable to a hard failure
-        on encoding edge-cases in base64 image blocks.
-        """
-        return NEW_EXAMPLE.read_text(errors="replace")
 
     @requires_generated_example
     def test_is_valid_html(self, html_content):
@@ -150,11 +151,6 @@ class TestStoriesDelegationEvidence:
     prose-quality captions (from case-study-writer), not just raw data dumps.
     """
 
-    @pytest.fixture(scope="class")
-    def html_content(self):
-        """Read the example HTML once for all tests in this class."""
-        return NEW_EXAMPLE.read_text(errors="replace")
-
     @requires_generated_example
     def test_has_multiple_panels(self, html_content):
         """A stories-driven comic has multiple panels forming a narrative."""
@@ -180,6 +176,14 @@ class TestStoriesDelegationEvidence:
     @requires_generated_example
     def test_has_cover_section(self, html_content):
         """A stories-driven comic should have a cover (title page)."""
-        assert "cover" in html_content.lower(), (
-            "Expected a cover section indicating narrative framing"
+        # Use a targeted pattern to avoid false positives from words like
+        # "discover", "coverage", or "recover".
+        has_cover = bool(
+            re.search(r'class="[^"]*cover[^"]*"', html_content, re.IGNORECASE)
+            or re.search(r'id="[^"]*cover[^"]*"', html_content, re.IGNORECASE)
+            or re.search(r"<[^>]*cover[_-]", html_content, re.IGNORECASE)
+        )
+        assert has_cover, (
+            "Expected a cover section (CSS class, id, or element with 'cover') "
+            "indicating narrative framing"
         )

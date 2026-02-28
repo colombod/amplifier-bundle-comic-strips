@@ -9,8 +9,11 @@ to request inline image data from Gemini's multimodal models.
 from __future__ import annotations
 
 import base64
+import logging
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiImageBackend:
@@ -192,5 +195,6 @@ class GeminiImageBackend:
                     # Handle base64-encoded string case
                     if isinstance(data, str):
                         return base64.b64decode(data)
+                    logger.warning("Unexpected inline_data.data type: %s", type(data))
                     raise TypeError(f"Unexpected inline_data.data type: {type(data)}")
         return None

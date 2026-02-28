@@ -82,6 +82,7 @@ class TestNewExampleSize:
         )
 
 
+# --- Self-containment patterns ---
 _IMG_SRC_PATTERN = re.compile(r"""<img[^>]+src=["']([^"']+)["']""", re.IGNORECASE)
 _EXT_CSS_PATTERN = re.compile(
     r"""<link[^>]+rel=["']stylesheet["'][^>]+href=["'](?!data:)([^"']+)""",
@@ -102,6 +103,8 @@ def html_content():
     the occasional replacement character is preferable to a hard failure
     on encoding edge-cases in base64 image blocks.
     """
+    if not NEW_EXAMPLE.exists():
+        pytest.skip(f"Example file not found: {NEW_EXAMPLE.name}")
     return NEW_EXAMPLE.read_text(errors="replace")
 
 
@@ -138,6 +141,7 @@ class TestSelfContainedHTML:
         )
 
 
+# --- Narrative structure patterns ---
 _PANEL_PATTERN = re.compile(r'<div class="comic-panel[^"]*"', re.IGNORECASE)
 _CAPTION_PATTERN = re.compile(
     r'<div class="caption">(.*?)</div>', re.IGNORECASE | re.DOTALL
@@ -177,11 +181,14 @@ class TestStoriesDelegationEvidence:
     def test_has_cover_section(self, html_content):
         """A stories-driven comic should have a cover (title page)."""
         # Use a targeted pattern to avoid false positives from words like
-        # "discover", "coverage", or "recover".
+        # "discover", "coverage", or "recover".  The third branch matches
+        # class/id *values* starting with "cover" (e.g. class="cover-page")
+        # rather than bare substring-in-attribute which could match values
+        # like data-state="uncover-...".
         has_cover = bool(
             re.search(r'class="[^"]*cover[^"]*"', html_content, re.IGNORECASE)
             or re.search(r'id="[^"]*cover[^"]*"', html_content, re.IGNORECASE)
-            or re.search(r"<[^>]*cover[_-]", html_content, re.IGNORECASE)
+            or re.search(r'(?:class|id)="cover[_-]', html_content, re.IGNORECASE)
         )
         assert has_cover, (
             "Expected a cover section (CSS class, id, or element with 'cover') "

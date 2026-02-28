@@ -33,8 +33,6 @@ provider_preferences:
   - provider: github-copilot
     model: gpt-5.[0-9]
 
-tools:
-  - read_file
 ---
 
 # Style Curator

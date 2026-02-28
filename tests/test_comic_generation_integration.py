@@ -86,6 +86,7 @@ _EXT_CSS_PATTERN = re.compile(
     r"""<link[^>]+rel=["']stylesheet["'][^>]+href=["'](?!data:)([^"']+)""",
     re.IGNORECASE,
 )
+_BASE64_IMG_PATTERN = re.compile(r"data:image/(png|jpeg|jpg|webp);base64,")
 
 
 class TestSelfContainedHTML:
@@ -97,6 +98,11 @@ class TestSelfContainedHTML:
 
         The generated example can be ~18MB; reading it once avoids ~72MB of
         redundant I/O across the four tests that inspect its content.
+
+        Uses errors="replace" deliberately: these tests validate structural
+        properties (tags, patterns, URIs) not content fidelity, so tolerating
+        the occasional replacement character is preferable to a hard failure
+        on encoding edge-cases in base64 image blocks.
         """
         return NEW_EXAMPLE.read_text(errors="replace")
 
@@ -109,9 +115,7 @@ class TestSelfContainedHTML:
 
     @requires_generated_example
     def test_contains_base64_images(self, html_content):
-        # Base64 images use data:image/ URIs
-        base64_pattern = re.compile(r"data:image/(png|jpeg|jpg|webp);base64,")
-        matches = base64_pattern.findall(html_content)
+        matches = _BASE64_IMG_PATTERN.findall(html_content)
         assert len(matches) >= 1, "HTML must contain at least 1 base64-embedded image"
 
     @requires_generated_example

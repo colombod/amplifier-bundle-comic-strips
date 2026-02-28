@@ -73,6 +73,11 @@ def _get_step_requirements(recipe: dict, step_id: str) -> dict | None:
     1. Top-level context.requirements dict keyed by step name (snake_case of step id)
     2. Direct requirements field on the step
     3. Step-level context.requirements
+
+    This multi-location search is intentional: the recipe format allows authors
+    to place requirements at any of these levels for flexibility.  If a test
+    fails to find requirements after a recipe restructure, check which of the
+    three locations the recipe is actually using.
     """
     # Derive the snake_case key from step id (e.g. "character-design" -> "character_design")
     key = step_id.replace("-", "_")

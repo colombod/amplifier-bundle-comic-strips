@@ -117,7 +117,9 @@ class TestStylePackValues:
     @pytest.mark.parametrize(
         ("filename", "field", "expected_value"),
         _VALUE_TEST_CASES,
-        ids=[f"{f}-{k}" for f, fields in EXPECTED.items() for k in fields],
+        ids=[
+            f"{f}-{k}={v}" for f, fields in EXPECTED.items() for k, v in fields.items()
+        ],
     )
     def test_field_value(self, filename: str, field: str, expected_value: str):
         content = _read_style(filename)

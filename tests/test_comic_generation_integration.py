@@ -37,7 +37,7 @@ _generation_deferred = not NEW_EXAMPLE.exists()
 requires_generated_example = pytest.mark.skipif(
     _generation_deferred,
     reason=(
-        "Comic generation deferred — requires API keys and a properly "
+        "Comic generation deferred \u2014 requires API keys and a properly "
         "configured environment.  Run session-to-comic recipe manually to "
         "produce examples/comic-strips-v4-example.html, then re-run tests."
     ),
@@ -81,46 +81,52 @@ class TestNewExampleSize:
         )
 
 
+_IMG_SRC_PATTERN = re.compile(r"""<img[^>]+src=["']([^"']+)["']""", re.IGNORECASE)
+_EXT_CSS_PATTERN = re.compile(
+    r"""<link[^>]+rel=["']stylesheet["'][^>]+href=["'](?!data:)([^"']+)""",
+    re.IGNORECASE,
+)
+
+
 class TestSelfContainedHTML:
     """AC3: Output must be self-contained HTML with base64-embedded images."""
 
-    @requires_generated_example
-    def test_is_valid_html(self):
-        content = NEW_EXAMPLE.read_text(errors="replace")
-        assert "<html" in content.lower(), "File must contain <html> tag"
-        assert "</html>" in content.lower(), "File must contain closing </html> tag"
+    @pytest.fixture(scope="class")
+    def html_content(self):
+        """Read the example HTML once for all tests in this class.
+
+        The generated example can be ~18MB; reading it once avoids ~72MB of
+        redundant I/O across the four tests that inspect its content.
+        """
+        return NEW_EXAMPLE.read_text(errors="replace")
 
     @requires_generated_example
-    def test_contains_base64_images(self):
-        content = NEW_EXAMPLE.read_text(errors="replace")
+    def test_is_valid_html(self, html_content):
+        assert "<html" in html_content.lower(), "File must contain <html> tag"
+        assert "</html>" in html_content.lower(), (
+            "File must contain closing </html> tag"
+        )
+
+    @requires_generated_example
+    def test_contains_base64_images(self, html_content):
         # Base64 images use data:image/ URIs
         base64_pattern = re.compile(r"data:image/(png|jpeg|jpg|webp);base64,")
-        matches = base64_pattern.findall(content)
+        matches = base64_pattern.findall(html_content)
         assert len(matches) >= 1, "HTML must contain at least 1 base64-embedded image"
 
     @requires_generated_example
-    def test_no_external_image_references(self):
+    def test_no_external_image_references(self, html_content):
         """Self-contained means no external img src references (except data: URIs)."""
-        content = NEW_EXAMPLE.read_text(errors="replace")
-        # Find all img src attributes
-        img_srcs = re.findall(
-            r'<img[^>]+src=["\']([^"\']+)["\']', content, re.IGNORECASE
-        )
+        img_srcs = _IMG_SRC_PATTERN.findall(html_content)
         for src in img_srcs:
             assert src.startswith("data:") or src.startswith("#"), (
                 f"Found external image reference (not self-contained): {src[:100]}"
             )
 
     @requires_generated_example
-    def test_no_external_stylesheet_references(self):
+    def test_no_external_stylesheet_references(self, html_content):
         """Self-contained means styles are inline, not external links."""
-        content = NEW_EXAMPLE.read_text(errors="replace")
-        # External stylesheets use <link rel="stylesheet" href="...">
-        ext_css = re.findall(
-            r'<link[^>]+rel=["\']stylesheet["\'][^>]+href=["\'](?!data:)([^"\']+)',
-            content,
-            re.IGNORECASE,
-        )
+        ext_css = _EXT_CSS_PATTERN.findall(html_content)
         assert len(ext_css) == 0, (
             f"Found external stylesheet references (not self-contained): {ext_css}"
         )

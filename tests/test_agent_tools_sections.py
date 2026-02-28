@@ -21,7 +21,7 @@ def _read_frontmatter(agent_name: str) -> str:
     content = file_path.read_text()
     assert content.startswith("---"), f"{agent_name}.md does not start with ---"
     try:
-        end = content.index("---", 3)
+        end = content.index("---", 3)  # skip past opening "---"
     except ValueError:
         raise ValueError(f"{agent_name}.md has no closing --- delimiter") from None
     return content[3:end]

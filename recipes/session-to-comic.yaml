@@ -163,7 +163,7 @@ stages:
           Break the story into 4-8 panels following the style guide's conventions.
           Output the complete panel sequence as structured JSON.
         output: "storyboard"
-        timeout: 600
+        timeout: 1200
 
     # ------------------------------------------------------------------
     # APPROVAL GATE: Storyboard Review

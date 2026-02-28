@@ -13,13 +13,10 @@ These tests validate the OUTPUT ARTIFACT, not the generation process itself.
 The generation runs in a container via the session-to-comic recipe; these tests
 validate what it produced.
 
-Generation deferral note:
-  The session-to-comic recipe requires the full Amplifier runtime (CLI + recipe
-  engine) and has a mandatory human approval gate between the storyboard and art
-  generation stages.  Fully automated generation is not possible without these.
-  When generation is deferred, output-validation tests are skipped with a clear
-  message so the test suite remains green while documenting what still needs to
-  be done.
+When the example file is absent, output-validation tests are skipped so the
+test suite remains green while documenting what still needs to be done.
+To regenerate: run the session-to-comic recipe with API keys configured and
+save the output as examples/comic-strips-v4-example.html.
 """
 
 import re
@@ -40,9 +37,9 @@ _generation_deferred = not NEW_EXAMPLE.exists()
 requires_generated_example = pytest.mark.skipif(
     _generation_deferred,
     reason=(
-        "Comic generation deferred — requires Amplifier runtime + human "
-        "approval gate.  Run session-to-comic recipe manually to produce "
-        "examples/comic-strips-v4-example.html, then re-run these tests."
+        "Comic generation deferred — requires API keys and a properly "
+        "configured environment.  Run session-to-comic recipe manually to "
+        "produce examples/comic-strips-v4-example.html, then re-run tests."
     ),
 )
 

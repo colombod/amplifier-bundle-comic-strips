@@ -111,9 +111,14 @@ class OpenAIImageBackend:
             "model": model,
             "prompt": prompt,
             "size": pixel_size,
-            "response_format": "b64_json",
             "quality": "high",
         }
+        # gpt-image-1 always returns base64; uses output_format not response_format
+        if model in _EDIT_CAPABLE_MODELS:
+            kwargs["output_format"] = "png"
+        else:
+            # DALL-E 3/2 use response_format
+            kwargs["response_format"] = "b64_json"
         if style is not None and model == "dall-e-3":
             kwargs["style"] = style
         return await self.client.images.generate(**kwargs)
@@ -128,11 +133,14 @@ class OpenAIImageBackend:
     ) -> Any:
         """Call ``client.images.edit`` with reference image file bytes."""
         image_bytes_list = [Path(p).read_bytes() for p in reference_images]
-        return await self.client.images.edit(
-            model=model,
-            prompt=prompt,
-            image=image_bytes_list,
-            size=pixel_size,
-            response_format="b64_json",
-            quality="high",
-        )
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "prompt": prompt,
+            "image": image_bytes_list,
+            "size": pixel_size,
+            "quality": "high",
+        }
+        # gpt-image-1 always returns base64; doesn't accept response_format
+        if model not in _EDIT_CAPABLE_MODELS:
+            kwargs["response_format"] = "b64_json"
+        return await self.client.images.edit(**kwargs)

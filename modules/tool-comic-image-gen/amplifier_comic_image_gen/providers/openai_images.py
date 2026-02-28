@@ -60,11 +60,12 @@ class OpenAIImageBackend:
             use_edit = bool(reference_images) and model in _EDIT_CAPABLE_MODELS
 
             if use_edit:
+                assert reference_images is not None
                 response = await self._call_edit(
                     model=model,
                     prompt=prompt,
                     pixel_size=pixel_size,
-                    reference_images=reference_images,  # type: ignore[arg-type]
+                    reference_images=reference_images,
                 )
             else:
                 response = await self._call_generate(

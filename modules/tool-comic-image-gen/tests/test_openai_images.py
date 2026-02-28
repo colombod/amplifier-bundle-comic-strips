@@ -1,4 +1,4 @@
-"""Tests for the OpenAI image generation backend — aspect ratio support."""
+"""Tests for the OpenAI image generation backend."""
 
 from __future__ import annotations
 

@@ -180,15 +180,11 @@ class TestStoriesDelegationEvidence:
     @requires_generated_example
     def test_has_cover_section(self, html_content):
         """A stories-driven comic should have a cover (title page)."""
-        # Use a targeted pattern to avoid false positives from words like
-        # "discover", "coverage", or "recover".  The third branch matches
-        # class/id *values* starting with "cover" (e.g. class="cover-page")
-        # rather than bare substring-in-attribute which could match values
-        # like data-state="uncover-...".
+        # Match class or id attributes whose value contains "cover",
+        # e.g. class="cover-page" or id="comic-cover".
         has_cover = bool(
             re.search(r'class="[^"]*cover[^"]*"', html_content, re.IGNORECASE)
             or re.search(r'id="[^"]*cover[^"]*"', html_content, re.IGNORECASE)
-            or re.search(r'(?:class|id)="cover[_-]', html_content, re.IGNORECASE)
         )
         assert has_cover, (
             "Expected a cover section (CSS class, id, or element with 'cover') "

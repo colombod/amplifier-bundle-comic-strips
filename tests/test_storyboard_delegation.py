@@ -12,6 +12,8 @@ Validates that the storyboard-writer agent instructions include:
 
 from pathlib import Path
 
+import yaml
+
 AGENT_PATH = Path(__file__).parent.parent / "agents" / "storyboard-writer.md"
 
 
@@ -135,4 +137,34 @@ class TestPreservedRules:
         body = _read_agent_body()
         assert "page_break_after" in body or "page break" in body.lower(), (
             "Agent body must preserve page break rules"
+        )
+
+
+class TestFrontmatterDescription:
+    """Frontmatter description reflects the two-phase delegation architecture."""
+
+    def test_description_mentions_delegation(self):
+        """Description references delegation to stories bundle."""
+        content = AGENT_PATH.read_text()
+        first = content.index("---")
+        second = content.index("---", first + 3)
+        frontmatter = yaml.safe_load(content[first + 3 : second])
+        desc = frontmatter["meta"]["description"]
+        assert "stories" in desc.lower() or "delegate" in desc.lower(), (
+            "meta.description should mention stories delegation or delegate"
+        )
+
+    def test_description_mentions_two_phases(self):
+        """Description references the two-phase process."""
+        content = AGENT_PATH.read_text()
+        first = content.index("---")
+        second = content.index("---", first + 3)
+        frontmatter = yaml.safe_load(content[first + 3 : second])
+        desc = frontmatter["meta"]["description"].lower()
+        assert (
+            "phase" in desc
+            or "two-phase" in desc
+            or ("narrative" in desc and "panel" in desc)
+        ), (
+            "meta.description should mention the two-phase process or both narrative + panel aspects"
         )

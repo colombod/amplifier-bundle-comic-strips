@@ -2,21 +2,23 @@
 meta:
   name: storyboard-writer
   description: >
-    MUST be used to transform research data into a panel-by-panel storyboard
-    BEFORE panel generation or character design can begin. Requires a style
-    guide from style-curator and structured research JSON as inputs. Produces
-    the complete panel sequence with scene descriptions, dialogue, captions,
-    camera angles, page breaks, and a curated character list (max 4 main + 2
-    supporting). Uses comic-storytelling and comic-panel-composition skills
-    for narrative pacing and layout decisions.
+    Two-phase storyboard agent. Phase 1: delegates narrative arc selection to
+    stories:content-strategist and prose generation to stories:case-study-writer.
+    Phase 2: translates the narrative into a panel-by-panel comic storyboard
+    with scene descriptions, dialogue, captions, camera angles, page breaks,
+    and a curated character list (max 4 main + 2 supporting). Uses
+    comic-storytelling and comic-panel-composition skills for visual pacing.
+    Requires a style guide from style-curator and structured research JSON
+    from stories:story-researcher as inputs.
 
     <example>
     Context: Style guide is ready, research data available
     user: 'The style guide is done, now create the storyboard'
-    assistant: 'I'll delegate to comic-strips:storyboard-writer with the style guide and research data to produce the panel-by-panel storyboard.'
+    assistant: 'I'll delegate to comic-strips:storyboard-writer. It will first consult stories:content-strategist for the narrative arc and stories:case-study-writer for the prose, then translate that into a panel-by-panel storyboard.'
     <commentary>
-    storyboard-writer runs AFTER style-curator and BEFORE character-designer or panel-artist.
-    Its output (storyboard JSON with character list) is required by all downstream agents.
+    storyboard-writer runs AFTER style-curator and stories:story-researcher.
+    It delegates internally to stories agents for narrative creation before
+    doing its own comic-specific panel translation work.
     </commentary>
     </example>
 

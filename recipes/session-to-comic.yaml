@@ -1,12 +1,22 @@
 name: "session-to-comic"
 description: "Transform an Amplifier session into an illustrated comic strip with quality review, character consistency, dramatized storytelling, and AmpliVerse publisher branding"
-version: "5.0.2"
+version: "5.0.3"
 author: "amplifier-comic-strips"
 tags: ["comic", "visual-storytelling", "session-analysis", "image-generation"]
 
 # =============================================================================
 # CHANGELOG
 # =============================================================================
+#
+# v5.0.3 (2026-03-01):
+#   - BUGFIX: Remove unsupported Jinja2 filter `| length` from approval gate prompt.
+#     ROOT CAUSE: substitute_variables() does not support Jinja2 filter syntax;
+#     `{{storyboard.character_list | length}}` was rendered as literal text instead
+#     of being substituted. Replaced with plain "Characters:" heading — the list
+#     itself follows on the next line so reviewers see the count implicitly.
+#   - IMPROVEMENT: Move parallel:/max_iterations: to after agent: in both foreach
+#     steps (design-characters, generate-panels). Field order now reads naturally
+#     as: what to loop → what agent → how to execute.
 #
 # v5.0.2 (2026-03-01):
 #   - FIX: Add parse_json: true to design-characters and generate-panels collect
@@ -218,7 +228,7 @@ stages:
         Subtitle: {{storyboard.subtitle}}
         Panel count: {{storyboard.panel_count}}
 
-        Characters ({{storyboard.character_list | length}} total):
+        Characters:
         {{storyboard.character_list}}
 
         Panels overview:
@@ -242,9 +252,9 @@ stages:
       - id: "design-characters"
         foreach: "{{storyboard.character_list}}"
         as: character_item
+        agent: "comic-strips:character-designer"
         parallel: 2
         max_iterations: 6
-        agent: "comic-strips:character-designer"
         prompt: |
           Create a character reference sheet for this single character.
 
@@ -270,10 +280,10 @@ stages:
       - id: "generate-panels"
         foreach: "{{storyboard.panel_list}}"
         as: panel_item
+        depends_on: ["design-characters"]
+        agent: "comic-strips:panel-artist"
         parallel: 2
         max_iterations: 12
-        agent: "comic-strips:panel-artist"
-        depends_on: ["design-characters"]
         prompt: |
           Generate the artwork for a single comic panel.
 

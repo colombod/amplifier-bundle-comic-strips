@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import openai
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -425,3 +426,32 @@ async def test_openai_fails_after_max_retries(tmp_path: Path) -> None:
     delay_1 = mock_sleep.call_args_list[1].args[0]
     assert 1.0 <= delay_0 < 2.0, f"attempt 0 delay {delay_0!r} not in [1.0, 2.0)"
     assert 2.0 <= delay_1 < 3.0, f"attempt 1 delay {delay_1!r} not in [2.0, 3.0)"
+
+
+# --- Task A3: asyncio.to_thread for reference image reads ---
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_edit_reads_reference_images_via_to_thread(tmp_path: Path) -> None:
+    """asyncio.to_thread is used for non-blocking file reads in _call_edit."""
+    ref_image = tmp_path / "ref.png"
+    ref_image.write_bytes(TINY_PNG_BYTES)
+
+    provider = make_openai_provider()
+    backend = OpenAIImageBackend(provider)
+
+    output_path = tmp_path / "panel_thread.png"
+    with patch(
+        "amplifier_module_comic_image_gen.providers.openai_images.asyncio.to_thread",
+        wraps=asyncio.to_thread,
+    ) as mock_to_thread:
+        result = await backend.generate(
+            prompt="A hero in consistent style",
+            output_path=output_path,
+            reference_images=[str(ref_image)],
+            model="gpt-image-1",
+        )
+
+    assert result["success"] is True
+    assert mock_to_thread.called is True
+    assert callable(mock_to_thread.call_args_list[0].args[0])

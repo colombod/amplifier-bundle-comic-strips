@@ -372,3 +372,31 @@ async def test_gemini_fails_after_max_retries(tmp_path: Path) -> None:
     assert mock_sleep.call_count == 2, (
         f"Expected sleep called twice (after attempt 1 and 2), got {mock_sleep.call_count}"
     )
+
+
+# --- Task A3: asyncio.to_thread for reference image reads ---
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_gemini_reads_reference_images_via_to_thread(tmp_path: Path) -> None:
+    """asyncio.to_thread is used for non-blocking file reads in _build_content_config."""
+    ref_image = tmp_path / "ref.png"
+    ref_image.write_bytes(TINY_PNG_BYTES)
+
+    provider = make_gemini_provider()
+    backend = GeminiImageBackend(provider)
+
+    output_path = tmp_path / "panel_thread.png"
+    with patch(
+        "amplifier_module_comic_image_gen.providers.gemini_images.asyncio.to_thread",
+        wraps=asyncio.to_thread,
+    ) as mock_to_thread:
+        result = await backend.generate(
+            prompt="A warrior in consistent style",
+            output_path=output_path,
+            reference_images=[str(ref_image)],
+        )
+
+    assert result["success"] is True
+    assert mock_to_thread.called is True
+    assert callable(mock_to_thread.call_args_list[0].args[0])

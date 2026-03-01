@@ -36,11 +36,6 @@ provider_preferences:
   - provider: github-copilot
     model: gpt-5.[0-9]
 
-tools:
-  - load_skill
-  - read_file
-  - delegate
-
 ---
 
 # Storyboard Writer — Two-Phase Delegation Architecture

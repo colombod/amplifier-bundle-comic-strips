@@ -34,13 +34,6 @@ provider_preferences:
   - provider: github-copilot
     model: claude-sonnet-*
 
-tools:
-  - generate_image
-  - load_skill
-  - read_file
-  - web_fetch
-  - bash
-
 ---
 
 # Cover Artist

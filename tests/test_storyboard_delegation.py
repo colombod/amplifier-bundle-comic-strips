@@ -26,6 +26,18 @@ def _read_agent_body() -> str:
     return content[second_delim + 3 :]
 
 
+def _output_format_section() -> str:
+    """Extract the Output Format section (bounded to the next ## heading)."""
+    body = AGENT_PATH.read_text()
+    marker = "## Output Format"
+    assert marker in body, f"Section '{marker}' not found in storyboard-writer.md"
+    start = body.index(marker)
+    next_section = body.find("\n## ", start + len(marker))
+    if next_section == -1:
+        return body[start:]
+    return body[start:next_section]
+
+
 class TestPhase1NarrativeDelegation:
     """Phase 1: Storyboard-writer delegates narrative creation to stories agents."""
 
@@ -173,21 +185,9 @@ class TestFrontmatterDescription:
 class TestForeachOutputContract:
     """The storyboard-writer must emit character_list and panel_list arrays for recipe foreach loops."""
 
-    def _output_format_section(self) -> str:
-        """Extract the Output Format section from the agent body (up to the next ## heading)."""
-        body = AGENT_PATH.read_text()
-        marker = "## Output Format"
-        assert marker in body, f"Section '{marker}' not found in storyboard-writer.md"
-        start = body.index(marker)
-        # Find the next ## section heading after the marker to bound the section
-        next_section = body.find("\n## ", start + len(marker))
-        if next_section == -1:
-            return body[start:]
-        return body[start:next_section]
-
     def test_storyboard_writer_documents_both_output_arrays(self) -> None:
         """Output Format section must document both character_list and panel_list as top-level keys."""
-        section = self._output_format_section()
+        section = _output_format_section()
         assert "character_list" in section, (
             "Missing character_list in Output Format section"
         )
@@ -195,15 +195,20 @@ class TestForeachOutputContract:
 
     def test_character_list_entry_has_required_fields(self) -> None:
         """character_list entry schema in Output Format documents all required fields."""
-        section = self._output_format_section()
+        section = _output_format_section()
         for field in ["name", "role", "type", "bundle", "description"]:
             assert f'"{field}"' in section, (
                 f"character_list missing required field: {field}"
             )
 
     def test_panel_list_entry_has_required_fields(self) -> None:
-        """panel_list entry schema in Output Format documents all required fields."""
-        section = self._output_format_section()
+        """panel_list entry schema must document all required fields.
+
+        'characters_present' is especially critical: panel-artist uses it to
+        look up reference images from character_sheet; any name mismatch
+        causes a lookup failure at runtime.
+        """
+        section = _output_format_section()
         for field in [
             "index",
             "size",
@@ -217,16 +222,9 @@ class TestForeachOutputContract:
                 f"panel_list missing required field: {field}"
             )
 
-    def test_panel_list_entry_has_characters_present_field(self) -> None:
-        """panel_list entries must include characters_present for reference image lookup."""
-        section = self._output_format_section()
-        assert '"characters_present"' in section, (
-            "panel_list missing characters_present field — required for reference image lookup"
-        )
-
     def test_panel_list_uses_index_not_number(self) -> None:
         """Panel entries must use 'index' (not 'number') consistently."""
-        section = self._output_format_section()
+        section = _output_format_section()
         assert '"index"' in section, (
             "Panel entries must use 'index' as the panel number key"
         )

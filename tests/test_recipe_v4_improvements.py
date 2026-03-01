@@ -1,7 +1,8 @@
-"""Tests for Task 4.1: Recipe improvements for session-to-comic v4.
+"""Tests for recipe improvements for session-to-comic.
+Updated for v5: foreach loop structure validation added.
 
-Acceptance criteria:
-  AC1: Recipe version is in the 4.0.x series
+Acceptance criteria verified:
+  AC1: Recipe version is 5.0.0 or later
   AC2: generate-panels and generate-cover run in parallel
   AC3: Storyboard approval gate exists between storyboard and character-design
   AC4: Model requirements present in character-design, generate-panels, generate-cover
@@ -131,7 +132,7 @@ def _get_step_requirements(recipe: dict, step_id: str) -> dict | None:
 
 
 # ============================================
-# AC1: Recipe version is 4.0.0
+# AC1: Recipe version is 5.0.0 or later
 # ============================================
 
 
@@ -140,9 +141,7 @@ def test_version_is_5_or_later():
     recipe = _load_recipe()
     parts = recipe["version"].split(".")
     major = int(parts[0])
-    assert major >= 5, (
-        f"Expected major version >= 5, got {recipe['version']}"
-    )
+    assert major >= 5, f"Expected major version >= 5, got {recipe['version']}"
 
 
 # ============================================
@@ -371,17 +370,14 @@ class TestRecipeV5ForeachStructure:
         recipe = _load_recipe()
         parts = recipe["version"].split(".")
         major = int(parts[0])
-        assert major >= 5, (
-            f"Expected major version >= 5, got {recipe['version']}"
-        )
+        assert major >= 5, f"Expected major version >= 5, got {recipe['version']}"
 
     def test_character_foreach_exists(self):
         """A foreach step with 'character' in the foreach value must exist."""
         recipe = _load_recipe()
         all_steps = _get_all_steps(recipe)
         character_foreach = [
-            step for step in all_steps
-            if "character" in step.get("foreach", "")
+            step for step in all_steps if "character" in step.get("foreach", "")
         ]
         assert len(character_foreach) > 0, (
             "No foreach step with 'character' in foreach value found in recipe"
@@ -392,8 +388,7 @@ class TestRecipeV5ForeachStructure:
         recipe = _load_recipe()
         all_steps = _get_all_steps(recipe)
         panel_foreach = [
-            step for step in all_steps
-            if "panel" in step.get("foreach", "")
+            step for step in all_steps if "panel" in step.get("foreach", "")
         ]
         assert len(panel_foreach) > 0, (
             "No foreach step with 'panel' in foreach value found in recipe"
@@ -404,8 +399,7 @@ class TestRecipeV5ForeachStructure:
         recipe = _load_recipe()
         all_steps = _get_all_steps(recipe)
         character_foreach_steps = [
-            step for step in all_steps
-            if "character" in step.get("foreach", "")
+            step for step in all_steps if "character" in step.get("foreach", "")
         ]
         assert len(character_foreach_steps) > 0, "No character foreach step found"
         step = character_foreach_steps[0]
@@ -419,8 +413,7 @@ class TestRecipeV5ForeachStructure:
         recipe = _load_recipe()
         all_steps = _get_all_steps(recipe)
         panel_foreach_steps = [
-            step for step in all_steps
-            if "panel" in step.get("foreach", "")
+            step for step in all_steps if "panel" in step.get("foreach", "")
         ]
         assert len(panel_foreach_steps) > 0, "No panel foreach step found"
         step = panel_foreach_steps[0]
@@ -448,6 +441,4 @@ class TestRecipeV5ForeachStructure:
         assert "generate-panels" in depends, (
             "composition must depend on generate-panels"
         )
-        assert "generate-cover" in depends, (
-            "composition must depend on generate-cover"
-        )
+        assert "generate-cover" in depends, "composition must depend on generate-cover"

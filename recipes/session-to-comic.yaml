@@ -1,12 +1,21 @@
 name: "session-to-comic"
 description: "Transform an Amplifier session into an illustrated comic strip with quality review, character consistency, dramatized storytelling, and AmpliVerse publisher branding"
-version: "5.0.1"
+version: "5.0.2"
 author: "amplifier-comic-strips"
 tags: ["comic", "visual-storytelling", "session-analysis", "image-generation"]
 
 # =============================================================================
 # CHANGELOG
 # =============================================================================
+#
+# v5.0.2 (2026-03-01):
+#   - FIX: Add parse_json: true to design-characters and generate-panels collect
+#     steps so character_sheet and panel_results are parsed objects, not raw strings.
+#   - FIX: Replace {{storyboard}} in approval gate with named field references
+#     for human-readable review output.
+#   - FEAT: Add parallel: 2 to both foreach steps for bounded concurrent execution.
+#   - FEAT: Add max_iterations: 6 (characters) and 12 (panels) as hard guards
+#     against runaway loops in the expensive art-generation stage.
 #
 # v5.0.1 (2026-03-01):
 #   - FIX: Add parse_json: true to storyboard step so output is parsed as
@@ -205,8 +214,15 @@ stages:
         Storyboard complete. Please review the character cast and narrative arc
         before approving expensive image generation.
 
-        Storyboard output:
-        {{storyboard}}
+        Title: {{storyboard.title}}
+        Subtitle: {{storyboard.subtitle}}
+        Panel count: {{storyboard.panel_count}}
+
+        Characters ({{storyboard.character_list | length}} total):
+        {{storyboard.character_list}}
+
+        Panels overview:
+        {{storyboard.panel_list}}
 
         Approve to proceed with character design and panel art generation.
         Deny to stop and revise the storyboard.
@@ -226,6 +242,8 @@ stages:
       - id: "design-characters"
         foreach: "{{storyboard.character_list}}"
         as: character_item
+        parallel: 2
+        max_iterations: 6
         agent: "comic-strips:character-designer"
         prompt: |
           Create a character reference sheet for this single character.
@@ -243,6 +261,7 @@ stages:
 
           Output a structured character entry with image path and description for this character.
         collect: "character_sheet"
+        parse_json: true
         timeout: 900
 
       # ============================================
@@ -251,6 +270,8 @@ stages:
       - id: "generate-panels"
         foreach: "{{storyboard.panel_list}}"
         as: panel_item
+        parallel: 2
+        max_iterations: 12
         agent: "comic-strips:panel-artist"
         depends_on: ["design-characters"]
         prompt: |
@@ -273,6 +294,7 @@ stages:
           ALWAYS pass reference_images from the character sheet for consistency.
           If the panel fails review, regenerate with an adjusted prompt (max 3 attempts).
         collect: "panel_results"
+        parse_json: true
         timeout: 1200
 
       # ============================================

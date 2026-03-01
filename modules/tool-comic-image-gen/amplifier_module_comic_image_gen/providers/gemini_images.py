@@ -104,6 +104,16 @@ class GeminiImageBackend:
                     "error": str(exc),
                 }
 
+        assert last_exc is not None, (
+            "exhaustion tail reached without a retryable exception"
+        )
+        logger.warning(
+            "Gemini generation gave up after %d/%d attempts for model %s: %s",
+            _MAX_ATTEMPTS,
+            _MAX_ATTEMPTS,
+            model,
+            last_exc,
+        )
         return {
             "success": False,
             "provider_used": self.provider.name,

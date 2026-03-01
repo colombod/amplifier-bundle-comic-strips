@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -375,6 +376,43 @@ async def test_gemini_fails_after_max_retries(tmp_path: Path) -> None:
     )
     assert mock_sleep.call_count == 2, (
         f"Expected sleep called twice (after attempt 1 and 2), got {mock_sleep.call_count}"
+    )
+
+
+# --- A2+A3 quality fixes: exhaustion log + assert invariant ---
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_gemini_exhaustion_logs_warning_after_max_retries(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """After all retries are consumed a WARNING is logged with 'gave up after'."""
+    provider = make_gemini_provider()
+    provider.client.aio.models.generate_content = AsyncMock(
+        side_effect=google_exceptions.ResourceExhausted("quota exhausted"),
+    )
+
+    backend = GeminiImageBackend(provider)
+    output_path = tmp_path / "exhausted.png"
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        with caplog.at_level(
+            logging.WARNING,
+            logger="amplifier_module_comic_image_gen.providers.gemini_images",
+        ):
+            result = await backend.generate(
+                prompt="An image that always fails",
+                output_path=output_path,
+            )
+
+    assert result["success"] is False
+    warning_messages = [
+        r.message for r in caplog.records if r.levelno == logging.WARNING
+    ]
+    exhaustion_warnings = [m for m in warning_messages if "gave up after" in m]
+    assert exhaustion_warnings, (
+        f"Expected a 'gave up after' warning log after retry exhaustion. "
+        f"Captured warnings: {warning_messages}"
     )
 
 

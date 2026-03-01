@@ -20,6 +20,7 @@ meta:
     BEFORE panel-artist and cover-artist (they need reference_image paths for consistency).
     </commentary>
     </example>
+  model_role: [creative, general]
 
 provider_preferences:
   - provider: anthropic

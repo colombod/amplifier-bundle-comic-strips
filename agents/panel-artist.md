@@ -21,6 +21,7 @@ meta:
     Invoking without them produces visually inconsistent panels.
     </commentary>
     </example>
+  model_role: [image-gen, creative, general]
 
 provider_preferences:
   - provider: anthropic

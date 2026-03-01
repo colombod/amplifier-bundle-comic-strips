@@ -117,6 +117,9 @@ class OpenAIImageBackend:
                     "error": None,
                 }
 
+            # NOTE: _NON_RETRYABLE must be caught before _RETRYABLE — AuthenticationError
+            # and PermissionDeniedError are APIStatusError subclasses and would be silently
+            # retried if the order were reversed.
             except _NON_RETRYABLE as exc:
                 logger.exception(
                     "OpenAI image generation failed (non-retryable) for model %s", model

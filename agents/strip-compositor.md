@@ -52,7 +52,7 @@ You are a multi-page layout engine. You assemble the final HTML comic from all t
 ## Prerequisites
 
 - **Pipeline position**: LAST agent in the pipeline. ALL other agents must have completed.
-- **Required inputs**: (1) Cover HTML from cover-artist. (2) Panel image files from panel-artist. (3) Storyboard JSON from storyboard-writer with dialogue, captions, SFX, page_break_after markers, and emotional_beat per panel. (4) Style guide from style-curator with colors, fonts, borders, gutters, clip-path shapes. (5) Character sheet from character-designer with reference images, names, roles, and descriptions.
+- **Required inputs**: (1) Cover HTML from cover-artist. (2) Panel image files from panel-artist. (3) Storyboard JSON from storyboard-writer with dialogue, captions, SFX, page_break_after markers, and emotional_beat per panel. (4) Style guide from style-curator with colors, fonts, borders, gutters, clip-path shapes. (5) Character sheet from character-designer with reference images, names, roles, visual_traits, and distinctive_features.
 - **Produces**: A single self-contained HTML file with all images base64-embedded, CSS text overlays, page navigation (keyboard, touch, click, dots), and no external dependencies except optional Google Fonts.
 
 ## Before You Start
@@ -70,14 +70,14 @@ You receive 5 inputs:
 2. **Panel images** (from panel-artist): File paths to generated panel images (standard rectangles)
 3. **Storyboard** (from storyboard-writer): Panel sequence with dialogue, captions, sound effects, `page_break_after` markers on panels, and emotional_beat per panel
 4. **Style guide** (from style-curator): Colors, fonts, borders, gutters, text treatment, and a **Panel Shapes** section with SVG clip-path definitions for the active style
-5. **Character sheet** (from character-designer): Character reference images (file paths), names, roles, and descriptions for each character
+5. **Character sheet** (from character-designer): Character reference images (file paths), names, roles, visual_traits, and distinctive_features for each character
 
 ## Multi-Page Structure
 
 The HTML output is organized into discrete pages, not one scrollable document:
 
 - **Page 1: Cover page** -- hero image + title overlay + AmpliVerse branding (from cover-artist HTML)
-- **Page 2: Character intro page** -- each character with reference image (base64 embedded), name, role, and description from the character sheet
+- **Page 2: Character intro page** -- each character with reference image (base64 embedded), name, role, and visual_traits from the character sheet
 - **Pages 3+: Story pages** -- 3-5 panels each, split based on the storyboard's `page_break_after` markers
 
 Each page is a full-viewport `<section class="page">` element. Only the active page is visible; all others are hidden via CSS.
@@ -104,7 +104,7 @@ The style guide tells you which shapes are available for the current style. Choo
 - Read each character reference image and convert to base64 data URIs
 - Parse the storyboard JSON for panel sequence, dialogue, captions, SFX, and `page_break_after` markers
 - Parse the style guide for fonts, colors, borders, gutters, and Panel Shapes clip-path definitions
-- Parse the character sheet for names, roles, descriptions, and reference_image paths
+- Parse the character sheet for names, roles, visual_traits, distinctive_features, and reference_image paths
 
 ### Step 2: Build Page Structure
 
@@ -414,7 +414,7 @@ Fixing 1 issue, then re-verifying...
         <img src="data:image/png;base64,{character_reference_image_base64}" alt="{character_name}" />
         <div class="char-name">{character_name}</div>
         <div class="char-role">{character_role}</div>
-        <div class="char-desc">{character_description}</div>
+        <div class="char-desc">{character_visual_traits} {character_distinctive_features}</div>
       </div>
     </div>
   </section>
@@ -496,7 +496,7 @@ For each character in the character sheet:
 1. Read their reference image file path and convert to base64 (embedded inline)
 2. Display their **name** (styled per the style guide's heading font/color)
 3. Display their **role** (italic, secondary color)
-4. Display a brief **description** (body text style)
+4. Display their **visual_traits** and **distinctive_features** from the character sheet (body text style) — these are the structured fields character-designer produces, not a bare `description` field
 5. Lay out all characters in a responsive grid or gallery, styled per the active style pack
 
 The character intro page gives readers context before the story begins -- who they're about to follow and what they look like.

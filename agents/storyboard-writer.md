@@ -160,18 +160,19 @@ Mark `page_break_after: true` on panels where pages should end:
 
 ## Output Format
 
-Your output MUST be a structured panel sequence in this exact format:
+Your output MUST be a single structured JSON block in this exact format. `parse_json: true` on the recipe's storyboard step parses this block — `{{storyboard.panel_list}}` and `{{storyboard.character_list}}` resolve via dot notation from the top-level keys.
 
 ```json
 {
   "title": "Comic strip title",
   "subtitle": "Short tagline",
   "panel_count": 8,
-  "panels": [
+  "panel_list": [
     {
-      "number": 1,
+      "index": 1,
       "size": "wide",
       "scene_description": "A wide establishing shot of a high-tech command center. Multiple holographic displays float in the air showing cascading code. The Explorer stands at the center console, hand on chin, studying the displays. A massive wall of red error symbols looms behind the windows like a storm approaching.",
+      "characters_present": ["The Explorer"],
       "camera_angle": "wide overhead",
       "emotional_beat": "setup - the challenge",
       "dialogue": [
@@ -182,9 +183,10 @@ Your output MUST be a structured panel sequence in this exact format:
       "page_break_after": false
     },
     {
-      "number": 2,
+      "index": 2,
       "size": "standard",
       "scene_description": "Close-up of the Explorer's face illuminated by holographic light, eyes narrowing with determination. Behind them, a shadowy figure emerges from a doorway -- the Bug Hunter arriving.",
+      "characters_present": ["The Explorer", "The Bug Hunter"],
       "camera_angle": "close-up",
       "emotional_beat": "rising tension",
       "dialogue": [
@@ -196,7 +198,7 @@ Your output MUST be a structured panel sequence in this exact format:
       "page_break_after": true
     }
   ],
-  "characters": [
+  "character_list": [
     {
       "name": "The Explorer",
       "role": "protagonist",
@@ -215,108 +217,17 @@ Your output MUST be a structured panel sequence in this exact format:
 }
 ```
 
-## Additional Outputs — Foreach Loop Inputs (Required)
+Use `panel_list` and `character_list` as the only canonical arrays — do NOT also emit `panels` or `characters` keys.
 
-After emitting the main storyboard JSON above, you MUST also emit two additional flat JSON arrays as separate labelled blocks. The recipe engine reads these arrays directly to drive foreach iteration — they must be present and complete.
-
-### Expected Response Shape
-
-Your complete response must contain three labelled JSON blocks in this order:
-
-**Block 1 — Main storyboard JSON** (the complete storyboard as documented in Output Format above)
-
-**Block 2 — character_list**
-
-```json
-character_list:
-[
-  {
-    "name": "The Explorer",
-    "role": "protagonist",
-    "type": "main",
-    "bundle": "foundation",
-    "description": "A seasoned scout in a worn leather jacket..."
-  }
-]
-```
-
-**Block 3 — panel_list**
-
-```json
-panel_list:
-[
-  {
-    "index": 1,
-    "size": "wide",
-    "scene_description": "...",
-    "characters_present": ["The Explorer"],
-    "dialogue": [...],
-    "emotional_beat": "setup",
-    "camera_angle": "wide overhead",
-    "caption": "...",
-    "sound_effects": [],
-    "page_break_after": false
-  }
-]
-```
-
-Each block must be a separate, clearly labelled JSON code fence. The recipe engine parses them by label.
-
-### character_list
-
-Emit a flat JSON array of all characters. Each entry must contain these fields:
-
-```json
-[
-  {
-    "name": "The Explorer",
-    "role": "protagonist",
-    "type": "main",
-    "bundle": "foundation",
-    "description": "A seasoned scout in a worn leather jacket with a compass pendant. Alert eyes constantly scanning the environment. Foundation team blue accent on jacket shoulder."
-  }
-]
-```
-
-### panel_list
-
-Emit a flat JSON array of all panels. Each entry must contain these fields:
-
-```json
-[
-  {
-    "index": 1,
-    "size": "wide",
-    "scene_description": "A wide establishing shot of a high-tech command center. Multiple holographic displays float in the air showing cascading code. The Explorer stands at the center console, hand on chin, studying the displays.",
-    "characters_present": ["The Explorer"],
-    "emotional_beat": "setup - the challenge",
-    "camera_angle": "wide overhead",
-    "dialogue": [
-      {"speaker": "The Explorer", "text": "Something's wrong. The deeper I dig, the more tangled it gets."}
-    ],
-    "caption": "It started with a routine investigation -- but nothing about this session would be routine.",
-    "sound_effects": [],
-    "page_break_after": false
-  }
-]
-```
-
-### Rules for Foreach Output Arrays
-
-- `character_list` must have **exactly the same entries** as the `characters` array in the main storyboard JSON — no additions, no omissions
-- `panel_list` must have **exactly the same entries** as the `panels` array, using `index` instead of `number` as the field name
-- Both arrays must be emitted as **separate labelled blocks**, not merged into the main JSON
-- The recipe engine reads these arrays directly to drive foreach iteration — omitting them will break the pipeline
-
-**Character fields:**
-- `name`: Display name (used in dialogue speaker fields)
+**Character fields (`character_list` entries):**
+- `name`: Display name (used in dialogue speaker fields and in `characters_present`)
 - `role`: Story role (protagonist, specialist, mentor, supporting)
 - `type`: **Required.** `"main"` (3-4 max, appear in most panels) or `"supporting"` (1-2, appear in 1-2 panels)
 - `bundle`: **Required.** The Amplifier bundle the agent belongs to (e.g., "foundation", "stories", "comic-strips")
 - `description`: Visual description for the character-designer — appearance, clothing, team markers, distinguishing features
 
-**Panel list field notes:**
-- `index`: Integer panel number (1-based). Use `index`, not `number` — the recipe engine looks for this key.
+**Panel fields (`panel_list` entries):**
+- `index`: Integer panel number (1-based). Use `index` consistently — do NOT use `number`.
 - `characters_present`: List of character display names **exactly as they appear in `character_list[*].name`**. The recipe engine uses these to locate reference images — any mismatch will cause a lookup failure.
 - `dialogue`: Array of `{speaker, text}` objects. `speaker` must also match a `character_list[*].name` exactly.
 

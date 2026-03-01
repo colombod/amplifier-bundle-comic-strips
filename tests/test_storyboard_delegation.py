@@ -173,34 +173,37 @@ class TestFrontmatterDescription:
 class TestForeachOutputContract:
     """The storyboard-writer must emit character_list and panel_list arrays for recipe foreach loops."""
 
-    def _foreach_section(self) -> str:
-        """Extract only the Additional Outputs section from the agent body."""
+    def _output_format_section(self) -> str:
+        """Extract the Output Format section from the agent body (up to the next ## heading)."""
         body = AGENT_PATH.read_text()
-        marker = "## Additional Outputs"
+        marker = "## Output Format"
         assert marker in body, f"Section '{marker}' not found in storyboard-writer.md"
-        return body[body.index(marker) :]
+        start = body.index(marker)
+        # Find the next ## section heading after the marker to bound the section
+        next_section = body.find("\n## ", start + len(marker))
+        if next_section == -1:
+            return body[start:]
+        return body[start:next_section]
 
     def test_storyboard_writer_documents_both_output_arrays(self) -> None:
-        """Agent body must document both character_list and panel_list output arrays."""
-        section = self._foreach_section()
+        """Output Format section must document both character_list and panel_list as top-level keys."""
+        section = self._output_format_section()
         assert "character_list" in section, (
-            "Missing character_list in Additional Outputs section"
+            "Missing character_list in Output Format section"
         )
-        assert "panel_list" in section, (
-            "Missing panel_list in Additional Outputs section"
-        )
+        assert "panel_list" in section, "Missing panel_list in Output Format section"
 
     def test_character_list_entry_has_required_fields(self) -> None:
-        """character_list entry schema in Additional Outputs documents all required fields."""
-        section = self._foreach_section()
+        """character_list entry schema in Output Format documents all required fields."""
+        section = self._output_format_section()
         for field in ["name", "role", "type", "bundle", "description"]:
             assert f'"{field}"' in section, (
                 f"character_list missing required field: {field}"
             )
 
     def test_panel_list_entry_has_required_fields(self) -> None:
-        """panel_list entry schema in Additional Outputs documents all required fields."""
-        section = self._foreach_section()
+        """panel_list entry schema in Output Format documents all required fields."""
+        section = self._output_format_section()
         for field in [
             "index",
             "size",
@@ -213,3 +216,22 @@ class TestForeachOutputContract:
             assert f'"{field}"' in section, (
                 f"panel_list missing required field: {field}"
             )
+
+    def test_panel_list_entry_has_characters_present_field(self) -> None:
+        """panel_list entries must include characters_present for reference image lookup."""
+        section = self._output_format_section()
+        assert '"characters_present"' in section, (
+            "panel_list missing characters_present field — required for reference image lookup"
+        )
+
+    def test_panel_list_uses_index_not_number(self) -> None:
+        """Panel entries must use 'index' (not 'number') consistently."""
+        section = self._output_format_section()
+        assert '"index"' in section, (
+            "Panel entries must use 'index' as the panel number key"
+        )
+        # 'number' may appear in prose but should NOT appear as a JSON field key
+        # Check the panel JSON example doesn't use "number": as a field
+        assert '"number":' not in section or '"index":' in section, (
+            "Panel entries are using 'number' — must use 'index' consistently"
+        )

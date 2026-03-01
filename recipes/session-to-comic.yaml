@@ -1,12 +1,23 @@
 name: "session-to-comic"
 description: "Transform an Amplifier session into an illustrated comic strip with quality review, character consistency, dramatized storytelling, and AmpliVerse publisher branding"
-version: "4.0.4"
+version: "5.0.0"
 author: "amplifier-comic-strips"
 tags: ["comic", "visual-storytelling", "session-analysis", "image-generation"]
 
 # =============================================================================
 # CHANGELOG
 # =============================================================================
+#
+# v5.0.0 (2026-03-01):
+#   - FEAT: Replace monolithic character-design step with foreach loop.
+#     The storyboard-writer now emits character_list and panel_list arrays.
+#     character-designer is invoked once per character via foreach, collecting
+#     results into character_sheet.
+#   - FEAT: Replace monolithic generate-panels step with foreach loop.
+#     panel-artist is invoked once per panel via foreach, collecting
+#     results into panel_results.
+#   - This enables parallel/incremental image generation and better
+#     error isolation per character/panel.
 #
 # v4.0.4 (2026-02-28):
 #   - FIX: Flatten requirements further to individual typed keys instead of
@@ -161,6 +172,15 @@ stages:
           Set page breaks every 3-5 panels, after dramatic beats.
 
           Break the story into 4-8 panels following the style guide's conventions.
+
+          CRITICAL OUTPUT REQUIREMENT: Your JSON output MUST include two top-level arrays:
+          - character_list: array of character objects (one entry per character to be designed)
+          - panel_list: array of panel objects (one entry per panel to be generated)
+          These arrays will be used by downstream foreach loops to drive character design
+          and panel art generation. Each character_list entry should contain all info needed
+          to design that character. Each panel_list entry should contain all info needed to
+          generate that panel's artwork.
+
           Output the complete panel sequence as structured JSON.
         output: "storyboard"
         timeout: 1200
@@ -193,63 +213,58 @@ stages:
   - name: "art-generation"
     steps:
       # ============================================
-      # STEP 4: CHARACTER DESIGN - Reference Sheets
+      # STEP 4: CHARACTER DESIGN - Reference Sheets (foreach per character)
       # ============================================
-      - id: "character-design"
+      - id: "design-characters"
+        foreach: "{{character_list}}"
+        item_variable: character_item
         agent: "comic-strips:character-designer"
         prompt: |
-          Create character reference sheets for this comic strip.
+          Create a character reference sheet for this single character.
 
-          Pipeline requirements for this step: needs_reference_images={{character_design_needs_reference_images}}, detail_level={{character_design_detail_level}}
-
-          Storyboard (contains character list):
-          {{storyboard}}
+          Character to design:
+          {{character_item}}
 
           Style Guide:
           {{style_guide}}
 
-          IMPORTANT: Design ONLY the selected characters from the storyboard's characters array.
-          Generate reference images for 3-4 main characters + 1-2 supporting characters only.
-          Do NOT generate sheets for every agent mentioned in the session.
+          Pipeline requirements: needs_reference_images={{character_design_needs_reference_images}}, detail_level={{character_design_detail_level}}
 
-          Each character should have bundle-affiliation visual markers -- characters from the
+          Design this character with bundle-affiliation visual markers -- characters from the
           same bundle share team colors, insignia, or uniform elements.
 
-          Output a structured character sheet with image paths and descriptions for each character.
-        output: "character_sheet"
+          Output a structured character entry with image path and description for this character.
+        collect: "character_sheet"
         timeout: 900
 
       # ============================================
-      # STEP 5a: ART GENERATION - Panel Art
+      # STEP 5a: ART GENERATION - Panel Art (foreach per panel)
       # ============================================
       - id: "generate-panels"
+        foreach: "{{panel_list}}"
+        item_variable: panel_item
         agent: "comic-strips:panel-artist"
-        depends_on: ["character-design"]
+        depends_on: ["design-characters"]
         prompt: |
-          You are generating panel art for a comic strip.
+          Generate the artwork for a single comic panel.
 
-          Pipeline requirements for this step: needs_reference_images={{generate_panels_needs_reference_images}}, detail_level={{generate_panels_detail_level}}
-
-          Style Guide:
-          {{style_guide}}
-
-          Storyboard:
-          {{storyboard}}
+          Panel to generate:
+          {{panel_item}}
 
           Character Sheet (reference images for visual consistency):
           {{character_sheet}}
 
-          Research Data:
-          {{research_data}}
+          Style Guide:
+          {{style_guide}}
 
-          Generate one image per panel from the storyboard.
-          For EACH panel: generate the image, then self-review it using vision.
+          Pipeline requirements: needs_reference_images={{generate_panels_needs_reference_images}}, detail_level={{generate_panels_detail_level}}
+
+          Generate the image for this panel, then self-review it using vision.
           Check: are faces visible and unobstructed? Is there a clear focal point?
           Does it tell the story visually? Does it match the style?
           ALWAYS pass reference_images from the character sheet for consistency.
-          If a panel fails review, regenerate with an adjusted prompt (max 3 attempts per panel).
-          Report which panels passed on first attempt and which needed regeneration.
-        output: "panel_results"
+          If the panel fails review, regenerate with an adjusted prompt (max 3 attempts).
+        collect: "panel_results"
         timeout: 1200
 
       # ============================================
@@ -257,7 +272,7 @@ stages:
       # ============================================
       - id: "generate-cover"
         agent: "comic-strips:cover-artist"
-        depends_on: ["character-design"]
+        depends_on: ["design-characters"]
         prompt: |
           You are generating cover art for a comic strip.
 

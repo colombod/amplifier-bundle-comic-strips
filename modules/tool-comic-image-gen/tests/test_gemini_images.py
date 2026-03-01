@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio  # noqa: F401
+import asyncio  # noqa: F401 — not used directly; referenced as string in patch("asyncio.sleep")
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 

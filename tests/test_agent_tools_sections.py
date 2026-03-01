@@ -21,7 +21,11 @@ def _read_frontmatter(agent_name: str) -> str:
     content = file_path.read_text()
     assert content.startswith("---"), f"{agent_name}.md does not start with ---"
     try:
-        end = content.index("---", 3)  # skip past opening "---"
+        # Find the closing "---" after the opening delimiter.
+        # NOTE: content.index("---", 3) assumes no frontmatter value contains
+        # a bare "---" on its own line (e.g. in a multi-line string).  This is
+        # the standard Markdown frontmatter convention and safe for these files.
+        end = content.index("---", 3)
     except ValueError:
         raise ValueError(f"{agent_name}.md has no closing --- delimiter") from None
     return content[3:end]
@@ -92,7 +96,7 @@ def test_all_six_files_parse_as_valid_yaml():
     for agent_name in EXPECTED_TOOLS:
         data = _parse_frontmatter(agent_name)
         assert isinstance(data, dict), f"{agent_name}.md frontmatter is not a dict"
-        # Verify key structure is preserved
+        # Verify key structure is preserved (tools: presence is covered by AC1)
         assert "meta" in data, f"{agent_name}.md is missing meta: section"
         assert "provider_preferences" in data, (
             f"{agent_name}.md is missing provider_preferences:"

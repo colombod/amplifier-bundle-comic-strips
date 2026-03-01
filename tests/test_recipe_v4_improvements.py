@@ -426,3 +426,82 @@ class TestRecipeV5ForeachStructure:
         assert "storyboard.panel_list" in foreach_source, (
             f"Expected 'storyboard.panel_list' in foreach source, got: {foreach_source}"
         )
+
+
+# ============================================
+# V5: Runtime-correctness properties (C1 + C2)
+# ============================================
+
+
+class TestRecipeV5RuntimeCorrectness:
+    """Validate runtime-correctness properties added in C1 and C2.
+
+    These properties prevent silent failures:
+    - parse_json: true enables dot-notation access to storyboard fields
+    - parse_json: true on collect steps ensures structured objects, not raw strings
+    - parallel: 2 bounds concurrent execution
+    - max_iterations guards against runaway loops in the expensive art stage
+    """
+
+    @pytest.fixture
+    def recipe(self) -> dict:
+        return _load_recipe()
+
+    def test_storyboard_step_has_parse_json_true(self, recipe) -> None:
+        """Storyboard step must have parse_json: true for dot-notation access to character_list/panel_list."""
+        step = _find_step(recipe, "storyboard")
+        assert step is not None, "storyboard step not found"
+        assert step.get("parse_json") is True, (
+            "storyboard step requires parse_json: true — without it, "
+            "{{storyboard.character_list}} resolves as a raw string, not an object"
+        )
+
+    def test_design_characters_collect_has_parse_json_true(self, recipe) -> None:
+        """design-characters step must have parse_json: true so character_sheet is parsed objects."""
+        step = _find_foreach_step(recipe, "character")
+        assert step is not None, "No character foreach step found"
+        assert step.get("parse_json") is True, (
+            "design-characters requires parse_json: true on the collect step — "
+            "without it, character_sheet is a list of raw strings"
+        )
+
+    def test_generate_panels_collect_has_parse_json_true(self, recipe) -> None:
+        """generate-panels step must have parse_json: true so panel_results is parsed objects."""
+        step = _find_foreach_step(recipe, "panel")
+        assert step is not None, "No panel foreach step found"
+        assert step.get("parse_json") is True, (
+            "generate-panels requires parse_json: true on the collect step — "
+            "without it, panel_results is a list of raw strings"
+        )
+
+    def test_design_characters_has_parallel_execution(self, recipe) -> None:
+        """design-characters must have parallel: 2 for bounded concurrent execution."""
+        step = _find_foreach_step(recipe, "character")
+        assert step is not None, "No character foreach step found"
+        assert step.get("parallel") == 2, (
+            f"design-characters should have parallel: 2, got: {step.get('parallel')}"
+        )
+
+    def test_generate_panels_has_parallel_execution(self, recipe) -> None:
+        """generate-panels must have parallel: 2 for bounded concurrent execution."""
+        step = _find_foreach_step(recipe, "panel")
+        assert step is not None, "No panel foreach step found"
+        assert step.get("parallel") == 2, (
+            f"generate-panels should have parallel: 2, got: {step.get('parallel')}"
+        )
+
+    def test_design_characters_has_max_iterations_guard(self, recipe) -> None:
+        """design-characters must have max_iterations: 6 (6 character ceiling)."""
+        step = _find_foreach_step(recipe, "character")
+        assert step is not None, "No character foreach step found"
+        assert step.get("max_iterations") == 6, (
+            f"design-characters should have max_iterations: 6, got: {step.get('max_iterations')}"
+        )
+
+    def test_generate_panels_has_max_iterations_guard(self, recipe) -> None:
+        """generate-panels must have max_iterations: 12 (panel ceiling)."""
+        step = _find_foreach_step(recipe, "panel")
+        assert step is not None, "No panel foreach step found"
+        assert step.get("max_iterations") == 12, (
+            f"generate-panels should have max_iterations: 12, got: {step.get('max_iterations')}"
+        )

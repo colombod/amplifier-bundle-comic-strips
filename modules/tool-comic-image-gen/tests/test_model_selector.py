@@ -24,7 +24,7 @@ class TestSelectionResultDataclass:
         )
         assert r.model_id == "m"
         assert r.provider == "p"
-        assert r.api_surface == "a"
+        assert r.api_surface == "openai-images"
         assert r.cost_tier == 1
         assert r.rationale == "r"
 

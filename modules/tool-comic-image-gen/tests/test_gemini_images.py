@@ -320,6 +320,10 @@ async def test_gemini_retries_on_resource_exhausted_then_succeeds(
     assert mock_sleep.call_count == 2, (
         f"Expected sleep called twice for 2 retries, got {mock_sleep.call_count}"
     )
+    delay_0 = mock_sleep.call_args_list[0].args[0]
+    delay_1 = mock_sleep.call_args_list[1].args[0]
+    assert 1.0 <= delay_0 < 2.0, f"Expected delay_0 in [1.0, 2.0), got {delay_0}"
+    assert 2.0 <= delay_1 < 3.0, f"Expected delay_1 in [2.0, 3.0), got {delay_1}"
     assert provider.client.aio.models.generate_content.call_count == 3
 
 

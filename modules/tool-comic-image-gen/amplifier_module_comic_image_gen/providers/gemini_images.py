@@ -67,6 +67,10 @@ class GeminiImageBackend:
         for attempt in range(_MAX_ATTEMPTS):
             try:
                 return await coro_factory()
+            # NOTE: _NON_RETRYABLE_GEMINI must be caught before _RETRYABLE_GEMINI.
+            # Unauthenticated / PermissionDenied / InvalidArgument should never be
+            # retried; catching them first ensures they exit immediately even if
+            # a future subclass relationship ever overlaps with the retryable set.
             except _NON_RETRYABLE_GEMINI as exc:
                 logger.error(
                     "Gemini generation failed with non-retryable error for model %s: %s",

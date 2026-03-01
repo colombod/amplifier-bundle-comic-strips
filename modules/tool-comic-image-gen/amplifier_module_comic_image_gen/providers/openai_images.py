@@ -152,9 +152,7 @@ class OpenAIImageBackend:
                 await asyncio.sleep(delay)
 
             except Exception as exc:
-                logger.exception(
-                    "OpenAI image generation failed for model %s", model
-                )
+                logger.exception("OpenAI image generation failed for model %s", model)
                 return {
                     "success": False,
                     "provider_used": self.provider.name,

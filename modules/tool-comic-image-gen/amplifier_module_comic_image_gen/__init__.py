@@ -27,6 +27,7 @@ except ImportError:  # pragma: no cover – bridge runs without amplifier_core i
 
 
 from ._version import __version__  # noqa: F401
+from .model_selector import select_model
 from .providers import discover_image_backends
 
 __amplifier_module_type__ = "tool"
@@ -137,6 +138,7 @@ class ComicImageGenTool:
         reference_images: list[str] | None = params.get("reference_images")
         preferred_provider: str | None = params.get("preferred_provider")
         explicit_model: str | None = params.get("model")
+        requirements: dict[str, Any] | None = params.get("requirements")
 
         backends = list(self._backends)
 
@@ -160,6 +162,20 @@ class ComicImageGenTool:
         }
         if explicit_model is not None:
             gen_kwargs["model"] = explicit_model
+        elif requirements is not None:
+            available_providers = [
+                b.provider_type for b in backends if hasattr(b, "provider_type")
+            ]
+            selection = select_model(
+                available_providers=available_providers,
+                needs_reference_images=requirements.get(
+                    "needs_reference_images", False
+                ),
+                style_category=requirements.get("style_category"),
+                detail_level=requirements.get("detail_level"),
+            )
+            if selection.model_id is not None:
+                gen_kwargs["model"] = selection.model_id
 
         errors: list[str] = []
         for backend in backends:

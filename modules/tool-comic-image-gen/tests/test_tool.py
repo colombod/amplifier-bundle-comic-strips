@@ -225,3 +225,65 @@ async def test_execute_with_explicit_model_passes_to_backend(tmp_path: Path) -> 
     backend.generate.assert_awaited_once()
     call_kwargs = backend.generate.call_args.kwargs
     assert call_kwargs["model"] == "dall-e-3"
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_execute_uses_model_selector_when_requirements_provided(
+    tmp_path: Path,
+) -> None:
+    """When requirements dict provided (no explicit model), model selector picks the model."""
+    backend = MagicMock()
+    backend.provider.name = "mock-provider"
+    backend.provider_type = "openai"
+    backend.generate = AsyncMock(
+        return_value={
+            "success": True,
+            "provider_used": "mock-provider",
+            "path": str(tmp_path / "out.png"),
+            "error": None,
+        }
+    )
+    tool = ComicImageGenTool(backends=[backend])
+
+    await tool.execute(
+        {
+            "prompt": "A hero panel",
+            "output_path": str(tmp_path / "out.png"),
+            "requirements": {"needs_reference_images": False, "detail_level": "medium"},
+        }
+    )
+
+    backend.generate.assert_awaited_once()
+    call_kwargs = backend.generate.call_args.kwargs
+    assert "model" in call_kwargs
+    assert call_kwargs["model"] is not None
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_execute_explicit_model_bypasses_selector(tmp_path: Path) -> None:
+    """When explicit model AND requirements are both provided, explicit model wins."""
+    backend = MagicMock()
+    backend.provider.name = "mock-provider"
+    backend.provider_type = "openai"
+    backend.generate = AsyncMock(
+        return_value={
+            "success": True,
+            "provider_used": "mock-provider",
+            "path": str(tmp_path / "out.png"),
+            "error": None,
+        }
+    )
+    tool = ComicImageGenTool(backends=[backend])
+
+    await tool.execute(
+        {
+            "prompt": "A hero panel",
+            "output_path": str(tmp_path / "out.png"),
+            "model": "dall-e-3",
+            "requirements": {"needs_reference_images": False, "detail_level": "medium"},
+        }
+    )
+
+    backend.generate.assert_awaited_once()
+    call_kwargs = backend.generate.call_args.kwargs
+    assert call_kwargs["model"] == "dall-e-3"

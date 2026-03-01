@@ -13,6 +13,12 @@ from .model_map import MODEL_MAP, ApiSurface, ModelEntry
 
 _DETAIL_RANK: Final[dict[str, int]] = {"low": 1, "medium": 2, "high": 3, "ultra": 4}
 
+# Maps Amplifier canonical provider names to MODEL_MAP provider names
+_PROVIDER_NORMALIZER: Final[dict[str, str]] = {
+    "gemini": "google",
+    "azure-openai": "openai",
+}
+
 
 @dataclass(frozen=True)
 class SelectionResult:
@@ -69,8 +75,9 @@ def select_model(
         )
 
     # (3) Filter by available providers
+    normalized_providers = [_PROVIDER_NORMALIZER.get(p, p) for p in available_providers]
     candidates: list[ModelEntry] = [
-        e for e in MODEL_MAP.values() if e.provider in available_providers
+        e for e in MODEL_MAP.values() if e.provider in normalized_providers
     ]
 
     if not candidates:

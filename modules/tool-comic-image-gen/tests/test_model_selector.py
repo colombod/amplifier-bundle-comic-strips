@@ -262,3 +262,16 @@ class TestCombinedScenarios:
         assert result.model_id is not None
         # Comic ref models: cheapest is gemini-2.5-flash-image (tier 2)
         assert result.model_id == "gemini-2.5-flash-image"
+
+
+# ── Provider name normalization ────────────────────────────────────────────────────────
+
+
+class TestProviderNameNormalization:
+    """Amplifier canonical provider names map to MODEL_MAP provider names."""
+
+    def test_gemini_provider_name_normalized(self) -> None:
+        """'gemini' (Amplifier canonical) maps to 'google' (MODEL_MAP name)."""
+        result = select_model(available_providers=["gemini"])
+        assert result.model_id is not None
+        assert result.provider == "google"

@@ -275,3 +275,9 @@ class TestProviderNameNormalization:
         result = select_model(available_providers=["gemini"])
         assert result.model_id is not None
         assert result.provider == "google"
+
+    def test_azure_openai_provider_name_normalized(self) -> None:
+        """'azure-openai' maps to openai models in MODEL_MAP."""
+        result = select_model(available_providers=["azure-openai"])
+        assert result.model_id is not None
+        assert result.provider == "openai"

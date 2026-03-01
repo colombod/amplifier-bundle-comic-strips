@@ -36,6 +36,13 @@ provider_preferences:
   - provider: github-copilot
     model: gpt-5-mini
 
+tools:
+  - load_skill
+  - read_file
+  - write_file
+  - bash
+  - delegate
+
 ---
 
 # Strip Compositor

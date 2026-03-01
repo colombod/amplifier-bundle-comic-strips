@@ -1,0 +1,6 @@
+{
+  "pythonPath": "/home/colombod/comic-strip-bundle/amplifier-bundle-comic-strips/modules/tool-comic-image-gen/.venv/bin/python",
+  "extraPaths": [
+    "/home/colombod/comic-strip-bundle/amplifier-bundle-comic-strips/modules/tool-comic-image-gen/.venv/lib/python3.13/site-packages"
+  ]
+}

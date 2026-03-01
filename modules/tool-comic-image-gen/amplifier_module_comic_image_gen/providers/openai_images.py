@@ -13,7 +13,7 @@ import random
 from pathlib import Path
 from typing import Any
 
-import openai
+import openai  # pyright: ignore[reportMissingImports]
 
 logger = logging.getLogger(__name__)
 

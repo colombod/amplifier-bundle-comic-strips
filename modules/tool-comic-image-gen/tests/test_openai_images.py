@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import openai
+import openai  # pyright: ignore[reportMissingImports]
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 

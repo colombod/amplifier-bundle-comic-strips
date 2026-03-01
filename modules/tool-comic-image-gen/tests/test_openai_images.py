@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import openai
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -49,7 +51,8 @@ async def test_openai_backend_generates_image(tmp_path: Path) -> None:
     call_kwargs = provider.client.images.generate.call_args.kwargs
     assert call_kwargs["size"] == "1536x1024"
     assert call_kwargs["model"] == "gpt-image-1"
-    assert call_kwargs["response_format"] == "b64_json"
+    # gpt-image-1 is an edit-capable model that uses output_format, not response_format
+    assert call_kwargs["output_format"] == "png"
     assert "superhero" in call_kwargs["prompt"]
 
 
@@ -317,3 +320,99 @@ async def test_dall_e_3_falls_back_to_generate_with_refs(tmp_path: Path) -> None
     assert result["success"] is True
     provider.client.images.generate.assert_called_once()
     provider.client.images.edit.assert_not_called()
+
+
+# --- Task A1: Exponential backoff with jitter tests ---
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_openai_retries_on_rate_limit_then_succeeds(tmp_path: Path) -> None:
+    """429 RateLimitError triggers retry; succeeds on 3rd attempt; sleep called twice."""
+    provider = make_openai_provider()
+
+    # Build a RateLimitError (openai.APIStatusError subclass)
+    rate_limit_err = openai.RateLimitError(
+        message="429 Too Many Requests",
+        response=MagicMock(),
+        body=None,
+    )
+
+    # Capture the success response before overriding the mock
+    success_response = provider.client.images.generate.return_value
+    provider.client.images.generate = AsyncMock(
+        side_effect=[rate_limit_err, rate_limit_err, success_response]
+    )
+
+    backend = OpenAIImageBackend(provider)
+    output_path = tmp_path / "panel_retry.png"
+
+    with patch(
+        "amplifier_module_comic_image_gen.providers.openai_images.asyncio.sleep",
+        new_callable=AsyncMock,
+    ) as mock_sleep:
+        result = await backend.generate(
+            prompt="A hero",
+            output_path=output_path,
+        )
+
+    assert result["success"] is True
+    assert mock_sleep.call_count == 2
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_openai_fails_immediately_on_auth_error(tmp_path: Path) -> None:
+    """401 AuthenticationError fails on first attempt without any sleep."""
+    provider = make_openai_provider()
+
+    auth_err = openai.AuthenticationError(
+        message="401 Unauthorized",
+        response=MagicMock(),
+        body=None,
+    )
+    provider.client.images.generate = AsyncMock(side_effect=auth_err)
+
+    backend = OpenAIImageBackend(provider)
+    output_path = tmp_path / "panel_auth.png"
+
+    with patch(
+        "amplifier_module_comic_image_gen.providers.openai_images.asyncio.sleep",
+        new_callable=AsyncMock,
+    ) as mock_sleep:
+        result = await backend.generate(
+            prompt="A hero",
+            output_path=output_path,
+        )
+
+    assert result["success"] is False
+    assert mock_sleep.call_count == 0
+    assert provider.client.images.generate.call_count == 1
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_openai_fails_after_max_retries(tmp_path: Path) -> None:
+    """429 RateLimitError on all 3 attempts returns failure after 2 sleeps."""
+    provider = make_openai_provider()
+
+    rate_limit_err = openai.RateLimitError(
+        message="429 Too Many Requests",
+        response=MagicMock(),
+        body=None,
+    )
+    # Always raise RateLimitError
+    provider.client.images.generate = AsyncMock(side_effect=rate_limit_err)
+
+    backend = OpenAIImageBackend(provider)
+    output_path = tmp_path / "panel_exhausted.png"
+
+    with patch(
+        "amplifier_module_comic_image_gen.providers.openai_images.asyncio.sleep",
+        new_callable=AsyncMock,
+    ) as mock_sleep:
+        result = await backend.generate(
+            prompt="A hero",
+            output_path=output_path,
+        )
+
+    assert result["success"] is False
+    # sleep after attempt 0 and 1; NOT after the final attempt 2
+    assert mock_sleep.call_count == 2

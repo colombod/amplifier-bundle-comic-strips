@@ -6,10 +6,14 @@ provider-agnostic generate() interface used by the comic image tool.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
+import random
 from pathlib import Path
 from typing import Any
+
+import openai
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +33,20 @@ _EDIT_CAPABLE_MODELS: frozenset[str] = frozenset(
     }
 )
 
+_MAX_ATTEMPTS: int = 3
+
+_RETRYABLE: tuple[type[Exception], ...] = (
+    openai.RateLimitError,
+    openai.APIStatusError,
+)
+
+_NON_RETRYABLE: tuple[type[Exception], ...] = (
+    openai.AuthenticationError,
+    openai.PermissionDeniedError,
+    openai.BadRequestError,
+    openai.UnprocessableEntityError,
+)
+
 
 class OpenAIImageBackend:
     """Generate images via an Amplifier OpenAI provider."""
@@ -36,6 +54,11 @@ class OpenAIImageBackend:
     def __init__(self, provider: Any) -> None:
         self.provider = provider
         self.client = provider.client
+
+    @property
+    def provider_type(self) -> str:
+        """Return the provider type identifier."""
+        return "openai"
 
     async def generate(
         self,
@@ -56,47 +79,96 @@ class OpenAIImageBackend:
         :data:`_EDIT_CAPABLE_MODELS` support editing; dall-e-3 does **not**,
         so it falls back to ``images.generate`` (dropping refs).
 
+        Retries up to :data:`_MAX_ATTEMPTS` times on retryable errors
+        (e.g. 429 RateLimitError) with exponential backoff + jitter.
+        Non-retryable errors (401, 403, 400, 422) fail immediately.
+
         Returns a result dict with keys: success, provider_used, path, error.
         """
         out = Path(output_path)
-        try:
-            pixel_size = ASPECT_RATIO_MAP.get(size, ASPECT_RATIO_MAP["square"])
+        pixel_size = ASPECT_RATIO_MAP.get(size, ASPECT_RATIO_MAP["square"])
+        use_edit = bool(reference_images) and model in _EDIT_CAPABLE_MODELS
 
-            use_edit = bool(reference_images) and model in _EDIT_CAPABLE_MODELS
+        for attempt in range(_MAX_ATTEMPTS):
+            try:
+                if use_edit:
+                    response = await self._call_edit(
+                        model=model,
+                        prompt=prompt,
+                        pixel_size=pixel_size,
+                        reference_images=reference_images,  # type: ignore[arg-type]
+                    )
+                else:
+                    response = await self._call_generate(
+                        model=model,
+                        prompt=prompt,
+                        pixel_size=pixel_size,
+                        style=style,
+                    )
 
-            if use_edit:
-                response = await self._call_edit(
-                    model=model,
-                    prompt=prompt,
-                    pixel_size=pixel_size,
-                    reference_images=reference_images,
+                image_bytes = base64.b64decode(response.data[0].b64_json)
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_bytes(image_bytes)
+
+                return {
+                    "success": True,
+                    "provider_used": self.provider.name,
+                    "path": str(out),
+                    "error": None,
+                }
+
+            except _NON_RETRYABLE as exc:
+                logger.exception(
+                    "OpenAI image generation failed (non-retryable) for model %s", model
                 )
-            else:
-                response = await self._call_generate(
-                    model=model,
-                    prompt=prompt,
-                    pixel_size=pixel_size,
-                    style=style,
+                return {
+                    "success": False,
+                    "provider_used": self.provider.name,
+                    "path": str(out),
+                    "error": str(exc),
+                }
+
+            except _RETRYABLE as exc:
+                if attempt == _MAX_ATTEMPTS - 1:
+                    # Final attempt exhausted — give up
+                    logger.exception(
+                        "OpenAI image generation failed after %d attempts for model %s",
+                        _MAX_ATTEMPTS,
+                        model,
+                    )
+                    return {
+                        "success": False,
+                        "provider_used": self.provider.name,
+                        "path": str(out),
+                        "error": str(exc),
+                    }
+                delay = 2**attempt + random.uniform(0, 1)
+                logger.warning(
+                    "OpenAI rate limited (attempt %d/%d), retrying in %.2fs",
+                    attempt + 1,
+                    _MAX_ATTEMPTS,
+                    delay,
                 )
+                await asyncio.sleep(delay)
 
-            image_bytes = base64.b64decode(response.data[0].b64_json)
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_bytes(image_bytes)
+            except Exception as exc:
+                logger.exception(
+                    "OpenAI image generation failed for model %s", model
+                )
+                return {
+                    "success": False,
+                    "provider_used": self.provider.name,
+                    "path": str(out),
+                    "error": str(exc),
+                }
 
-            return {
-                "success": True,
-                "provider_used": self.provider.name,
-                "path": str(out),
-                "error": None,
-            }
-        except Exception as exc:
-            logger.exception("OpenAI image generation failed for model %s", model)
-            return {
-                "success": False,
-                "provider_used": self.provider.name,
-                "path": str(out),
-                "error": str(exc),
-            }
+        # Should never be reached, but satisfies type checker
+        return {  # pragma: no cover
+            "success": False,
+            "provider_used": self.provider.name,
+            "path": str(out),
+            "error": "Exceeded maximum retry attempts",
+        }
 
     async def _call_generate(
         self,
@@ -117,7 +189,7 @@ class OpenAIImageBackend:
         if model in _EDIT_CAPABLE_MODELS:
             kwargs["output_format"] = "png"
         else:
-            # DALL-E 3/2 use response_format
+            # DALL-E 3 uses response_format
             kwargs["response_format"] = "b64_json"
         if style is not None and model == "dall-e-3":
             kwargs["style"] = style
@@ -132,7 +204,10 @@ class OpenAIImageBackend:
         reference_images: list[str],
     ) -> Any:
         """Call ``client.images.edit`` with reference image file bytes."""
-        image_bytes_list = [Path(p).read_bytes() for p in reference_images]
+        # Use asyncio.to_thread for blocking file I/O (A3 baked in)
+        image_bytes_list = [
+            await asyncio.to_thread(Path(p).read_bytes) for p in reference_images
+        ]
         kwargs: dict[str, Any] = {
             "model": model,
             "prompt": prompt,

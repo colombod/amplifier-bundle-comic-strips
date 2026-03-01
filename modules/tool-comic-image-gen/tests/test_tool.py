@@ -13,13 +13,25 @@ from amplifier_module_comic_image_gen.providers.openai_images import OpenAIImage
 from .conftest import make_openai_provider
 
 
-def _make_coordinator(providers: dict[str, object]) -> MagicMock:
-    """Create a MagicMock coordinator for testing mount()."""
+def _make_coordinator(
+    providers: dict[str, object],
+    *,
+    is_validation: bool = False,
+) -> MagicMock:
+    """Create a MagicMock coordinator for testing mount().
+
+    By default simulates a real session coordinator (has an orchestrator).
+    Set ``is_validation=True`` to simulate the kernel's validation dry-run
+    where the coordinator is empty.
+    """
     coord = MagicMock()
+    orchestrator = None if is_validation else MagicMock()
 
     def _get_side_effect(mount_point: str) -> object:
         if mount_point == "providers":
             return providers
+        if mount_point == "orchestrator":
+            return orchestrator
         return {}
 
     coord.get = MagicMock(side_effect=_get_side_effect)
@@ -65,6 +77,27 @@ async def test_mount_with_no_providers() -> None:
     await mount(coord, config=None)
 
     coord.mount.assert_awaited_once()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_mount_skips_discovery_during_validation() -> None:
+    """Kernel validator calls mount() with an empty TestCoordinator.
+
+    The tool should detect this (no orchestrator mounted) and skip
+    provider discovery — no warning, no env-var fallback probing.
+    """
+    coord = _make_coordinator({}, is_validation=True)
+
+    await mount(coord, config=None)
+
+    # Tool still registers itself
+    coord.mount.assert_awaited_once()
+    call_args = coord.mount.call_args
+    assert call_args.kwargs["name"] == "generate_image"
+
+    # The tool should have zero backends (no discovery attempted)
+    tool = call_args.args[1]
+    assert tool._backends == []
 
 
 # ── Execute tests ────────────────────────────────────────────────

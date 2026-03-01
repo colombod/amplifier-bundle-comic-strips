@@ -204,53 +204,45 @@ class ComicImageGenTool:
 
 
 async def mount(coordinator: Any, config: Any = None) -> None:
-    """Amplifier module entry point — discover backends and register tool."""
+    """Amplifier module entry point — discover backends and register tool.
+
+    Note: the kernel's module validator calls ``mount()`` once with an empty
+    ``TestCoordinator`` (protocol compliance dry-run) before the real mount.
+    During validation the coordinator has no providers, tools, or orchestrator
+    — this is expected and we skip provider discovery in that context.
+    """
     import logging
 
     _log = logging.getLogger(__name__)
 
+    # The kernel validator uses a TestCoordinator with no providers.
+    # Detect this by checking if the coordinator type name contains "Test"
+    # or if no orchestrator has been mounted yet (real sessions always have
+    # orchestrator mounted before tools).
+    is_validation = not coordinator.get("orchestrator")
+
     providers: dict[str, Any] = coordinator.get("providers") or {}
 
-    # Diagnostic: show what providers the coordinator exposes
-    if providers:
-        _log.info(
-            "generate_image: coordinator providers available: %s",
-            list(providers.keys()),
-        )
-        for pname, pobj in providers.items():
-            obj_name = getattr(pobj, "name", None)
+    if is_validation:
+        # Validation dry-run — mount with no backends, skip discovery.
+        _log.debug("generate_image: validation mount (no providers expected)")
+        backends: list[Any] = []
+    else:
+        backends = discover_image_backends(providers)
+        if backends:
             _log.info(
-                "  provider key=%r  .name=%r  type=%s",
-                pname,
-                obj_name,
-                type(pobj).__name__,
+                "generate_image: discovered %d image backend(s): %s",
+                len(backends),
+                [type(b).__name__ for b in backends],
             )
-    else:
-        _log.warning(
-            "generate_image: coordinator.get('providers') returned empty or None"
-        )
-
-    backends = discover_image_backends(providers)
-
-    if backends:
-        _log.info(
-            "generate_image: discovered %d image backend(s): %s",
-            len(backends),
-            [type(b).__name__ for b in backends],
-        )
-    else:
-        provider_keys = list(providers.keys())
-        detail = (
-            f"Configured provider keys {provider_keys!r} did not match 'openai', 'google', or 'gemini'."
-            if provider_keys
-            else "No image-generation providers available at mount time."
-        )
-        _log.warning(
-            "generate_image: %s "
-            "The generate_image tool will mount but calls will fail until "
-            "an OpenAI or Google/Gemini provider is reachable.",
-            detail,
-        )
+        else:
+            _log.warning(
+                "generate_image: no image backends discovered from %d "
+                "coordinator providers (keys: %s). The generate_image tool "
+                "will not be able to generate images.",
+                len(providers),
+                list(providers.keys()),
+            )
 
     tool = ComicImageGenTool(backends)
     await coordinator.mount("tools", tool, name=tool.name)

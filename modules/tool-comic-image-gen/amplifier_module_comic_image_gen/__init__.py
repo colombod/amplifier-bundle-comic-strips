@@ -11,11 +11,14 @@ Issue #90 lands a native solution.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 try:
-    from amplifier_core.models import ToolResult
+    from amplifier_core.models import ToolResult  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover – bridge runs without amplifier_core in tests
 
     @dataclass
@@ -26,9 +29,9 @@ except ImportError:  # pragma: no cover – bridge runs without amplifier_core i
         output: Any = ""
 
 
-from ._version import __version__  # noqa: F401
-from .model_selector import select_model
-from .providers import discover_image_backends
+from ._version import __version__  # noqa: F401, E402
+from .model_selector import select_model  # noqa: E402
+from .providers import discover_image_backends  # noqa: E402
 
 __amplifier_module_type__ = "tool"
 
@@ -163,9 +166,16 @@ class ComicImageGenTool:
         if explicit_model is not None:
             gen_kwargs["model"] = explicit_model
         elif requirements is not None:
-            available_providers = [
-                b.provider_type for b in backends if hasattr(b, "provider_type")
-            ]
+            available_providers: list[str] = []
+            for b in backends:
+                if hasattr(b, "provider_type"):
+                    available_providers.append(b.provider_type)
+                else:
+                    logger.warning(
+                        "generate_image: backend %s has no provider_type — "
+                        "excluded from model selection",
+                        type(b).__name__,
+                    )
             selection = select_model(
                 available_providers=available_providers,
                 needs_reference_images=requirements.get(

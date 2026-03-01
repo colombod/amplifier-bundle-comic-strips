@@ -287,3 +287,38 @@ async def test_execute_explicit_model_bypasses_selector(tmp_path: Path) -> None:
     backend.generate.assert_awaited_once()
     call_kwargs = backend.generate.call_args.kwargs
     assert call_kwargs["model"] == "dall-e-3"
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_execute_backend_without_provider_type_logs_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Backend lacking provider_type is excluded from selection and a warning is logged."""
+    import logging
+
+    backend = MagicMock()
+    backend.provider.name = "provider-unknown"
+    # Deliberately NO provider_type attribute
+    del backend.provider_type
+    backend.generate = AsyncMock(
+        return_value={
+            "success": True,
+            "provider_used": "provider-unknown",
+            "path": str(tmp_path / "out.png"),
+            "error": None,
+        }
+    )
+    tool = ComicImageGenTool(backends=[backend])
+
+    with caplog.at_level(logging.WARNING, logger="amplifier_module_comic_image_gen"):
+        await tool.execute(
+            {
+                "prompt": "A panel",
+                "output_path": str(tmp_path / "out.png"),
+                "requirements": {"needs_reference_images": False},
+            }
+        )
+
+    warning_records = [r for r in caplog.records if "provider_type" in r.message]
+    assert len(warning_records) >= 1
+    assert "excluded from model selection" in warning_records[0].message

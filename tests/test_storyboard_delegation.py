@@ -175,7 +175,7 @@ class TestForeachOutputContract:
 
     def _foreach_section(self) -> str:
         """Extract only the Additional Outputs section from the agent body."""
-        body = Path("agents/storyboard-writer.md").read_text()
+        body = AGENT_PATH.read_text()
         marker = "## Additional Outputs"
         assert marker in body, f"Section '{marker}' not found in storyboard-writer.md"
         return body[body.index(marker) :]

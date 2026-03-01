@@ -1,12 +1,19 @@
 name: "session-to-comic"
 description: "Transform an Amplifier session into an illustrated comic strip with quality review, character consistency, dramatized storytelling, and AmpliVerse publisher branding"
-version: "5.0.0"
+version: "5.0.1"
 author: "amplifier-comic-strips"
 tags: ["comic", "visual-storytelling", "session-analysis", "image-generation"]
 
 # =============================================================================
 # CHANGELOG
 # =============================================================================
+#
+# v5.0.1 (2026-03-01):
+#   - FIX: Add parse_json: true to storyboard step so output is parsed as
+#     a JSON object, enabling dot-notation access to character_list and panel_list.
+#   - FIX: Change foreach sources from {{character_list}}/{{panel_list}} to
+#     {{storyboard.character_list}}/{{storyboard.panel_list}} (dot notation).
+#   - FIX: Change item_variable: to as: in both foreach steps (correct schema field).
 #
 # v5.0.0 (2026-03-01):
 #   - FEAT: Replace monolithic character-design step with foreach loop.
@@ -183,6 +190,7 @@ stages:
 
           Output the complete panel sequence as structured JSON.
         output: "storyboard"
+        parse_json: true
         timeout: 1200
 
     # ------------------------------------------------------------------
@@ -216,8 +224,8 @@ stages:
       # STEP 4: CHARACTER DESIGN - Reference Sheets (foreach per character)
       # ============================================
       - id: "design-characters"
-        foreach: "{{character_list}}"
-        item_variable: character_item
+        foreach: "{{storyboard.character_list}}"
+        as: character_item
         agent: "comic-strips:character-designer"
         prompt: |
           Create a character reference sheet for this single character.
@@ -241,8 +249,8 @@ stages:
       # STEP 5a: ART GENERATION - Panel Art (foreach per panel)
       # ============================================
       - id: "generate-panels"
-        foreach: "{{panel_list}}"
-        item_variable: panel_item
+        foreach: "{{storyboard.panel_list}}"
+        as: panel_item
         agent: "comic-strips:panel-artist"
         depends_on: ["design-characters"]
         prompt: |

@@ -173,29 +173,35 @@ class TestFrontmatterDescription:
 class TestForeachOutputContract:
     """The storyboard-writer must emit character_list and panel_list arrays for recipe foreach loops."""
 
-    def test_storyboard_writer_documents_character_list_output(self):
+    def _foreach_section(self) -> str:
+        """Extract only the Additional Outputs section from the agent body."""
+        body = Path("agents/storyboard-writer.md").read_text()
+        marker = "## Additional Outputs"
+        assert marker in body, f"Section '{marker}' not found in storyboard-writer.md"
+        return body[body.index(marker) :]
+
+    def test_storyboard_writer_documents_both_output_arrays(self) -> None:
         """Agent body must document both character_list and panel_list output arrays."""
-        body = _read_agent_body()
-        assert "character_list" in body, (
-            "Agent body must document 'character_list' output array for recipe foreach"
+        section = self._foreach_section()
+        assert "character_list" in section, (
+            "Missing character_list in Additional Outputs section"
         )
-        assert "panel_list" in body, (
-            "Agent body must document 'panel_list' output array for recipe foreach"
+        assert "panel_list" in section, (
+            "Missing panel_list in Additional Outputs section"
         )
 
-    def test_character_list_entry_has_required_fields(self):
-        """character_list entries must document all required fields: name, role, type, bundle, description."""
-        body = _read_agent_body()
-        required_fields = ["name", "role", "type", "bundle", "description"]
-        for field in required_fields:
-            assert f'"{field}"' in body, (
-                f"Agent body must document '{field}' as a quoted field in character_list schema"
+    def test_character_list_entry_has_required_fields(self) -> None:
+        """character_list entry schema in Additional Outputs documents all required fields."""
+        section = self._foreach_section()
+        for field in ["name", "role", "type", "bundle", "description"]:
+            assert f'"{field}"' in section, (
+                f"character_list missing required field: {field}"
             )
 
-    def test_panel_list_entry_has_required_fields(self):
-        """panel_list entries must document all required fields."""
-        body = _read_agent_body()
-        required_fields = [
+    def test_panel_list_entry_has_required_fields(self) -> None:
+        """panel_list entry schema in Additional Outputs documents all required fields."""
+        section = self._foreach_section()
+        for field in [
             "index",
             "size",
             "scene_description",
@@ -203,8 +209,7 @@ class TestForeachOutputContract:
             "emotional_beat",
             "camera_angle",
             "page_break_after",
-        ]
-        for field in required_fields:
-            assert f'"{field}"' in body, (
-                f"Agent body must document '{field}' as a quoted field in panel_list schema"
+        ]:
+            assert f'"{field}"' in section, (
+                f"panel_list missing required field: {field}"
             )

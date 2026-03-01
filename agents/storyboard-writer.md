@@ -219,6 +219,49 @@ Your output MUST be a structured panel sequence in this exact format:
 
 After emitting the main storyboard JSON above, you MUST also emit two additional flat JSON arrays as separate labelled blocks. The recipe engine reads these arrays directly to drive foreach iteration — they must be present and complete.
 
+### Expected Response Shape
+
+Your complete response must contain three labelled JSON blocks in this order:
+
+**Block 1 — Main storyboard JSON** (the complete storyboard as documented in Output Format above)
+
+**Block 2 — character_list**
+
+```json
+character_list:
+[
+  {
+    "name": "The Explorer",
+    "role": "protagonist",
+    "type": "main",
+    "bundle": "foundation",
+    "description": "A seasoned scout in a worn leather jacket..."
+  }
+]
+```
+
+**Block 3 — panel_list**
+
+```json
+panel_list:
+[
+  {
+    "index": 1,
+    "size": "wide",
+    "scene_description": "...",
+    "characters_present": ["The Explorer"],
+    "dialogue": [...],
+    "emotional_beat": "setup",
+    "camera_angle": "wide overhead",
+    "caption": "...",
+    "sound_effects": [],
+    "page_break_after": false
+  }
+]
+```
+
+Each block must be a separate, clearly labelled JSON code fence. The recipe engine parses them by label.
+
 ### character_list
 
 Emit a flat JSON array of all characters. Each entry must contain these fields:
@@ -271,6 +314,11 @@ Emit a flat JSON array of all panels. Each entry must contain these fields:
 - `type`: **Required.** `"main"` (3-4 max, appear in most panels) or `"supporting"` (1-2, appear in 1-2 panels)
 - `bundle`: **Required.** The Amplifier bundle the agent belongs to (e.g., "foundation", "stories", "comic-strips")
 - `description`: Visual description for the character-designer — appearance, clothing, team markers, distinguishing features
+
+**Panel list field notes:**
+- `index`: Integer panel number (1-based). Use `index`, not `number` — the recipe engine looks for this key.
+- `characters_present`: List of character display names **exactly as they appear in `character_list[*].name`**. The recipe engine uses these to locate reference images — any mismatch will cause a lookup failure.
+- `dialogue`: Array of `{speaker, text}` objects. `speaker` must also match a `character_list[*].name` exactly.
 
 ## Dramatization Rules
 

@@ -442,3 +442,29 @@ class TestRecipeV5ForeachStructure:
             "composition must depend on generate-panels"
         )
         assert "generate-cover" in depends, "composition must depend on generate-cover"
+
+    def test_character_foreach_uses_dot_notation_source(self):
+        """Character foreach source uses dot notation: {{storyboard.character_list}}."""
+        recipe = _load_recipe()
+        all_steps = _get_all_steps(recipe)
+        character_foreach = [
+            step for step in all_steps if "character" in step.get("foreach", "")
+        ]
+        assert character_foreach, "No character foreach step found"
+        foreach_source = character_foreach[0].get("foreach", "")
+        assert "storyboard.character_list" in foreach_source, (
+            f"Expected 'storyboard.character_list' in foreach source, got: {foreach_source}"
+        )
+
+    def test_panel_foreach_uses_dot_notation_source(self):
+        """Panel foreach source uses dot notation: {{storyboard.panel_list}}."""
+        recipe = _load_recipe()
+        all_steps = _get_all_steps(recipe)
+        panel_foreach = [
+            step for step in all_steps if "panel" in step.get("foreach", "")
+        ]
+        assert panel_foreach, "No panel foreach step found"
+        foreach_source = panel_foreach[0].get("foreach", "")
+        assert "storyboard.panel_list" in foreach_source, (
+            f"Expected 'storyboard.panel_list' in foreach source, got: {foreach_source}"
+        )

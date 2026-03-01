@@ -16,16 +16,21 @@ from pathlib import Path
 STRIP_COMPOSITOR_PATH = Path(__file__).parent.parent / "agents" / "strip-compositor.md"
 
 
-def test_strip_compositor_reads_visual_traits_from_character_sheet():
-    """Strip-compositor must reference visual_traits or distinctive_features from character_sheet.
-
-    'description' is a storyboard field, not a character-designer output field.
-    character-designer produces visual_traits, distinctive_features, and team_markers.
-    """
-    content = STRIP_COMPOSITOR_PATH.read_text()
-    assert "visual_traits" in content or "distinctive_features" in content, (
-        "strip-compositor should reference visual_traits or distinctive_features "
-        "from character_sheet entries (not 'description' which is a storyboard field)"
+def test_strip_compositor_reads_visual_traits_from_character_sheet() -> None:
+    """Strip-compositor Process step must reference visual_traits and distinctive_features."""
+    body = STRIP_COMPOSITOR_PATH.read_text()
+    # Scope to the Process section (bounded to the next top-level ## heading)
+    marker = "## Process"
+    assert marker in body, f"Section '{marker}' not found in strip-compositor.md"
+    start = body.index(marker)
+    next_section = body.find("\n## ", start + len(marker))
+    process_section = body[start:next_section] if next_section != -1 else body[start:]
+    # Both fields must be referenced in the Process section (where character data is read)
+    assert "visual_traits" in process_section, (
+        "Process step must reference 'visual_traits' from character_sheet entries"
+    )
+    assert "distinctive_features" in process_section, (
+        "Process step must reference 'distinctive_features' from character_sheet entries"
     )
 
 
@@ -58,4 +63,11 @@ def test_strip_compositor_character_intro_does_not_rely_on_description_field():
         "The 'Character Intro Page Assembly' section must reference visual_traits "
         "or distinctive_features (the actual character-designer output fields), "
         "not 'description' which only exists on storyboard entries."
+    )
+    # Negative guard: the HTML template must not use {character_description}
+    # Note: "description" appears in line 499 as a prohibition text — use the
+    # template variable form to avoid false failures on the prohibition text itself
+    assert "{character_description}" not in assembly_section, (
+        "Assembly section uses {character_description} template variable — "
+        "use visual_traits/distinctive_features instead"
     )

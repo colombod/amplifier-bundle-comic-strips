@@ -18,7 +18,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from google.api_core import exceptions as google_exceptions
+from google.api_core import exceptions as google_exceptions  # pyright: ignore[reportMissingImports]
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +121,7 @@ class GeminiImageBackend:
         Reference image bytes are read via asyncio.to_thread to avoid blocking.
         """
         try:
-            from google.genai import types
+            from google.genai import types  # pyright: ignore[reportMissingImports]
 
             config = types.GenerateContentConfig(
                 response_modalities=["IMAGE", "TEXT"],

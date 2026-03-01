@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from google.api_core import exceptions as google_exceptions
+from google.api_core import exceptions as google_exceptions  # pyright: ignore[reportMissingImports]
 
 from amplifier_module_comic_image_gen.providers.gemini_images import GeminiImageBackend
 

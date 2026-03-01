@@ -356,6 +356,11 @@ async def test_openai_retries_on_rate_limit_then_succeeds(tmp_path: Path) -> Non
 
     assert result["success"] is True
     assert mock_sleep.call_count == 2
+    # Verify backoff formula: delay = 2**attempt + uniform(0, 1)
+    delay_0 = mock_sleep.call_args_list[0].args[0]
+    delay_1 = mock_sleep.call_args_list[1].args[0]
+    assert 1.0 <= delay_0 < 2.0, f"attempt 0 delay {delay_0!r} not in [1.0, 2.0)"
+    assert 2.0 <= delay_1 < 3.0, f"attempt 1 delay {delay_1!r} not in [2.0, 3.0)"
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -415,3 +420,8 @@ async def test_openai_fails_after_max_retries(tmp_path: Path) -> None:
     assert result["success"] is False
     # sleep after attempt 0 and 1; NOT after the final attempt 2
     assert mock_sleep.call_count == 2
+    # Verify backoff formula: delay = 2**attempt + uniform(0, 1)
+    delay_0 = mock_sleep.call_args_list[0].args[0]
+    delay_1 = mock_sleep.call_args_list[1].args[0]
+    assert 1.0 <= delay_0 < 2.0, f"attempt 0 delay {delay_0!r} not in [1.0, 2.0)"
+    assert 2.0 <= delay_1 < 3.0, f"attempt 1 delay {delay_1!r} not in [2.0, 3.0)"

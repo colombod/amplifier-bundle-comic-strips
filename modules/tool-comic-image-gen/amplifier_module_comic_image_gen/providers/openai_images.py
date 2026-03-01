@@ -96,7 +96,7 @@ class OpenAIImageBackend:
                         model=model,
                         prompt=prompt,
                         pixel_size=pixel_size,
-                        reference_images=reference_images,  # type: ignore[arg-type]
+                        reference_images=reference_images,  # type: ignore[arg-type]  # narrowed by use_edit check above
                     )
                 else:
                     response = await self._call_generate(
@@ -213,7 +213,9 @@ class OpenAIImageBackend:
             "size": pixel_size,
             "quality": "high",
         }
-        # gpt-image-1 always returns base64; doesn't accept response_format
+        # gpt-image-1 always returns base64; doesn't accept response_format.
+        # Defensive: _call_edit is only invoked when model is in _EDIT_CAPABLE_MODELS,
+        # so this branch is currently unreachable — kept for future call-site safety.
         if model not in _EDIT_CAPABLE_MODELS:
             kwargs["response_format"] = "b64_json"
         return await self.client.images.edit(**kwargs)

@@ -5,11 +5,6 @@ def _read_panel_artist() -> str:
     return (Path(__file__).parent.parent / "agents" / "panel-artist.md").read_text()
 
 
-def _single_item_section(content: str) -> str:
-    """Use full content — panel-artist is entirely single-item scoped."""
-    return content
-
-
 def test_panel_artist_accepts_single_panel_item() -> None:
     """Agent instructions reference {{panel_item}} as the input variable."""
     content = _read_panel_artist()
@@ -46,23 +41,24 @@ def test_panel_artist_has_no_internal_loop() -> None:
 
 
 def test_panel_artist_retains_self_review_loop() -> None:
-    """Agent retains 3-attempt self-review per panel (quality control, not iteration)."""
+    """Agent retains explicit 3-attempt cap for per-panel quality-control self-review."""
     content = _read_panel_artist()
-    assert "3" in content or "three" in content.lower(), (
-        "Missing 3-attempt self-review loop (per-panel quality control must be retained)"
+    content_lower = content.lower()
+    assert "max 3 attempts" in content_lower or "maximum 3 attempts" in content_lower, (
+        "Missing explicit 3-attempt cap for quality-control self-review"
     )
-    assert "attempt" in content.lower(), (
-        "Missing attempt/retry language for self-review"
-    )
+    assert "attempt" in content_lower, "Missing attempt/retry language for self-review"
 
 
 def test_panel_artist_outputs_single_panel_result() -> None:
-    """Output is a single panel result JSON object."""
+    """Output is a single panel result JSON object with required fields."""
     content = _read_panel_artist()
-    assert "single" in content.lower() or "{{panel_item}}" in content, (
-        "No indication this agent handles a single panel"
+    assert "single panel result" in content.lower(), (
+        "Output section must specify a single panel result JSON object"
     )
     assert '"index"' in content, "Output missing index field"
     assert '"path"' in content, "Output missing path field"
     assert '"passed_review"' in content, "Output missing passed_review field"
     assert '"flagged"' in content, "Output missing flagged field"
+    assert '"attempts"' in content, "Output missing attempts field"
+    assert '"size"' in content, "Output missing size field"

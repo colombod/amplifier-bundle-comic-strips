@@ -232,6 +232,6 @@ class TestForeachOutputContract:
         )
         # 'number' may appear in prose but should NOT appear as a JSON field key
         # Check the panel JSON example doesn't use "number": as a field
-        assert '"number":' not in section or '"index":' in section, (
-            "Panel entries are using 'number' — must use 'index' consistently"
+        assert '"number":' not in section, (
+            "Panel entries must not use 'number' — use 'index' consistently"
         )

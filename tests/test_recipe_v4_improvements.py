@@ -135,16 +135,13 @@ def _get_step_requirements(recipe: dict, step_id: str) -> dict | None:
 # ============================================
 
 
-def test_version_is_4_0_x():
-    """Recipe version must be in the 4.0.x series (currently 4.0.3)."""
+def test_version_is_5_or_later():
+    """Recipe version must be 5 or later (v5 introduced foreach loops)."""
     recipe = _load_recipe()
-    assert recipe["version"].startswith("4.0."), (
-        f"Expected version in the 4.0.x series, got {recipe['version']}"
-    )
-    # Verify it's at least 4.0.3 (flat context workaround for engine bug)
     parts = recipe["version"].split(".")
-    assert int(parts[2]) >= 3, (
-        f"Expected version >= 4.0.3 (flat context fix), got {recipe['version']}"
+    major = int(parts[0])
+    assert major >= 5, (
+        f"Expected major version >= 5, got {recipe['version']}"
     )
 
 
@@ -228,14 +225,30 @@ def test_approval_prompt_references_storyboard():
     )
 
 
-def test_character_design_is_after_storyboard_approval():
-    """character-design must be in a stage AFTER the storyboard stage."""
+def test_character_foreach_is_after_storyboard_approval():
+    """Character design/foreach step must be in a stage AFTER the storyboard stage."""
     recipe = _load_recipe()
     sb_idx = _stage_index_of_step(recipe, "storyboard")
-    cd_idx = _stage_index_of_step(recipe, "character-design")
     assert sb_idx >= 0, "storyboard step not found in any stage"
-    assert cd_idx >= 0, "character-design step not found in any stage"
-    assert cd_idx > sb_idx, "character-design must be in a later stage than storyboard"
+
+    # Try known step IDs for character design (v4: character-design, v5: design-characters)
+    cd_idx = _stage_index_of_step(recipe, "character-design")
+    if cd_idx < 0:
+        cd_idx = _stage_index_of_step(recipe, "design-characters")
+
+    # Fallback: scan all stages for a foreach step with 'character' in foreach value
+    if cd_idx < 0:
+        for i, stage in enumerate(_get_stages(recipe)):
+            for step in stage.get("steps", []):
+                foreach_val = step.get("foreach", "")
+                if "character" in foreach_val:
+                    cd_idx = i
+                    break
+            if cd_idx >= 0:
+                break
+
+    assert cd_idx >= 0, "character design step (or foreach) not found in any stage"
+    assert cd_idx > sb_idx, "character design must be in a later stage than storyboard"
 
 
 # ============================================
@@ -246,28 +259,67 @@ def test_character_design_is_after_storyboard_approval():
 def test_character_design_requirements():
     """character-design: needs_reference_images=false, detail_level=high."""
     recipe = _load_recipe()
+    # Try v4 step id first, then v5 step id
     reqs = _get_step_requirements(recipe, "character-design")
-    assert reqs is not None, "character-design must have requirements in recipe context"
-    assert reqs["needs_reference_images"] is False
-    assert reqs["detail_level"] == "high"
+    if reqs is None:
+        reqs = _get_step_requirements(recipe, "design-characters")
+
+    if reqs is not None:
+        needs_reference_images = reqs["needs_reference_images"]
+        detail_level = reqs["detail_level"]
+    else:
+        # v5 fallback: individual typed keys in top-level context
+        ctx = recipe.get("context", {})
+        needs_reference_images = ctx.get("character_design_needs_reference_images")
+        detail_level = ctx.get("character_design_detail_level")
+        assert needs_reference_images is not None, (
+            "character design requirements not found in recipe (tried step reqs and direct context keys)"
+        )
+
+    assert needs_reference_images is False
+    assert detail_level == "high"
 
 
 def test_generate_panels_requirements():
     """generate-panels: needs_reference_images=true, detail_level=medium."""
     recipe = _load_recipe()
     reqs = _get_step_requirements(recipe, "generate-panels")
-    assert reqs is not None, "generate-panels must have requirements in recipe context"
-    assert reqs["needs_reference_images"] is True
-    assert reqs["detail_level"] == "medium"
+
+    if reqs is not None:
+        needs_reference_images = reqs["needs_reference_images"]
+        detail_level = reqs["detail_level"]
+    else:
+        # v5 fallback: individual typed keys in top-level context
+        ctx = recipe.get("context", {})
+        needs_reference_images = ctx.get("generate_panels_needs_reference_images")
+        detail_level = ctx.get("generate_panels_detail_level")
+        assert needs_reference_images is not None, (
+            "generate-panels requirements not found in recipe (tried step reqs and direct context keys)"
+        )
+
+    assert needs_reference_images is True
+    assert detail_level == "medium"
 
 
 def test_generate_cover_requirements():
     """generate-cover: needs_reference_images=true, detail_level=high."""
     recipe = _load_recipe()
     reqs = _get_step_requirements(recipe, "generate-cover")
-    assert reqs is not None, "generate-cover must have requirements in recipe context"
-    assert reqs["needs_reference_images"] is True
-    assert reqs["detail_level"] == "high"
+
+    if reqs is not None:
+        needs_reference_images = reqs["needs_reference_images"]
+        detail_level = reqs["detail_level"]
+    else:
+        # v5 fallback: individual typed keys in top-level context
+        ctx = recipe.get("context", {})
+        needs_reference_images = ctx.get("generate_cover_needs_reference_images")
+        detail_level = ctx.get("generate_cover_detail_level")
+        assert needs_reference_images is not None, (
+            "generate-cover requirements not found in recipe (tried step reqs and direct context keys)"
+        )
+
+    assert needs_reference_images is True
+    assert detail_level == "high"
 
 
 # ============================================
@@ -304,3 +356,98 @@ def test_storyboard_step_mentions_delegation():
     assert "stories:content-strategist" in prompt or "delegate" in prompt.lower(), (
         "Storyboard step prompt should reference delegation to stories agents"
     )
+
+
+# ============================================
+# V5: Foreach structure validation
+# ============================================
+
+
+class TestRecipeV5ForeachStructure:
+    """Validate the v5 foreach loop structure introduced in session-to-comic v5.0.0."""
+
+    def test_recipe_version_is_5_or_later(self):
+        """Recipe version must be 5.0.0 or later."""
+        recipe = _load_recipe()
+        parts = recipe["version"].split(".")
+        major = int(parts[0])
+        assert major >= 5, (
+            f"Expected major version >= 5, got {recipe['version']}"
+        )
+
+    def test_character_foreach_exists(self):
+        """A foreach step with 'character' in the foreach value must exist."""
+        recipe = _load_recipe()
+        all_steps = _get_all_steps(recipe)
+        character_foreach = [
+            step for step in all_steps
+            if "character" in step.get("foreach", "")
+        ]
+        assert len(character_foreach) > 0, (
+            "No foreach step with 'character' in foreach value found in recipe"
+        )
+
+    def test_panel_foreach_exists(self):
+        """A foreach step with 'panel' in the foreach value must exist."""
+        recipe = _load_recipe()
+        all_steps = _get_all_steps(recipe)
+        panel_foreach = [
+            step for step in all_steps
+            if "panel" in step.get("foreach", "")
+        ]
+        assert len(panel_foreach) > 0, (
+            "No foreach step with 'panel' in foreach value found in recipe"
+        )
+
+    def test_character_foreach_uses_single_item_agent(self):
+        """Character foreach step must use comic-strips:character-designer agent."""
+        recipe = _load_recipe()
+        all_steps = _get_all_steps(recipe)
+        character_foreach_steps = [
+            step for step in all_steps
+            if "character" in step.get("foreach", "")
+        ]
+        assert len(character_foreach_steps) > 0, "No character foreach step found"
+        step = character_foreach_steps[0]
+        assert step.get("agent") == "comic-strips:character-designer", (
+            f"Character foreach step must use comic-strips:character-designer, "
+            f"got {step.get('agent')}"
+        )
+
+    def test_panel_foreach_uses_single_item_agent(self):
+        """Panel foreach step must use comic-strips:panel-artist agent."""
+        recipe = _load_recipe()
+        all_steps = _get_all_steps(recipe)
+        panel_foreach_steps = [
+            step for step in all_steps
+            if "panel" in step.get("foreach", "")
+        ]
+        assert len(panel_foreach_steps) > 0, "No panel foreach step found"
+        step = panel_foreach_steps[0]
+        assert step.get("agent") == "comic-strips:panel-artist", (
+            f"Panel foreach step must use comic-strips:panel-artist, "
+            f"got {step.get('agent')}"
+        )
+
+    def test_approval_gate_still_present(self):
+        """Storyboard stage must still have approval.required: true."""
+        recipe = _load_recipe()
+        stage = _find_stage_containing_step(recipe, "storyboard")
+        assert stage is not None, "No stage contains the storyboard step"
+        approval = stage.get("approval", {})
+        assert approval.get("required") is True, (
+            "Storyboard stage must have approval.required: true"
+        )
+
+    def test_composition_still_depends_on_panels_and_cover(self):
+        """Composition step must still depend on both generate-panels and generate-cover."""
+        recipe = _load_recipe()
+        step = _find_step(recipe, "composition")
+        assert step is not None, "composition step not found"
+        depends = step.get("depends_on", [])
+        assert "generate-panels" in depends, (
+            "composition must depend on generate-panels"
+        )
+        assert "generate-cover" in depends, (
+            "composition must depend on generate-cover"
+        )

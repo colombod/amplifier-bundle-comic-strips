@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio  # noqa: F401
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 

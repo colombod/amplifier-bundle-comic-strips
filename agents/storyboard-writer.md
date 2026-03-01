@@ -215,6 +215,56 @@ Your output MUST be a structured panel sequence in this exact format:
 }
 ```
 
+## Additional Outputs — Foreach Loop Inputs (Required)
+
+After emitting the main storyboard JSON above, you MUST also emit two additional flat JSON arrays as separate labelled blocks. The recipe engine reads these arrays directly to drive foreach iteration — they must be present and complete.
+
+### character_list
+
+Emit a flat JSON array of all characters. Each entry must contain these fields:
+
+```json
+[
+  {
+    "name": "The Explorer",
+    "role": "protagonist",
+    "type": "main",
+    "bundle": "foundation",
+    "description": "A seasoned scout in a worn leather jacket with a compass pendant. Alert eyes constantly scanning the environment. Foundation team blue accent on jacket shoulder."
+  }
+]
+```
+
+### panel_list
+
+Emit a flat JSON array of all panels. Each entry must contain these fields:
+
+```json
+[
+  {
+    "index": 1,
+    "size": "wide",
+    "scene_description": "A wide establishing shot of a high-tech command center. Multiple holographic displays float in the air showing cascading code. The Explorer stands at the center console, hand on chin, studying the displays.",
+    "characters_present": ["The Explorer"],
+    "emotional_beat": "setup - the challenge",
+    "camera_angle": "wide overhead",
+    "dialogue": [
+      {"speaker": "The Explorer", "text": "Something's wrong. The deeper I dig, the more tangled it gets."}
+    ],
+    "caption": "It started with a routine investigation -- but nothing about this session would be routine.",
+    "sound_effects": [],
+    "page_break_after": false
+  }
+]
+```
+
+### Rules for Foreach Output Arrays
+
+- `character_list` must have **exactly the same entries** as the `characters` array in the main storyboard JSON — no additions, no omissions
+- `panel_list` must have **exactly the same entries** as the `panels` array, using `index` instead of `number` as the field name
+- Both arrays must be emitted as **separate labelled blocks**, not merged into the main JSON
+- The recipe engine reads these arrays directly to drive foreach iteration — omitting them will break the pipeline
+
 **Character fields:**
 - `name`: Display name (used in dialogue speaker fields)
 - `role`: Story role (protagonist, specialist, mentor, supporting)

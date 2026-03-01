@@ -168,3 +168,43 @@ class TestFrontmatterDescription:
         ), (
             "meta.description should mention the two-phase process or both narrative + panel aspects"
         )
+
+
+class TestForeachOutputContract:
+    """The storyboard-writer must emit character_list and panel_list arrays for recipe foreach loops."""
+
+    def test_storyboard_writer_documents_character_list_output(self):
+        """Agent body must document both character_list and panel_list output arrays."""
+        body = _read_agent_body()
+        assert "character_list" in body, (
+            "Agent body must document 'character_list' output array for recipe foreach"
+        )
+        assert "panel_list" in body, (
+            "Agent body must document 'panel_list' output array for recipe foreach"
+        )
+
+    def test_character_list_entry_has_required_fields(self):
+        """character_list entries must document all required fields: name, role, type, bundle, description."""
+        body = _read_agent_body()
+        required_fields = ["name", "role", "type", "bundle", "description"]
+        for field in required_fields:
+            assert f'"{field}"' in body, (
+                f"Agent body must document '{field}' as a quoted field in character_list schema"
+            )
+
+    def test_panel_list_entry_has_required_fields(self):
+        """panel_list entries must document all required fields."""
+        body = _read_agent_body()
+        required_fields = [
+            "index",
+            "size",
+            "scene_description",
+            "characters_present",
+            "emotional_beat",
+            "camera_angle",
+            "page_break_after",
+        ]
+        for field in required_fields:
+            assert f'"{field}"' in body, (
+                f"Agent body must document '{field}' as a quoted field in panel_list schema"
+            )

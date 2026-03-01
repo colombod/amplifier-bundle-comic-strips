@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from google.api_core import exceptions as google_exceptions
 
 from amplifier_module_comic_image_gen.providers.gemini_images import GeminiImageBackend
 
@@ -281,3 +282,92 @@ async def test_non_imagen_model_still_uses_generate_content(tmp_path: Path) -> N
 
     assert result["success"] is True
     provider.client.aio.models.generate_content.assert_awaited_once()
+
+
+# ── Exponential backoff / retry tests (Task A2) ────────────────────────────
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_gemini_retries_on_resource_exhausted_then_succeeds(
+    tmp_path: Path,
+) -> None:
+    """ResourceExhausted triggers retry; succeeds on 3rd attempt, sleep called twice."""
+    provider = make_gemini_provider()
+
+    # Build a successful response for the 3rd attempt
+    success_response = provider.client.aio.models.generate_content.return_value
+
+    # First two calls raise ResourceExhausted, third succeeds
+    provider.client.aio.models.generate_content = AsyncMock(
+        side_effect=[
+            google_exceptions.ResourceExhausted("rate limit"),
+            google_exceptions.ResourceExhausted("rate limit"),
+            success_response,
+        ]
+    )
+
+    backend = GeminiImageBackend(provider)
+    output_path = tmp_path / "retry_success.png"
+
+    with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        result = await backend.generate(
+            prompt="A retried image",
+            output_path=output_path,
+        )
+
+    assert result["success"] is True
+    assert mock_sleep.call_count == 2, (
+        f"Expected sleep called twice for 2 retries, got {mock_sleep.call_count}"
+    )
+    assert provider.client.aio.models.generate_content.call_count == 3
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_gemini_fails_immediately_on_unauthenticated(tmp_path: Path) -> None:
+    """Unauthenticated (non-retryable) error fails on first attempt with no sleep."""
+    provider = make_gemini_provider()
+    provider.client.aio.models.generate_content = AsyncMock(
+        side_effect=google_exceptions.Unauthenticated("invalid credentials"),
+    )
+
+    backend = GeminiImageBackend(provider)
+    output_path = tmp_path / "auth_fail.png"
+
+    with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        result = await backend.generate(
+            prompt="An image that fails auth",
+            output_path=output_path,
+        )
+
+    assert result["success"] is False
+    assert mock_sleep.call_count == 0, (
+        f"Expected no sleep for non-retryable error, got {mock_sleep.call_count}"
+    )
+    assert provider.client.aio.models.generate_content.call_count == 1
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_gemini_fails_after_max_retries(tmp_path: Path) -> None:
+    """ResourceExhausted on all 3 attempts returns failure result."""
+    provider = make_gemini_provider()
+    provider.client.aio.models.generate_content = AsyncMock(
+        side_effect=google_exceptions.ResourceExhausted("quota exhausted"),
+    )
+
+    backend = GeminiImageBackend(provider)
+    output_path = tmp_path / "max_retries_fail.png"
+
+    with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        result = await backend.generate(
+            prompt="An image that always fails",
+            output_path=output_path,
+        )
+
+    assert result["success"] is False
+    assert provider.client.aio.models.generate_content.call_count == 3, (
+        f"Expected 3 attempts (_MAX_ATTEMPTS), got "
+        f"{provider.client.aio.models.generate_content.call_count}"
+    )
+    assert mock_sleep.call_count == 2, (
+        f"Expected sleep called twice (after attempt 1 and 2), got {mock_sleep.call_count}"
+    )

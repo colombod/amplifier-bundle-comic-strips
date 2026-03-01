@@ -4,16 +4,36 @@ Wraps the Google Gemini generative AI API behind a provider-agnostic
 generate() interface used by the comic image tool.  Uses
 client.aio.models.generate_content() with response_modalities=['IMAGE', 'TEXT']
 to request inline image data from Gemini's multimodal models.
+
+Includes exponential backoff with jitter for transient API errors.
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
+import random
 from pathlib import Path
 from typing import Any
 
+from google.api_core import exceptions as google_exceptions
+
 logger = logging.getLogger(__name__)
+
+_MAX_ATTEMPTS = 3
+
+_RETRYABLE_GEMINI = (
+    google_exceptions.ResourceExhausted,
+    google_exceptions.ServiceUnavailable,
+    google_exceptions.InternalServerError,
+)
+
+_NON_RETRYABLE_GEMINI = (
+    google_exceptions.Unauthenticated,
+    google_exceptions.PermissionDenied,
+    google_exceptions.InvalidArgument,
+)
 
 
 class GeminiImageBackend:
@@ -23,8 +43,13 @@ class GeminiImageBackend:
         self.provider = provider
         self.client = provider.client
 
-    @staticmethod
-    def _build_content_config(
+    @property
+    def provider_type(self) -> str:
+        """Return the provider type identifier."""
+        return "gemini"
+
+    async def _build_content_config(
+        self,
         prompt: str,
         reference_images: list[str] | None = None,
     ) -> tuple[Any, Any]:
@@ -33,6 +58,8 @@ class GeminiImageBackend:
         Uses google.genai types when available, falling back to plain dicts.
         When *reference_images* are provided, they are prepended as inline_data
         parts before the text prompt for multimodal input.
+
+        Reference image bytes are read via asyncio.to_thread to avoid blocking.
         """
         try:
             from google.genai import types
@@ -43,7 +70,7 @@ class GeminiImageBackend:
             parts: list[Any] = []
             if reference_images:
                 for img_path in reference_images:
-                    image_bytes = Path(img_path).read_bytes()
+                    image_bytes = await asyncio.to_thread(Path(img_path).read_bytes)
                     parts.append(
                         types.Part(
                             inline_data=types.Blob(
@@ -59,7 +86,7 @@ class GeminiImageBackend:
             parts_list: list[dict[str, Any]] = []
             if reference_images:
                 for img_path in reference_images:
-                    image_bytes = Path(img_path).read_bytes()
+                    image_bytes = await asyncio.to_thread(Path(img_path).read_bytes)
                     parts_list.append(
                         {
                             "inline_data": {
@@ -108,32 +135,66 @@ class GeminiImageBackend:
     ) -> dict[str, Any]:
         """Generate an image via the Imagen generateImages endpoint."""
         out = Path(output_path)
-        try:
-            response = await self.client.aio.models.generate_images(
-                model=model,
-                prompt=prompt,
-                config={"number_of_images": 1},
-            )
+        last_exc: Exception | None = None
 
-            image_bytes = response.generated_images[0].image.image_bytes
+        for attempt in range(_MAX_ATTEMPTS):
+            try:
+                response = await self.client.aio.models.generate_images(
+                    model=model,
+                    prompt=prompt,
+                    config={"number_of_images": 1},
+                )
 
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_bytes(image_bytes)
+                image_bytes = response.generated_images[0].image.image_bytes
 
-            return {
-                "success": True,
-                "provider_used": self.provider.name,
-                "path": str(out),
-                "error": None,
-            }
-        except Exception as exc:
-            logger.exception("Imagen generation failed for model %s", model)
-            return {
-                "success": False,
-                "provider_used": self.provider.name,
-                "path": str(out),
-                "error": str(exc),
-            }
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_bytes(image_bytes)
+
+                return {
+                    "success": True,
+                    "provider_used": self.provider.name,
+                    "path": str(out),
+                    "error": None,
+                }
+            except _NON_RETRYABLE_GEMINI as exc:
+                logger.error(
+                    "Imagen generation failed with non-retryable error for model %s: %s",
+                    model,
+                    exc,
+                )
+                return {
+                    "success": False,
+                    "provider_used": self.provider.name,
+                    "path": str(out),
+                    "error": str(exc),
+                }
+            except _RETRYABLE_GEMINI as exc:
+                last_exc = exc
+                logger.warning(
+                    "Imagen generation attempt %d/%d failed for model %s: %s",
+                    attempt + 1,
+                    _MAX_ATTEMPTS,
+                    model,
+                    exc,
+                )
+                if attempt < _MAX_ATTEMPTS - 1:
+                    delay = 2**attempt + random.uniform(0, 1)
+                    await asyncio.sleep(delay)
+            except Exception as exc:
+                logger.exception("Imagen generation failed for model %s", model)
+                return {
+                    "success": False,
+                    "provider_used": self.provider.name,
+                    "path": str(out),
+                    "error": str(exc),
+                }
+
+        return {
+            "success": False,
+            "provider_used": self.provider.name,
+            "path": str(out),
+            "error": str(last_exc),
+        }
 
     async def _generate_content(
         self,
@@ -144,41 +205,80 @@ class GeminiImageBackend:
     ) -> dict[str, Any]:
         """Generate an image via the generateContent endpoint."""
         out = Path(output_path)
-        try:
-            contents, config = self._build_content_config(prompt, reference_images)
+        last_exc: Exception | None = None
 
-            response = await self.client.aio.models.generate_content(
-                model=model,
-                contents=contents,
-                config=config,
-            )
+        for attempt in range(_MAX_ATTEMPTS):
+            try:
+                contents, config = await self._build_content_config(
+                    prompt, reference_images
+                )
 
-            image_bytes = self._extract_image(response)
-            if image_bytes is None:
+                response = await self.client.aio.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=config,
+                )
+
+                image_bytes = self._extract_image(response)
+                if image_bytes is None:
+                    return {
+                        "success": False,
+                        "provider_used": self.provider.name,
+                        "path": str(out),
+                        "error": "No image part found in Gemini response",
+                    }
+
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_bytes(image_bytes)
+
+                return {
+                    "success": True,
+                    "provider_used": self.provider.name,
+                    "path": str(out),
+                    "error": None,
+                }
+            except _NON_RETRYABLE_GEMINI as exc:
+                logger.error(
+                    "Gemini content generation failed with non-retryable error "
+                    "for model %s: %s",
+                    model,
+                    exc,
+                )
                 return {
                     "success": False,
                     "provider_used": self.provider.name,
                     "path": str(out),
-                    "error": "No image part found in Gemini response",
+                    "error": str(exc),
+                }
+            except _RETRYABLE_GEMINI as exc:
+                last_exc = exc
+                logger.warning(
+                    "Gemini content generation attempt %d/%d failed for model %s: %s",
+                    attempt + 1,
+                    _MAX_ATTEMPTS,
+                    model,
+                    exc,
+                )
+                if attempt < _MAX_ATTEMPTS - 1:
+                    delay = 2**attempt + random.uniform(0, 1)
+                    await asyncio.sleep(delay)
+            except Exception as exc:
+                logger.exception(
+                    "Gemini content generation failed for model %s", model
+                )
+                return {
+                    "success": False,
+                    "provider_used": self.provider.name,
+                    "path": str(out),
+                    "error": str(exc),
                 }
 
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_bytes(image_bytes)
-
-            return {
-                "success": True,
-                "provider_used": self.provider.name,
-                "path": str(out),
-                "error": None,
-            }
-        except Exception as exc:
-            logger.exception("Gemini content generation failed for model %s", model)
-            return {
-                "success": False,
-                "provider_used": self.provider.name,
-                "path": str(out),
-                "error": str(exc),
-            }
+        return {
+            "success": False,
+            "provider_used": self.provider.name,
+            "path": str(out),
+            "error": str(last_exc),
+        }
 
     @staticmethod
     def _extract_image(response: Any) -> bytes | None:

@@ -273,3 +273,11 @@ These rules are NON-NEGOTIABLE. Every storyboard must follow them.
 - The final panel should have a satisfying conclusion or punchline
 - Maximum 4 main + 2 supporting characters (6 total)
 - All dialogue must sound natural — no character would say a UUID or file path out loud
+
+## Asset Integration
+
+Read the style guide from the asset manager instead of relying on recipe context:
+comic_style(action='get', project='{{project_id}}', name='<style_name>', include='full')
+
+After producing the complete storyboard JSON (with character_list and panel_list), store it:
+comic_asset(action='store', project='{{project_id}}', issue='{{issue_id}}', type='storyboard', name='storyboard', content=<the complete storyboard JSON>)

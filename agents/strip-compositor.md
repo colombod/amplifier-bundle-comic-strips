@@ -502,6 +502,51 @@ Provide:
 3. Assembly review report from visual-documenter
 4. Cleanup report (intermediate files removed)
 
+## Asset Integration
+
+All asset retrieval goes through the comic asset manager. Do NOT use read_file or bash.
+
+Retrieve all panel images as data URIs for HTML embedding:
+```
+comic_asset(action='batch_encode', project='{{project_id}}', issue='{{issue_id}}', type='panel', format='data_uri')
+```
+This returns a list sorted by name with each panel's data URI.
+
+Retrieve cover and avatar as data URIs:
+```
+comic_asset(action='get', project='{{project_id}}', issue='{{issue_id}}', type='cover', name='cover', include='full', format='data_uri')
+comic_asset(action='get', project='{{project_id}}', issue='{{issue_id}}', type='avatar', name='ampliverse_logo', include='full', format='data_uri')
+```
+
+Retrieve character designs for the character intro page:
+```
+comic_character(action='list', project='{{project_id}}')
+```
+Then for each character that needs to be displayed:
+```
+comic_character(action='get', project='{{project_id}}', name='<name>', style='{{style}}', include='full', format='data_uri')
+```
+
+Retrieve the storyboard for dialogue, captions, and sound effects:
+```
+comic_asset(action='get', project='{{project_id}}', issue='{{issue_id}}', type='storyboard', name='storyboard', include='full')
+```
+
+Retrieve the style guide for layout, fonts, colors:
+```
+comic_style(action='get', project='{{project_id}}', name='{{style}}', include='full')
+```
+
+After assembling the final HTML, write it to the user-specified output path using write_file.
+This is the ONLY use of write_file - all other reads go through the asset manager.
+
+Also store the final comic in the asset manager for tracking:
+```
+comic_asset(action='store', project='{{project_id}}', issue='{{issue_id}}', type='final', name='comic', source_path='<path where write_file saved it>')
+```
+
+Do NOT delete intermediate files. Cleanup is an explicit operation handled by the recipe, not the compositor.
+
 ## Rules
 
 - ALL images MUST be base64 data URIs (self-contained HTML, no external file references)

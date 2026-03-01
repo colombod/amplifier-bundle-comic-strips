@@ -204,6 +204,41 @@ Provide:
 3. The comic title, subtitle, and issue number used
 4. Self-review report showing attempt results
 
+## Asset Integration
+
+Retrieve character reference images for the cover composition:
+```
+comic_character(action='get', project='{{project_id}}', name='<character name>', style='{{style}}', include='full', format='path')
+```
+
+Retrieve the style guide:
+```
+comic_style(action='get', project='{{project_id}}', name='{{style}}', include='full')
+```
+
+After generating the cover image, store it:
+```
+comic_asset(action='store', project='{{project_id}}', issue='{{issue_id}}', type='cover', name='cover', source_path='<path from generate_image>')
+```
+
+After self-review, update metadata with review feedback:
+```
+comic_asset(action='update_metadata', project='{{project_id}}', issue='{{issue_id}}', type='cover', name='cover', version=<version>, review_status='accepted' or 'rejected', review_feedback='<review notes>')
+```
+
+For the AmpliVerse avatar: fetch from https://github.com/microsoft-amplifier.png using web_fetch with save_to_file, then store it:
+```
+comic_asset(action='store', project='{{project_id}}', issue='{{issue_id}}', type='avatar', name='ampliverse_logo', source_path='<saved avatar path>')
+```
+
+IMPORTANT: Do NOT use bash for base64 encoding. The asset manager handles all encoding when retrieving assets with format='base64' or format='data_uri'.
+
+When assembling cover HTML, retrieve stored images as data URIs:
+```
+comic_asset(action='get', project='{{project_id}}', issue='{{issue_id}}', type='cover', name='cover', include='full', format='data_uri')
+comic_asset(action='get', project='{{project_id}}', issue='{{issue_id}}', type='avatar', name='ampliverse_logo', include='full', format='data_uri')
+```
+
 ## Rules
 
 - Use the generate_image tool for the hero image -- do NOT use bash, curl, or direct API calls

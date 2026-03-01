@@ -165,6 +165,32 @@ Return a **single panel result JSON object**:
 - `passed_review`: `true` if all quality checks passed on any attempt; `false` if flagged
 - `flagged`: `true` only if all 3 attempts failed checks 1–3
 
+## Asset Integration
+
+Retrieve character reference images for visual consistency:
+```
+comic_character(action='get', project='{{project_id}}', name='<character name>', style='{{style}}', include='full', format='path')
+```
+
+This returns the absolute path to the character's reference image, which you pass directly to generate_image's reference_images parameter.
+
+After generating the panel image, store it:
+```
+comic_asset(action='store', project='{{project_id}}', issue='{{issue_id}}', type='panel', name='panel_<NN>', source_path='<path from generate_image>', metadata={'scene': '<scene description>', 'characters': [<character names>]})
+```
+
+After self-review, update the version metadata with review feedback:
+```
+comic_asset(action='update_metadata', project='{{project_id}}', issue='{{issue_id}}', type='panel', name='panel_<NN>', version=<version>, review_status='accepted' or 'rejected', review_feedback='<review notes>')
+```
+
+If rejected, generate a new image and store again (auto-increments to next version).
+
+For QA screenshots from the review process, store them too:
+```
+comic_asset(action='store', project='{{project_id}}', issue='{{issue_id}}', type='qa_screenshot', name='panel_<NN>_review', source_path='<screenshot path>')
+```
+
 ## Rules
 
 - Process EXACTLY ONE panel per invocation — `{{panel_item}}` is a single object

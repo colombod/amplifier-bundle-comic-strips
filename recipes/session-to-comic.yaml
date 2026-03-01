@@ -1,12 +1,27 @@
 name: "session-to-comic"
 description: "Transform an Amplifier session into an illustrated comic strip with quality review, character consistency, dramatized storytelling, and AmpliVerse publisher branding"
-version: "5.0.3"
+version: "6.0.0"
 author: "amplifier-comic-strips"
 tags: ["comic", "visual-storytelling", "session-analysis", "image-generation"]
 
 # =============================================================================
 # CHANGELOG
 # =============================================================================
+#
+# v6.0.0 (2026-03-03):
+#   - FEAT: Integrate comic asset manager (tool-comic-assets) for all asset tracking.
+#     All agents now store and retrieve assets through comic_project, comic_character,
+#     comic_asset, and comic_style tools instead of direct filesystem operations.
+#   - FEAT: Add init-project step that creates project and issue for asset tracking.
+#     project_id and issue_id flow through recipe context to all downstream steps.
+#   - FEAT: Character designs stored as composite domain objects (metadata + images)
+#     in the project roster, versioned by style, reusable across issues.
+#   - FEAT: Style guides stored and retrievable across projects.
+#   - FEAT: Review feedback stored as version metadata on panels, covers, characters.
+#   - CHANGE: strip-compositor no longer deletes intermediate files. All assets
+#     persist in managed storage. Cleanup is an explicit user-approved operation.
+#   - CHANGE: bash tool removed from cover-artist. Base64 encoding handled by
+#     asset manager's format='data_uri' retrieval.
 #
 # v5.0.3 (2026-03-01):
 #   - BUGFIX: Remove unsupported Jinja2 filter `| length` from approval gate prompt.
@@ -82,6 +97,8 @@ context:
   session_file: ""        # Required: path to events.jsonl session file or session ID
   style: "superhero"      # Style name (manga, superhero, indie, newspaper, ligne-claire, retro-americana) or custom description
   output_name: ""         # Optional: custom output filename (defaults to comic-{timestamp})
+  project_name: ""     # Optional: project name (defaults to "comic-project")
+  issue_title: ""      # Optional: issue title (defaults to comic title from research)
   # Pipeline step requirements for generate_image tool parameters.
   # Flattened to individual keys to avoid nested dict serialization issues
   # in the recipe engine's substitute_variables() (see amplifier-support#91).
@@ -101,6 +118,25 @@ stages:
   # ==========================================================================
   - name: "research-and-storyboard"
     steps:
+      # ============================================
+      # STEP 0: INIT PROJECT - Asset Manager Setup
+      # ============================================
+      - id: "init-project"
+        agent: "comic-strips:style-curator"
+        prompt: |
+          Initialize the comic project for asset tracking.
+
+          comic_project(action='create_issue', project='{{project_name}}', title='{{issue_title}}')
+
+          If project_name is empty, use "comic-project" as the default.
+          If issue_title is empty, use "Comic Strip" as the default.
+
+          Return the project_id and issue_id from the response as JSON:
+          {"project_id": "<value>", "issue_id": "<value>"}
+        output: "project_init"
+        parse_json: true
+        timeout: 60
+
       # ============================================
       # STEP 1: RESEARCH - Data Extraction
       # ============================================
@@ -140,6 +176,10 @@ stages:
           - Session duration and effort indicators
 
           Output as structured JSON with: title, subtitle, timeline, key_moments, characters, metrics, outcome.
+
+          Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}
+          If the comic_asset tool is available, store it using:
+          comic_asset(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', type='research', name='research', content=<your research output>)
         output: "research_data"
         timeout: 600
 
@@ -161,6 +201,10 @@ stages:
           If it's a custom description, interpret it and generate a complete style guide.
 
           Output the full structured style guide.
+
+          Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}, style={{style}}
+          After producing the style guide, store it using:
+          comic_style(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', name='{{style}}', definition=<your style guide output>)
         output: "style_guide"
         timeout: 300
 
@@ -199,7 +243,10 @@ stages:
 
           Break the story into 4-8 panels following the style guide's conventions.
 
-          CRITICAL OUTPUT REQUIREMENT: Your JSON output MUST include two top-level arrays:
+          CRITICAL OUTPUT REQUIREMENT: Your JSON output MUST include these top-level fields:
+          - title: string (comic title)
+          - subtitle: string (comic subtitle)
+          - panel_count: integer (total number of panels)
           - character_list: array of character objects (one entry per character to be designed)
           - panel_list: array of panel objects (one entry per panel to be generated)
           These arrays will be used by downstream foreach loops to drive character design
@@ -208,6 +255,10 @@ stages:
           generate that panel's artwork.
 
           Output the complete panel sequence as structured JSON.
+
+          Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}
+          After producing the storyboard JSON, store it using:
+          comic_asset(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', type='storyboard', name='storyboard', content=<your storyboard output>)
         output: "storyboard"
         parse_json: true
         timeout: 1200
@@ -256,6 +307,8 @@ stages:
         parallel: 2
         max_iterations: 6
         prompt: |
+          Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}, style={{style}}
+
           Create a character reference sheet for this single character.
 
           Character to design:
@@ -285,6 +338,8 @@ stages:
         parallel: 2
         max_iterations: 12
         prompt: |
+          Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}, style={{style}}
+
           Generate the artwork for a single comic panel.
 
           Panel to generate:
@@ -314,6 +369,8 @@ stages:
         agent: "comic-strips:cover-artist"
         depends_on: ["design-characters"]
         prompt: |
+          Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}, style={{style}}
+
           You are generating cover art for a comic strip.
 
           Pipeline requirements for this step: needs_reference_images={{generate_cover_needs_reference_images}}, detail_level={{generate_cover_detail_level}}
@@ -346,6 +403,11 @@ stages:
         agent: "comic-strips:strip-compositor"
         depends_on: ["generate-panels", "generate-cover"]
         prompt: |
+          Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}, style={{style}}
+
+          IMPORTANT: Retrieve ALL assets from the asset manager instead of relying on recipe context variables.
+          Use comic_asset, comic_character, and comic_style tools to fetch what you need.
+
           Assemble the final comic strip HTML.
 
           Panel Art Results:
@@ -379,8 +441,7 @@ stages:
 
           Fix any issues found (max 2 assembly review iterations).
 
-          After final HTML is verified, clean up intermediate files:
-          delete panel_*.png, ref_*.png, cover.png, avatar.png, and any other temp files.
-          Keep only the final HTML file. The HTML is self-contained with all images as base64.
+          Do NOT delete intermediate files. All assets are managed by the asset manager.
+          Cleanup is handled separately via an explicit recipe step with user approval.
         output: "final_output"
         timeout: 1200

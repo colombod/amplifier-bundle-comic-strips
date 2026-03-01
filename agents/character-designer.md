@@ -139,3 +139,16 @@ Return a **single character sheet entry** (not an array) as a JSON object:
 - Use `generate_image` for ALL image generation — never bash, curl, or direct API calls
 - Name the output file `ref_<character_name_snake_case>.png`
 - Return a SINGLE JSON object — do NOT wrap output in a characters array
+
+## Asset Storage
+
+After generating the character reference image, store the complete character design using the comic_character tool:
+
+comic_character(action='store', project='{{project_id}}', issue='{{issue_id}}', name='<character display name>', style='{{style}}', role='<role>', character_type='<main or supporting>', bundle='<bundle name>', visual_traits='<visual traits>', team_markers='<team markers>', distinctive_features='<distinctive features>', backstory='<backstory>', motivations='<motivations>', personality='<personality>', source_path='<path to generated image>')
+
+This stores the character in the project roster for reuse across issues. The version is auto-incremented.
+
+To retrieve the style guide for prompt crafting:
+comic_style(action='get', project='{{project_id}}', name='{{style}}', include='full')
+
+Output the character entry JSON with the version number returned by the store call.

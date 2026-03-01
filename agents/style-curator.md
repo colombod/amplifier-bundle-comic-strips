@@ -108,3 +108,11 @@ Your output MUST be a structured style guide with these exact sections:
 - For custom styles, use your creative judgment but maintain the required structure
 - The image prompt template MUST include "No text in image" as a constraint
 - Color palette MUST include hex codes for CSS implementation
+
+## Asset Storage
+
+After producing the complete style guide, store it using the comic_style tool:
+
+comic_style(action='store', project='{{project_id}}', issue='{{issue_id}}', name='<style_name>', definition=<the complete style guide as structured data>)
+
+The style name should match the requested style (e.g., "manga", "superhero", or the custom description slugified). This makes the style guide retrievable by downstream agents and reusable across issues.

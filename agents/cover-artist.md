@@ -143,8 +143,11 @@ Maximum 3 attempts total. Use the best result if all 3 fail.
 This step is CRITICAL. The logo must be the actual image, not text.
 
 1. Fetch: `web_fetch(url="https://github.com/microsoft-amplifier.png", save_to_file="avatar.png")`
-2. Read the saved PNG file
-3. Convert to base64 string
+2. Base64-encode the saved PNG using bash:
+   ```
+   bash(command="base64 -w 0 avatar.png")
+   ```
+3. Capture the output — this is the base64 string to embed
 4. Embed in the cover HTML as: `<img src="data:image/png;base64,{BASE64}" style="width: 40px; height: 40px; border-radius: 50%;" />`
 5. Position per the style guide's AmpliVerse Branding section placement rules
 

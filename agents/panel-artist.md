@@ -85,7 +85,7 @@ load_skill(skill_name="image-prompt-engineering")
 | Panel Size | Aspect Ratio |
 |-----------|--------------|
 | wide      | landscape    |
-| standard  | square       |
+| standard  | landscape    |
 | tall      | portrait     |
 | square    | square       |
 

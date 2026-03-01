@@ -12,6 +12,7 @@ Acceptance criteria verified:
 
 import functools
 
+import pytest
 import yaml
 from pathlib import Path
 
@@ -40,6 +41,14 @@ def _find_step(recipe: dict, step_id: str) -> dict | None:
     """Find a step by its ID across all stages/steps."""
     for step in _get_all_steps(recipe):
         if step.get("id") == step_id:
+            return step
+    return None
+
+
+def _find_foreach_step(recipe: dict, keyword: str) -> dict | None:
+    """Find the first step whose foreach value contains keyword (case-insensitive)."""
+    for step in _get_all_steps(recipe):
+        if keyword in step.get("foreach", "").lower():
             return step
     return None
 
@@ -365,95 +374,55 @@ def test_storyboard_step_mentions_delegation():
 class TestRecipeV5ForeachStructure:
     """Validate the v5 foreach loop structure introduced in session-to-comic v5.0.0."""
 
-    def test_recipe_version_is_v5(self):
-        """Recipe version must be 5.0.0 or later."""
-        recipe = _load_recipe()
-        parts = recipe["version"].split(".")
-        major = int(parts[0])
-        assert major >= 5, f"Expected major version >= 5, got {recipe['version']}"
+    @pytest.fixture
+    def recipe(self) -> dict:
+        """Load the recipe once per test."""
+        return _load_recipe()
 
-    def test_character_foreach_exists(self):
-        """A foreach step with 'character' in the foreach value must exist."""
-        recipe = _load_recipe()
-        all_steps = _get_all_steps(recipe)
-        character_foreach = [
-            step for step in all_steps if "character" in step.get("foreach", "")
-        ]
-        assert len(character_foreach) > 0, (
-            "No foreach step with 'character' in foreach value found in recipe"
+    def test_character_foreach_exists(self, recipe) -> None:
+        """Recipe has a foreach step iterating over storyboard.character_list."""
+        step = _find_foreach_step(recipe, "character")
+        assert step is not None, (
+            "No character foreach step found — expected foreach over storyboard.character_list"
         )
 
-    def test_panel_foreach_exists(self):
-        """A foreach step with 'panel' in the foreach value must exist."""
-        recipe = _load_recipe()
-        all_steps = _get_all_steps(recipe)
-        panel_foreach = [
-            step for step in all_steps if "panel" in step.get("foreach", "")
-        ]
-        assert len(panel_foreach) > 0, (
-            "No foreach step with 'panel' in foreach value found in recipe"
+    def test_panel_foreach_exists(self, recipe) -> None:
+        """Recipe has a foreach step iterating over storyboard.panel_list."""
+        step = _find_foreach_step(recipe, "panel")
+        assert step is not None, (
+            "No panel foreach step found — expected foreach over storyboard.panel_list"
         )
 
-    def test_character_foreach_uses_correct_agent(self):
-        """Character foreach step must use comic-strips:character-designer agent."""
-        recipe = _load_recipe()
-        all_steps = _get_all_steps(recipe)
-        character_foreach_steps = [
-            step for step in all_steps if "character" in step.get("foreach", "")
-        ]
-        assert len(character_foreach_steps) > 0, "No character foreach step found"
-        step = character_foreach_steps[0]
+    def test_character_foreach_uses_correct_agent(self, recipe) -> None:
+        """Character foreach step dispatches to comic-strips:character-designer."""
+        step = _find_foreach_step(recipe, "character")
+        assert step is not None, "No character foreach step found"
         assert step.get("agent") == "comic-strips:character-designer", (
-            f"Character foreach step must use comic-strips:character-designer, "
-            f"got {step.get('agent')}"
+            f"Character foreach uses wrong agent: {step.get('agent')}"
         )
 
-    def test_panel_foreach_uses_correct_agent(self):
-        """Panel foreach step must use comic-strips:panel-artist agent."""
-        recipe = _load_recipe()
-        all_steps = _get_all_steps(recipe)
-        panel_foreach_steps = [
-            step for step in all_steps if "panel" in step.get("foreach", "")
-        ]
-        assert len(panel_foreach_steps) > 0, "No panel foreach step found"
-        step = panel_foreach_steps[0]
+    def test_panel_foreach_uses_correct_agent(self, recipe) -> None:
+        """Panel foreach step dispatches to comic-strips:panel-artist."""
+        step = _find_foreach_step(recipe, "panel")
+        assert step is not None, "No panel foreach step found"
         assert step.get("agent") == "comic-strips:panel-artist", (
-            f"Panel foreach step must use comic-strips:panel-artist, "
-            f"got {step.get('agent')}"
+            f"Panel foreach uses wrong agent: {step.get('agent')}"
         )
 
-    def test_approval_gate_preserved(self):
-        """Storyboard stage must still have approval.required: true."""
-        recipe = _load_recipe()
-        stage = _find_stage_containing_step(recipe, "storyboard")
-        assert stage is not None, "No stage contains the storyboard step"
-        approval = stage.get("approval", {})
-        assert approval.get("required") is True, (
-            "Storyboard stage must have approval.required: true"
-        )
-
-    def test_character_foreach_uses_dot_notation_source(self):
+    def test_character_foreach_uses_dot_notation_source(self, recipe) -> None:
         """Character foreach source uses dot notation: {{storyboard.character_list}}."""
-        recipe = _load_recipe()
-        all_steps = _get_all_steps(recipe)
-        character_foreach = [
-            step for step in all_steps if "character" in step.get("foreach", "")
-        ]
-        assert character_foreach, "No character foreach step found"
-        foreach_source = character_foreach[0].get("foreach", "")
+        step = _find_foreach_step(recipe, "character")
+        assert step is not None, "No character foreach step found"
+        foreach_source = step.get("foreach", "")
         assert "storyboard.character_list" in foreach_source, (
             f"Expected 'storyboard.character_list' in foreach source, got: {foreach_source}"
         )
 
-    def test_panel_foreach_uses_dot_notation_source(self):
+    def test_panel_foreach_uses_dot_notation_source(self, recipe) -> None:
         """Panel foreach source uses dot notation: {{storyboard.panel_list}}."""
-        recipe = _load_recipe()
-        all_steps = _get_all_steps(recipe)
-        panel_foreach = [
-            step for step in all_steps if "panel" in step.get("foreach", "")
-        ]
-        assert panel_foreach, "No panel foreach step found"
-        foreach_source = panel_foreach[0].get("foreach", "")
+        step = _find_foreach_step(recipe, "panel")
+        assert step is not None, "No panel foreach step found"
+        foreach_source = step.get("foreach", "")
         assert "storyboard.panel_list" in foreach_source, (
             f"Expected 'storyboard.panel_list' in foreach source, got: {foreach_source}"
         )

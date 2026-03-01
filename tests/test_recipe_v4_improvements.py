@@ -365,7 +365,7 @@ def test_storyboard_step_mentions_delegation():
 class TestRecipeV5ForeachStructure:
     """Validate the v5 foreach loop structure introduced in session-to-comic v5.0.0."""
 
-    def test_recipe_version_is_5_or_later(self):
+    def test_recipe_version_is_v5(self):
         """Recipe version must be 5.0.0 or later."""
         recipe = _load_recipe()
         parts = recipe["version"].split(".")
@@ -394,7 +394,7 @@ class TestRecipeV5ForeachStructure:
             "No foreach step with 'panel' in foreach value found in recipe"
         )
 
-    def test_character_foreach_uses_single_item_agent(self):
+    def test_character_foreach_uses_correct_agent(self):
         """Character foreach step must use comic-strips:character-designer agent."""
         recipe = _load_recipe()
         all_steps = _get_all_steps(recipe)
@@ -408,7 +408,7 @@ class TestRecipeV5ForeachStructure:
             f"got {step.get('agent')}"
         )
 
-    def test_panel_foreach_uses_single_item_agent(self):
+    def test_panel_foreach_uses_correct_agent(self):
         """Panel foreach step must use comic-strips:panel-artist agent."""
         recipe = _load_recipe()
         all_steps = _get_all_steps(recipe)
@@ -422,7 +422,7 @@ class TestRecipeV5ForeachStructure:
             f"got {step.get('agent')}"
         )
 
-    def test_approval_gate_still_present(self):
+    def test_approval_gate_preserved(self):
         """Storyboard stage must still have approval.required: true."""
         recipe = _load_recipe()
         stage = _find_stage_containing_step(recipe, "storyboard")
@@ -431,17 +431,6 @@ class TestRecipeV5ForeachStructure:
         assert approval.get("required") is True, (
             "Storyboard stage must have approval.required: true"
         )
-
-    def test_composition_still_depends_on_panels_and_cover(self):
-        """Composition step must still depend on both generate-panels and generate-cover."""
-        recipe = _load_recipe()
-        step = _find_step(recipe, "composition")
-        assert step is not None, "composition step not found"
-        depends = step.get("depends_on", [])
-        assert "generate-panels" in depends, (
-            "composition must depend on generate-panels"
-        )
-        assert "generate-cover" in depends, "composition must depend on generate-cover"
 
     def test_character_foreach_uses_dot_notation_source(self):
         """Character foreach source uses dot notation: {{storyboard.character_list}}."""

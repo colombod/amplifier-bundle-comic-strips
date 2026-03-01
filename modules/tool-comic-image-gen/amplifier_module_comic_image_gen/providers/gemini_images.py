@@ -140,7 +140,7 @@ class GeminiImageBackend:
                     )
             parts.append(types.Part(text=prompt))
             contents = types.Content(parts=parts)
-        except (ImportError, ModuleNotFoundError):
+        except ImportError:
             config = {"response_modalities": ["IMAGE", "TEXT"]}
             parts_list: list[dict[str, Any]] = []
             if reference_images:

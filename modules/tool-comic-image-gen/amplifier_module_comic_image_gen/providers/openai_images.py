@@ -202,7 +202,7 @@ class OpenAIImageBackend:
         reference_images: list[str],
     ) -> Any:
         """Call ``client.images.edit`` with reference image file bytes."""
-        # Use asyncio.to_thread for blocking file I/O (A3 baked in)
+        # Use asyncio.to_thread to avoid blocking the event loop during disk I/O
         image_bytes_list = [
             await asyncio.to_thread(Path(p).read_bytes) for p in reference_images
         ]

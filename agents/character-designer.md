@@ -141,4 +141,4 @@ Return a **single character sheet entry** (not an array) as a JSON object:
 - Face MUST be clearly visible — this is the top priority for downstream consistency
 - Use `generate_image` for ALL image generation — never bash, curl, or direct API calls
 - Name the output file `ref_<character_name_snake_case>.png`
-- Return a SINGLE JSON object, not a `{"characters": [...]}` array
+- Return a SINGLE JSON object — do NOT wrap output in a characters array

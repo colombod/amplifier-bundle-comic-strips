@@ -91,6 +91,8 @@ Example mappings:
 - `stories` bundle → gold accents, quill insignia
 - `recipes` bundle → green accents, scroll insignia
 
+For bundles not listed above, derive a color accent and symbol from the bundle's domain (e.g., a `testing` bundle might use red accents with a checkmark insignia).
+
 ## Style-Dependent Creative License
 
 The visual interpretation of the character depends on the active style from `{{style_guide}}`:

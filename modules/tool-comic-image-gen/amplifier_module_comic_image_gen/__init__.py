@@ -30,8 +30,16 @@ except ImportError:  # pragma: no cover – bridge runs without amplifier_core i
 
 
 from ._version import __version__  # noqa: F401, E402
+from .model_map import MODEL_MAP  # noqa: E402
 from .model_selector import select_model  # noqa: E402
 from .providers import discover_image_backends  # noqa: E402
+
+# Maps MODEL_MAP provider names → backend provider_type values used for routing.
+# OpenAI models live on "openai" backends; Google/Gemini models live on "gemini" backends.
+_MODEL_PROVIDER_TO_BACKEND_TYPE: dict[str, str] = {
+    "openai": "openai",
+    "google": "gemini",
+}
 
 __amplifier_module_type__ = "tool"
 
@@ -165,6 +173,14 @@ class ComicImageGenTool:
         }
         if explicit_model is not None:
             gen_kwargs["model"] = explicit_model
+            # Re-sort backends so the provider that owns this model goes first.
+            entry = MODEL_MAP.get(explicit_model)
+            if entry is not None:
+                target_type = _MODEL_PROVIDER_TO_BACKEND_TYPE.get(entry.provider)
+                if target_type and len(backends) > 1:
+                    backends.sort(
+                        key=lambda b: getattr(b, "provider_type", "") != target_type
+                    )
         elif requirements is not None:
             available_providers: list[str] = []
             for b in backends:
@@ -186,6 +202,13 @@ class ComicImageGenTool:
             )
             if selection.model_id is not None:
                 gen_kwargs["model"] = selection.model_id
+            # Re-sort backends so the provider returned by select_model goes first.
+            if selection.provider is not None:
+                target_type = _MODEL_PROVIDER_TO_BACKEND_TYPE.get(selection.provider)
+                if target_type and len(backends) > 1:
+                    backends.sort(
+                        key=lambda b: getattr(b, "provider_type", "") != target_type
+                    )
 
         errors: list[str] = []
         for backend in backends:

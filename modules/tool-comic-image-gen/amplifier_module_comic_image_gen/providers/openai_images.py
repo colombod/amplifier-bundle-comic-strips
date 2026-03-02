@@ -33,6 +33,10 @@ _EDIT_CAPABLE_MODELS: frozenset[str] = frozenset(
     }
 )
 
+# Models that require the legacy ``response_format`` kwarg (not ``output_format``).
+# Only classic DALL-E models use this parameter; gpt-image-* and unknown models must not.
+_DALLE_RESPONSE_FORMAT_MODELS: frozenset[str] = frozenset({"dall-e-3"})
+
 _MAX_ATTEMPTS: int = 3
 
 _RETRYABLE: tuple[type[Exception], ...] = (
@@ -186,11 +190,12 @@ class OpenAIImageBackend:
             "size": pixel_size,
             "quality": "high",
         }
-        # gpt-image-1 always returns base64; uses output_format not response_format
+        # gpt-image-1 family: returns base64; uses output_format, not response_format.
+        # DALL-E 3: legacy response_format kwarg.
+        # Unknown/future models: omit both — the API decides.
         if model in _EDIT_CAPABLE_MODELS:
             kwargs["output_format"] = "png"
-        else:
-            # DALL-E 3 uses response_format
+        elif model in _DALLE_RESPONSE_FORMAT_MODELS:
             kwargs["response_format"] = "b64_json"
         if style is not None and model == "dall-e-3":
             kwargs["style"] = style

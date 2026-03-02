@@ -346,8 +346,8 @@ class ComicCharacterTool:
                 },
                 "format": {
                     "type": "string",
-                    "description": "Image format when include='full': 'path' (default), 'base64', or 'data_uri'.",
-                    "enum": ["path", "base64", "data_uri"],
+                    "description": "Image format when include='full'. Only 'path' is supported.",
+                    "enum": ["path"],
                     "default": "path",
                 },
                 "review_status": {
@@ -422,6 +422,12 @@ class ComicCharacterTool:
         async def _get() -> ToolResult:
             if m := _require(params, "project", "name"):
                 return _missing_error(m)
+            fmt = params.get("format", "path")
+            if fmt in ("base64", "data_uri"):
+                return ToolResult(
+                    success=False,
+                    output=f"format='{fmt}' is no longer supported. Use format='path'.",
+                )
             version_raw = params.get("version")
             version: int | None = int(version_raw) if version_raw is not None else None
             try:
@@ -431,7 +437,7 @@ class ComicCharacterTool:
                     style=params.get("style"),
                     version=version,
                     include=params.get("include", "metadata"),
-                    format=params.get("format", "path"),
+                    format=fmt,
                 )
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:
@@ -532,7 +538,6 @@ class ComicAssetTool:
                         "store",
                         "get",
                         "list",
-                        "batch_encode",
                         "update_metadata",
                     ],
                 },
@@ -596,8 +601,8 @@ class ComicAssetTool:
                 },
                 "format": {
                     "type": "string",
-                    "description": "Payload format when include='full': 'path' (default), 'base64', or 'data_uri'. Also used by batch_encode.",
-                    "enum": ["path", "base64", "data_uri"],
+                    "description": "Payload format when include='full'. Only 'path' is supported.",
+                    "enum": ["path"],
                     "default": "path",
                 },
                 "review_status": {
@@ -650,6 +655,12 @@ class ComicAssetTool:
         async def _get() -> ToolResult:
             if m := _require(params, "project", "issue", "type", "name"):
                 return _missing_error(m)
+            fmt = params.get("format", "path")
+            if fmt in ("base64", "data_uri"):
+                return ToolResult(
+                    success=False,
+                    output=f"format='{fmt}' is no longer supported. Use format='path'.",
+                )
             version_raw = params.get("version")
             version: int | None = int(version_raw) if version_raw is not None else None
             try:
@@ -660,7 +671,7 @@ class ComicAssetTool:
                     params["name"],
                     version=version,
                     include=params.get("include", "metadata"),
-                    format=params.get("format", "path"),
+                    format=fmt,
                 )
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:
@@ -674,20 +685,6 @@ class ComicAssetTool:
                     params["project"],
                     params["issue"],
                     asset_type=params.get("type"),
-                )
-                return _ok(result)
-            except (ValueError, FileNotFoundError) as exc:
-                return _exc_error(exc)
-
-        async def _batch_encode() -> ToolResult:
-            if m := _require(params, "project", "issue", "type"):
-                return _missing_error(m)
-            try:
-                result = await self._service.batch_encode(
-                    params["project"],
-                    params["issue"],
-                    params["type"],
-                    format=params.get("format", "data_uri"),
                 )
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:
@@ -715,7 +712,6 @@ class ComicAssetTool:
             "store": _store,
             "get": _get,
             "list": _list,
-            "batch_encode": _batch_encode,
             "update_metadata": _update_metadata,
         }
 

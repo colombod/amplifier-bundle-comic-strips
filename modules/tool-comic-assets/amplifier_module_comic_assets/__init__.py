@@ -29,9 +29,10 @@ except ImportError:  # pragma: no cover — runs without amplifier_core in tests
         output: Any = ""
 
 
+from .comic_uri import ComicURI, InvalidComicURI, parse_comic_uri  # noqa: E402
 from .encoding import base64_to_bytes  # noqa: E402
 from .service import ComicProjectService  # noqa: E402
-from .storage import FileSystemStorage, StorageProtocol  # noqa: E402
+from .storage import FileSystemStorage, PathTraversalError, StorageProtocol  # noqa: E402
 
 __amplifier_module_type__ = "tool"
 
@@ -41,6 +42,10 @@ __all__ = [
     "ComicCharacterTool",
     "ComicAssetTool",
     "ComicStyleTool",
+    "PathTraversalError",
+    "ComicURI",
+    "InvalidComicURI",
+    "parse_comic_uri",
 ]
 
 

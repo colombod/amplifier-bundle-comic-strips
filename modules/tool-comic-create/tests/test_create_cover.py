@@ -1,0 +1,57 @@
+"""Tests for comic_create(action='create_cover')."""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from amplifier_module_comic_create import ComicCreateTool
+
+_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+
+
+def _make_mock_image_gen(tmp_path: Path):
+    async def _generate(**kwargs):
+        out = Path(kwargs["output_path"])
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(_PNG)
+        return {"success": True, "path": str(out), "provider_used": "mock"}
+
+    mock = MagicMock()
+    mock.generate = AsyncMock(side_effect=_generate)
+    return mock
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_create_cover_returns_uri(service, tmp_path) -> None:
+    await service.create_issue("test-proj", "Issue 1")
+    mock_gen = _make_mock_image_gen(tmp_path)
+    tool = ComicCreateTool(service=service, image_gen=mock_gen)
+
+    result = await tool.execute({
+        "action": "create_cover",
+        "project": "test-proj",
+        "issue": "issue-001",
+        "prompt": "A dramatic group shot of heroes",
+        "title": "The Great Debug",
+        "subtitle": "Issue 1",
+    })
+
+    assert result.success is True
+    data = json.loads(result.output)
+    assert data["uri"].startswith("comic://test-proj/issue-001/cover/")
+    assert "version" in data
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_create_cover_missing_prompt(service) -> None:
+    tool = ComicCreateTool(service=service)
+    result = await tool.execute({
+        "action": "create_cover",
+        "project": "p",
+        "issue": "i",
+        # missing: prompt, title
+    })
+    assert result.success is False

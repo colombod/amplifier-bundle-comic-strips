@@ -60,3 +60,126 @@ async def test_review_asset_missing_uri(service) -> None:
     })
     assert result.success is False
     assert "uri" in result.output.lower()
+
+
+# ---------------------------------------------------------------------------
+# New tests: wired vision provider
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_vision_provider_stored_on_instance(service) -> None:
+    """ComicCreateTool accepts and stores a vision_provider kwarg."""
+    mock_provider = MagicMock()
+    tool = ComicCreateTool(service=service, vision_provider=mock_provider)
+    assert tool._vision_provider is mock_provider
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_call_vision_api_no_provider_auto_passes(service) -> None:
+    """_call_vision_api auto-passes with descriptive feedback when no provider."""
+    tool = ComicCreateTool(service=service, vision_provider=None)
+    result = await tool._call_vision_api(["/any/path.png"], "check quality")
+    assert result["passed"] is True
+    assert "auto" in result["feedback"].lower()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_call_vision_api_with_anthropic_provider(service, tmp_path) -> None:
+    """_call_vision_api reads image bytes and calls Anthropic messages.create."""
+    img_path = tmp_path / "test.png"
+    img_path.write_bytes(_PNG)
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="PASS: The image quality is good.")]
+
+    mock_client = MagicMock()
+    mock_client.messages = MagicMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+    mock_provider = MagicMock()
+    mock_provider.name = "anthropic"
+    mock_provider.client = mock_client
+
+    tool = ComicCreateTool(service=service, vision_provider=mock_provider)
+    result = await tool._call_vision_api([str(img_path)], "Check image quality")
+
+    assert "passed" in result
+    assert "feedback" in result
+    assert "PASS" in result["feedback"]
+    mock_client.messages.create.assert_called_once()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_review_asset_calls_vision_provider_no_base64(service, tmp_path) -> None:
+    """Full review_asset flow: vision provider is called, tool result has no base64."""
+    pid, iid = await _setup_with_panel(service, tmp_path)
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="PASS: Looks great.")]
+
+    mock_client = MagicMock()
+    mock_client.messages = MagicMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+    mock_provider = MagicMock()
+    mock_provider.name = "anthropic"
+    mock_provider.client = mock_client
+
+    tool = ComicCreateTool(service=service, vision_provider=mock_provider)
+    result = await tool.execute({
+        "action": "review_asset",
+        "uri": f"comic://{pid}/{iid}/panel/panel_01",
+        "prompt": "Check quality",
+    })
+
+    assert result.success is True
+    # Binary image bytes must never reach the tool output
+    assert "base64" not in result.output.lower()
+    assert "data:image" not in result.output.lower()
+    # The vision provider client must have been called (not the stub)
+    mock_client.messages.create.assert_called_once()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_call_vision_api_provider_failure_auto_passes(service, tmp_path) -> None:
+    """If the vision provider call raises, _call_vision_api auto-passes gracefully."""
+    img_path = tmp_path / "test.png"
+    img_path.write_bytes(_PNG)
+
+    mock_client = MagicMock()
+    mock_client.messages = MagicMock()
+    mock_client.messages.create = AsyncMock(side_effect=RuntimeError("API down"))
+
+    mock_provider = MagicMock()
+    mock_provider.name = "anthropic"
+    mock_provider.client = mock_client
+
+    tool = ComicCreateTool(service=service, vision_provider=mock_provider)
+    result = await tool._call_vision_api([str(img_path)], "Check quality")
+
+    assert result["passed"] is True
+    assert "auto" in result["feedback"].lower()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_review_asset_reports_skipped_refs(service, tmp_path) -> None:
+    """S-2: Unresolvable reference URIs appear in 'skipped_refs' in the response."""
+    await _setup_with_panel(service, tmp_path)
+    tool = ComicCreateTool(service=service)
+
+    bad_uri = "comic://nonexistent-proj/issue-001/panel/ghost_panel"
+    mock_feedback = "Looks fine."
+    with patch.object(tool, "_call_vision_api", new_callable=AsyncMock,
+                      return_value={"passed": True, "feedback": mock_feedback}):
+        result = await tool.execute({
+            "action": "review_asset",
+            "uri": "comic://test-proj/issue-001/panel/panel_01",
+            "prompt": "Check consistency",
+            "reference_uris": [bad_uri],
+        })
+
+    assert result.success is True
+    data = json.loads(result.output)
+    assert "skipped_refs" in data
+    assert bad_uri in data["skipped_refs"]

@@ -58,9 +58,11 @@ class ComicCreateTool:
         self,
         service: Any,
         image_gen: Any | None = None,
+        vision_provider: Any | None = None,
     ) -> None:
         self._service = service
         self._image_gen = image_gen  # ComicImageGenTool instance (internal)
+        self._vision_provider = vision_provider  # For review_asset
 
     @property
     def name(self) -> str:
@@ -81,7 +83,18 @@ class ComicCreateTool:
             "properties": {
                 "action": {
                     "type": "string",
-                    "description": "Operation to perform.",
+                    "description": (
+                        "Operation to perform.\n"
+                        "- create_character_ref: requires project, issue, name, prompt,"
+                        " visual_traits, distinctive_features\n"
+                        "- create_panel: requires project, issue, name, prompt;"
+                        " optional character_uris, size\n"
+                        "- create_cover: requires project, issue, prompt, title;"
+                        " optional character_uris, subtitle\n"
+                        "- review_asset: requires uri, prompt; optional reference_uris\n"
+                        "- assemble_comic: requires project, issue, output_path, layout;"
+                        " optional style_uri"
+                    ),
                     "enum": [
                         "create_character_ref",
                         "create_panel",
@@ -162,37 +175,37 @@ class ComicCreateTool:
         char_slug = slugify(name)
 
         # Generate the reference image to a temp path
-        output_dir = tempfile.mkdtemp(prefix="comic_create_")
-        output_path = os.path.join(output_dir, f"ref_{char_slug}.png")
+        with tempfile.TemporaryDirectory(prefix="comic_create_") as output_dir:
+            output_path = os.path.join(output_dir, f"ref_{char_slug}.png")
 
-        gen_result = await self._image_gen.generate(
-            prompt=params["prompt"],
-            output_path=output_path,
-            size=params.get("size", "portrait"),
-            style=params.get("style"),
-            reference_images=None,
-        )
+            gen_result = await self._image_gen.generate(
+                prompt=params["prompt"],
+                output_path=output_path,
+                size=params.get("size", "portrait"),
+                style=params.get("style"),
+                reference_images=None,
+            )
 
-        if not gen_result.get("success", False):
-            return _error(f"Image generation failed: {gen_result.get('error', 'unknown')}")
+            if not gen_result.get("success", False):
+                return _error(f"Image generation failed: {gen_result.get('error', 'unknown')}")
 
-        # Store the character via the service
-        store_result = await self._service.store_character(
-            project,
-            issue,
-            name,
-            style=params.get("style", "default"),
-            role=params.get("role", ""),
-            character_type=params.get("character_type", "main"),
-            bundle=params.get("bundle", ""),
-            visual_traits=params["visual_traits"],
-            team_markers=params.get("team_markers", ""),
-            distinctive_features=params["distinctive_features"],
-            backstory=params.get("backstory", ""),
-            motivations=params.get("motivations", ""),
-            personality=params.get("personality", ""),
-            source_path=output_path,
-        )
+            # Store the character via the service (copies the file before we exit the with block)
+            store_result = await self._service.store_character(
+                project,
+                issue,
+                name,
+                style=params.get("style", "default"),
+                role=params.get("role", ""),
+                character_type=params.get("character_type", "main"),
+                bundle=params.get("bundle", ""),
+                visual_traits=params["visual_traits"],
+                team_markers=params.get("team_markers", ""),
+                distinctive_features=params["distinctive_features"],
+                backstory=params.get("backstory", ""),
+                motivations=params.get("motivations", ""),
+                personality=params.get("personality", ""),
+                source_path=output_path,
+            )
 
         version = store_result["version"]
         uri = ComicURI.for_character(project, issue, char_slug, version=version)
@@ -206,6 +219,9 @@ class ComicCreateTool:
         paths: list[str] = []
         for raw in uris:
             parsed = parse_comic_uri(raw)
+            # Characters are project-scoped in the service layer. The issue segment
+            # in character URIs is for provenance/namespacing (origin_issue_id),
+            # not for retrieval scoping.
             char_data = await self._service.get_character(
                 parsed.project,
                 parsed.name,
@@ -299,28 +315,28 @@ class ComicCreateTool:
             except (FileNotFoundError, ValueError) as exc:
                 return _error(f"Failed to resolve character URIs: {exc}")
 
-        output_dir = tempfile.mkdtemp(prefix="comic_create_")
-        output_path = os.path.join(output_dir, "cover.png")
+        with tempfile.TemporaryDirectory(prefix="comic_create_") as output_dir:
+            output_path = os.path.join(output_dir, "cover.png")
 
-        gen_result = await self._image_gen.generate(
-            prompt=params["prompt"],
-            output_path=output_path,
-            size=params.get("size", "landscape"),
-            style=params.get("style"),
-            reference_images=ref_paths or None,
-        )
+            gen_result = await self._image_gen.generate(
+                prompt=params["prompt"],
+                output_path=output_path,
+                size=params.get("size", "landscape"),
+                style=params.get("style"),
+                reference_images=ref_paths or None,
+            )
 
-        if not gen_result.get("success", False):
-            return _error(f"Image generation failed: {gen_result.get('error', 'unknown')}")
+            if not gen_result.get("success", False):
+                return _error(f"Image generation failed: {gen_result.get('error', 'unknown')}")
 
-        store_result = await self._service.store_asset(
-            project, issue, "cover", name,
-            source_path=output_path,
-            metadata={
-                "title": params["title"],
-                "subtitle": params.get("subtitle", ""),
-            },
-        )
+            store_result = await self._service.store_asset(
+                project, issue, "cover", name,
+                source_path=output_path,
+                metadata={
+                    "title": params["title"],
+                    "subtitle": params.get("subtitle", ""),
+                },
+            )
 
         version = store_result["version"]
         uri = ComicURI.for_asset(project, issue, "cover", name, version=version)
@@ -330,17 +346,145 @@ class ComicCreateTool:
     async def _call_vision_api(
         self, image_paths: list[str], prompt: str
     ) -> dict[str, Any]:
-        """Call a vision-capable model with images and a review prompt.
+        """Send images + review prompt to a vision-capable model.
 
-        Returns {\"passed\": bool, \"feedback\": str}.
-        This is a placeholder — the real implementation will use a vision
-        provider from the coordinator. For now, returns a \"not available\"
-        response so the agent can still proceed.
+        Reads image files from disk, encodes as base64, and calls the
+        configured vision provider. Image bytes travel only on the wire;
+        they never appear in the returned dict or the tool result.
+
+        Returns {"passed": bool, "feedback": str}.
+        Falls back to auto-pass (with a warning) when no provider is
+        configured or when the provider call fails.
         """
-        return {
-            "passed": True,
-            "feedback": "Vision review not yet available — auto-passing.",
-        }
+        if self._vision_provider is None:
+            logger.warning("No vision provider available — auto-passing review")
+            return {
+                "passed": True,
+                "feedback": "Vision review not available — auto-passing.",
+            }
+
+        import asyncio
+        import base64
+        from pathlib import Path
+
+        # Read images and encode as base64 (stays in memory, never serialised)
+        image_parts: list[dict[str, str]] = []
+        for path in image_paths:
+            try:
+                image_bytes = await asyncio.to_thread(Path(path).read_bytes)
+            except OSError as exc:
+                logger.warning("Vision API: could not read image %s: %s", path, exc)
+                continue
+
+            if image_bytes[:8] == b"\x89PNG\r\n\x1a\n":
+                media_type = "image/png"
+            elif image_bytes[:3] == b"\xff\xd8\xff":
+                media_type = "image/jpeg"
+            else:
+                media_type = "image/png"
+
+            b64_data = base64.b64encode(image_bytes).decode("ascii")
+            image_parts.append({"data": b64_data, "media_type": media_type})
+
+        if not image_parts:
+            logger.warning("Vision API: no readable images — auto-passing review")
+            return {
+                "passed": True,
+                "feedback": "No readable images found — auto-passing.",
+            }
+
+        try:
+            text = await self._invoke_vision_provider(image_parts, prompt)
+        except Exception as exc:
+            logger.warning(
+                "Vision API call failed: %s — auto-passing review", exc, exc_info=True
+            )
+            return {
+                "passed": True,
+                "feedback": f"Vision API error ({exc}) — auto-passing.",
+            }
+
+        # Determine pass/fail from the response text
+        text_lower = text.lower()
+        failed = any(
+            kw in text_lower
+            for kw in ("fail", "not pass", "does not pass", "incorrect", "does not meet")
+        )
+        return {"passed": not failed, "feedback": text}
+
+    async def _invoke_vision_provider(
+        self, image_parts: list[dict[str, str]], prompt: str
+    ) -> str:
+        """Dispatch the vision call to the right provider API.
+
+        Detects provider type from ``provider.name`` and calls the
+        corresponding chat/messages endpoint with base64-encoded images.
+
+        Returns the raw text response from the model.
+        Raises on API errors (caller handles graceful fallback).
+        """
+        provider = self._vision_provider
+        provider_name: str = getattr(provider, "name", "").lower()
+        client = provider.client
+
+        if "anthropic" in provider_name:
+            content: list[dict[str, Any]] = []
+            for img in image_parts:
+                content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": img["media_type"],
+                        "data": img["data"],
+                    },
+                })
+            content.append({"type": "text", "text": prompt})
+            response = await client.messages.create(
+                model="claude-opus-4-5",
+                max_tokens=1024,
+                messages=[{"role": "user", "content": content}],
+            )
+            return str(response.content[0].text)
+
+        if "openai" in provider_name:
+            msg_content: list[dict[str, Any]] = []
+            for img in image_parts:
+                data_uri = f"data:{img['media_type']};base64,{img['data']}"
+                msg_content.append({
+                    "type": "image_url",
+                    "image_url": {"url": data_uri},
+                })
+            msg_content.append({"type": "text", "text": prompt})
+            response = await client.chat.completions.create(
+                model="gpt-4o",
+                max_tokens=1024,
+                messages=[{"role": "user", "content": msg_content}],
+            )
+            return str(response.choices[0].message.content)
+
+        if "google" in provider_name or "gemini" in provider_name:
+            import base64 as _b64
+
+            from google.genai import types  # type: ignore[import-untyped]
+
+            parts: list[Any] = []
+            for img in image_parts:
+                img_bytes = _b64.b64decode(img["data"])
+                parts.append(
+                    types.Part.from_bytes(data=img_bytes, mime_type=img["media_type"])
+                )
+            parts.append(types.Part.from_text(text=prompt))
+            response = await client.aio.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=parts,
+            )
+            return str(response.text)
+
+        raise ValueError(
+            f"Unsupported vision provider '{provider_name}'. "
+            "Expected a provider whose name contains 'anthropic', 'openai', "
+            "'google', or 'gemini'."
+        )
 
     async def _review_asset(self, params: dict[str, Any]) -> ToolResult:
         """Vision-based review. Resolve URI → image path → vision API → text feedback."""
@@ -360,6 +504,9 @@ class ComicCreateTool:
         # Resolve the target asset to a file path
         try:
             if parsed.asset_type == "character":
+                # Characters are project-scoped in the service layer. The issue segment
+                # in character URIs is for provenance/namespacing (origin_issue_id),
+                # not for retrieval scoping.
                 asset_data = await self._service.get_character(
                     parsed.project, parsed.name,
                     version=parsed.version,
@@ -381,6 +528,7 @@ class ComicCreateTool:
 
         # Collect all image paths for vision (target + optional references)
         all_paths = [image_path]
+        skipped_refs: list[str] = []
 
         reference_uris = params.get("reference_uris") or []
         for ref_raw in reference_uris:
@@ -403,17 +551,23 @@ class ComicCreateTool:
                     ref_image = ref_data.get("image")
                 if ref_image:
                     all_paths.append(ref_image)
+                else:
+                    skipped_refs.append(ref_raw)
             except (FileNotFoundError, ValueError):
-                continue  # Skip unresolvable references
+                skipped_refs.append(ref_raw)
 
         # Call vision API — images sent to API wire, never to LLM context
         vision_result = await self._call_vision_api(all_paths, params["prompt"])
 
-        return _ok({
+        result_data: dict[str, Any] = {
             "uri": raw_uri,
             "passed": vision_result.get("passed", False),
             "feedback": vision_result.get("feedback", ""),
-        })
+        }
+        if skipped_refs:
+            result_data["skipped_refs"] = skipped_refs
+
+        return _ok(result_data)
 
     async def _resolve_image_as_data_uri(self, raw_uri: str) -> str | None:
         """Resolve a comic:// URI to a base64 data URI string (internal only)."""
@@ -458,10 +612,54 @@ class ComicCreateTool:
 
         return bytes_to_data_uri(image_bytes, mime)
 
+    async def _resolve_style_css(self, style_uri: str) -> str:
+        """Attempt to resolve a comic:// style URI to its CSS text content.
+
+        Returns an empty string if the URI cannot be resolved or is not a
+        text/CSS asset (non-fatal — caller falls back to default CSS variables).
+        """
+        from amplifier_module_comic_assets.comic_uri import parse_comic_uri
+
+        try:
+            parsed = parse_comic_uri(style_uri)
+        except ValueError:
+            return ""
+
+        try:
+            asset = await self._service.get_asset(
+                parsed.project, parsed.issue, parsed.asset_type, parsed.name,
+                version=parsed.version, include="full", format="content",
+            )
+            css_content = asset.get("content", "")
+            return css_content if isinstance(css_content, str) else ""
+        except Exception:
+            return ""
+
+    async def _collect_layout_uris(self, layout: dict[str, Any]) -> list[str]:
+        """Return every comic:// URI referenced in a layout dict."""
+        uris: list[str] = []
+
+        cover = layout.get("cover")
+        if cover and cover.get("uri"):
+            uris.append(cover["uri"])
+
+        for page in layout.get("pages", []):
+            for panel in page.get("panels", []):
+                if panel.get("uri"):
+                    uris.append(panel["uri"])
+
+        for char in layout.get("characters") or []:
+            if char.get("uri"):
+                uris.append(char["uri"])
+
+        return uris
+
     async def _assemble_comic(self, params: dict[str, Any]) -> ToolResult:
-        """Resolve all URIs in layout → base64 encode → produce HTML."""
+        """Resolve all URIs in layout → render proper HTML with SVG bubbles and navigation."""
         import asyncio
         from pathlib import Path
+
+        from .html_renderer import render_comic_html
 
         required = ("project", "issue", "output_path", "layout")
         for key in required:
@@ -471,88 +669,60 @@ class ComicCreateTool:
         layout = params["layout"]
         output_path = params["output_path"]
 
-        images_embedded = 0
-        page_count = 0
+        # --- Resolve style CSS (non-fatal) ---
+        style_css = ""
+        style_uri = params.get("style_uri", "")
+        if style_uri:
+            style_css = await self._resolve_style_css(style_uri)
 
-        # --- Resolve cover ---
-        cover_html = ""
-        cover_info = layout.get("cover")
-        if cover_info and "uri" in cover_info:
-            cover_data_uri = await self._resolve_image_as_data_uri(cover_info["uri"])
-            if cover_data_uri:
-                title = cover_info.get("title", layout.get("title", ""))
-                subtitle = cover_info.get("subtitle", "")
-                cover_html = (
-                    f'<section class="page cover-page">'
-                    f'<div style="position:relative;text-align:center;">'
-                    f'<img src="{cover_data_uri}" style="max-width:100%;max-height:80vh;" />'
-                    f'<h1 style="position:absolute;top:5%;left:50%;transform:translateX(-50%);">{title}</h1>'
-                    f"<h2>{subtitle}</h2>"
-                    f"</div></section>"
-                )
-                images_embedded += 1
-                page_count += 1
+        # --- Collect and resolve all image URIs in parallel ---
+        all_uris = await self._collect_layout_uris(layout)
+        data_uris = await asyncio.gather(
+            *[self._resolve_image_as_data_uri(uri) for uri in all_uris]
+        )
+        resolved_images: dict[str, str] = {
+            uri: du for uri, du in zip(all_uris, data_uris) if du
+        }
 
-        # --- Resolve pages ---
-        pages_html = ""
-        for page_def in layout.get("pages", []):
-            page_count += 1
-            panels_html = ""
-            for panel_def in page_def.get("panels", []):
-                panel_uri = panel_def.get("uri", "")
-                data_uri = await self._resolve_image_as_data_uri(panel_uri)
-                if data_uri:
-                    images_embedded += 1
-                    # Build overlay HTML
-                    overlays_html = ""
-                    for overlay in panel_def.get("overlays", []):
-                        pos = overlay.get("position", {})
-                        style = (
-                            f"position:absolute;left:{pos.get('x', 10)}%;"
-                            f"top:{pos.get('y', 10)}%;width:{pos.get('width', 30)}%;"
-                        )
-                        text = overlay.get("text", "")
-                        overlays_html += f'<div class="overlay" style="{style}">{text}</div>'
-
-                    panels_html += (
-                        f'<div class="panel" style="position:relative;">'
-                        f'<img src="{data_uri}" style="width:100%;" />'
-                        f"{overlays_html}</div>"
-                    )
-
-            pages_html += f'<section class="page story-page"><div class="panel-grid">{panels_html}</div></section>'
-
-        # --- Assemble final HTML ---
-        title = layout.get("title", "Comic")
-        html = (
-            f'<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
-            f"<title>{title}</title>"
-            f"<style>"
-            f"*{{box-sizing:border-box;margin:0;padding:0;}}"
-            f".page{{width:100%;padding:1rem;}}"
-            f".panel-grid{{display:grid;gap:8px;}}"
-            f".panel img{{width:100%;display:block;}}"
-            f"</style></head><body>"
-            f"{cover_html}{pages_html}"
-            f"</body></html>"
+        # Count embedded images and pages for the response payload
+        images_embedded = len(resolved_images)
+        page_count = (
+            (1 if layout.get("cover") and layout["cover"].get("uri") in resolved_images else 0)
+            + (1 if layout.get("characters") else 0)
+            + len(layout.get("pages", []))
         )
 
-        await asyncio.to_thread(lambda: Path(output_path).write_text(html, encoding="utf-8"))
+        # --- Render full HTML ---
+        html = render_comic_html(layout, resolved_images, style_css)
 
-        # Also store as final asset (non-fatal if fails)
-        try:
-            await self._service.store_asset(
-                params["project"], params["issue"], "final", "comic",
-                content=html,
-            )
-        except Exception:
-            pass
+        await asyncio.to_thread(lambda: Path(output_path).write_text(html, encoding="utf-8"))
 
         return _ok({
             "output_path": output_path,
             "pages": page_count,
             "images_embedded": images_embedded,
         })
+
+
+def _discover_vision_provider(providers: dict[str, Any]) -> Any | None:
+    """Find the first vision-capable provider from coordinator providers.
+
+    Checks provider names for known vision-capable platforms in priority order:
+    Anthropic Claude > OpenAI > Google/Gemini.
+
+    Returns the provider object if found, or None.
+    """
+    # Priority order for vision: anthropic has best multimodal; then openai, google
+    vision_keys = ("anthropic", "openai", "google", "gemini")
+    for key in vision_keys:
+        for provider_name, provider in providers.items():
+            if key in provider_name.lower():
+                logger.info(
+                    "comic_create: discovered vision provider '%s' for review_asset",
+                    provider_name,
+                )
+                return provider
+    return None
 
 
 async def mount(coordinator: Any, config: Any = None) -> None:
@@ -581,5 +751,24 @@ async def mount(coordinator: Any, config: Any = None) -> None:
     except Exception:
         pass
 
-    tool = ComicCreateTool(service=service, image_gen=image_gen)
+    # Discover a vision-capable provider for review_asset.
+    # Falls back to None gracefully — review_asset auto-passes when absent.
+    vision_provider = None
+    try:
+        providers = coordinator.get("providers") or {}
+        vision_provider = _discover_vision_provider(providers)
+        if vision_provider is None:
+            logger.warning(
+                "comic_create: no vision-capable provider found "
+                "(providers: %s). review_asset will auto-pass.",
+                list(providers.keys()) or "(none)",
+            )
+    except Exception:
+        logger.warning(
+            "comic_create: could not query coordinator providers — "
+            "review_asset will auto-pass.",
+            exc_info=True,
+        )
+
+    tool = ComicCreateTool(service=service, image_gen=image_gen, vision_provider=vision_provider)
     await coordinator.mount("tools", tool, name=tool.name)

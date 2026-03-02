@@ -78,6 +78,16 @@ async def test_assemble_comic_produces_html(service, tmp_path) -> None:
     assert "data:image/png;base64," in html
     assert "<!DOCTYPE html>" in html
 
+    # Verify proper structure: navigation, panels, no comic:// URIs
+    assert "nav-prev" in html or "Prev" in html  # prev button
+    assert "nav-next" in html or "Next" in html  # next button
+    assert "page-dot" in html                    # page indicator dots
+    assert "ArrowLeft" in html                   # keyboard support
+    assert "touchstart" in html                  # touch swipe support
+    assert "panel-grid" in html                  # panel grid layout
+    assert "repeat(2" in html                    # 2x1 grid has 2 columns
+    assert "comic://" not in html                # no raw URIs in output
+
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_assemble_comic_missing_output_path(service) -> None:
@@ -89,3 +99,32 @@ async def test_assemble_comic_missing_output_path(service) -> None:
         # missing: output_path, layout
     })
     assert result.success is False
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_assemble_comic_does_not_auto_store(service, tmp_path) -> None:
+    """S-4: assemble_comic must NOT internally call store_asset for the final comic."""
+    from unittest.mock import AsyncMock, patch
+
+    pid, iid = await _setup_with_assets(service, tmp_path)
+    tool = ComicCreateTool(service=service)
+
+    output_path = str(tmp_path / "final-comic.html")
+    layout = {
+        "title": "Test Comic",
+        "cover": {"uri": f"comic://{pid}/{iid}/cover/cover"},
+        "pages": [],
+    }
+
+    with patch.object(service, "store_asset", new_callable=AsyncMock) as mock_store:
+        result = await tool.execute({
+            "action": "assemble_comic",
+            "project": pid,
+            "issue": iid,
+            "output_path": output_path,
+            "layout": layout,
+        })
+
+    assert result.success is True
+    # store_asset must not have been called by assemble_comic
+    mock_store.assert_not_called()

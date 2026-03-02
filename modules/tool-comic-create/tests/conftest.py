@@ -17,6 +17,38 @@ _MINIMAL_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
 
 # ---------------------------------------------------------------------------
+# Real vision test backend — follows the VisionBackend protocol exactly.
+# No MagicMock: any interface mismatch (renamed method, wrong signature)
+# is caught immediately instead of silently passing.
+# ---------------------------------------------------------------------------
+
+
+class TestVisionBackend:
+    """Real class following VisionBackend protocol — no MagicMock."""
+
+    __test__ = False  # prevent pytest from treating this as a test class
+
+    def __init__(
+        self, response: str = '{"passed": true, "feedback": "Looks good."}'
+    ) -> None:
+        self.response = response
+        self.call_count = 0
+        self.last_prompt: str | None = None
+
+    async def review(
+        self, image_parts: list[dict[str, str]], prompt: str
+    ) -> str:
+        self.call_count += 1
+        self.last_prompt = prompt
+        return self.response
+
+
+@pytest.fixture()
+def vision_backend() -> TestVisionBackend:
+    return TestVisionBackend()
+
+
+# ---------------------------------------------------------------------------
 # Real test backend — follows the exact same protocol as OpenAIImageBackend
 # and GeminiImageBackend so any interface mismatch is caught immediately.
 # ---------------------------------------------------------------------------

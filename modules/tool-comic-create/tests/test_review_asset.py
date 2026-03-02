@@ -1,27 +1,42 @@
 """Tests for comic_create(action='review_asset').
 
-Why MagicMock is appropriate here (unlike image_gen tests):
-  The vision provider mock replaces an Anthropic/OpenAI/Google API client whose
-  *only* job is to return a text string.  These tests exercise how ComicCreateTool
-  *parses and interprets* different API response shapes (JSON passed/failed flags,
-  keyword detection, error handling).  The mock controls the response text so each
-  test can target a specific parsing path.
+Uses TestVisionBackend — a real class following the VisionBackend protocol —
+instead of MagicMock provider chains.  This catches interface mismatches
+immediately (wrong method name, bad signature) rather than hiding them behind
+a mock that accepts anything.
 
-  This is fundamentally different from the image_gen case: there the mock was hiding
-  an interface contract (wrong method name, bad return shape would silently pass).
-  Here the mock IS the test point — we deliberately inject specific text to verify
-  the parsing logic, not the API call itself.  A real Anthropic client would hit the
-  network and return unpredictable text, making the parse tests non-deterministic.
+SDK-specific adapter tests (Anthropic/OpenAI/Gemini model routing, correct
+client method calls) live in test_vision_backends.py where MagicMock IS
+appropriate because we are explicitly testing the SDK adapter layer.
 """
 
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from amplifier_module_comic_create import ComicCreateTool
+
+
+class TestVisionBackend:
+    """Real class following VisionBackend protocol — no MagicMock."""
+
+    __test__ = False  # prevent pytest from treating this as a test class
+
+    def __init__(
+        self, response: str = '{"passed": true, "feedback": "Looks good."}'
+    ) -> None:
+        self.response = response
+        self.call_count = 0
+        self.last_prompt: str | None = None
+
+    async def review(
+        self, image_parts: list[dict[str, str]], prompt: str
+    ) -> str:
+        self.call_count += 1
+        self.last_prompt = prompt
+        return self.response
 
 _PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
@@ -46,23 +61,21 @@ async def _setup_with_panel(service, tmp_path):
 @pytest.mark.asyncio(loop_scope="function")
 async def test_review_asset_returns_text_feedback(service, tmp_path) -> None:
     pid, iid = await _setup_with_panel(service, tmp_path)
-    tool = ComicCreateTool(service=service)
+    feedback_text = "Character proportions are consistent. Framing is correct."
+    tool = ComicCreateTool(
+        service=service,
+        vision_backend=TestVisionBackend(
+            response=f'{{"passed": true, "feedback": "{feedback_text}"}}'
+        ),
+    )
 
-    # Mock the vision API call that review_asset makes internally
-    mock_feedback = "Character proportions are consistent. Framing is correct."
-    with patch.object(
-        tool,
-        "_call_vision_api",
-        new_callable=AsyncMock,
-        return_value={"passed": True, "feedback": mock_feedback},
-    ):
-        result = await tool.execute(
-            {
-                "action": "review_asset",
-                "uri": f"comic://{pid}/issues/{iid}/panels/panel_01",
-                "prompt": "Check character consistency and framing",
-            }
-        )
+    result = await tool.execute(
+        {
+            "action": "review_asset",
+            "uri": f"comic://{pid}/issues/{iid}/panels/panel_01",
+            "prompt": "Check character consistency and framing",
+        }
+    )
 
     assert result.success is True
     data = json.loads(result.output)
@@ -88,70 +101,54 @@ async def test_review_asset_missing_uri(service) -> None:
 
 
 # ---------------------------------------------------------------------------
-# New tests: wired vision provider
+# Vision backend wiring tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio(loop_scope="function")
-async def test_vision_provider_stored_on_instance(service) -> None:
-    """ComicCreateTool accepts and stores a vision_provider kwarg."""
-    mock_provider = MagicMock()
-    tool = ComicCreateTool(service=service, vision_provider=mock_provider)
-    assert tool._vision_provider is mock_provider
+async def test_vision_backend_stored_on_instance(service) -> None:
+    """ComicCreateTool accepts and stores a vision_backend kwarg."""
+    backend = TestVisionBackend()
+    tool = ComicCreateTool(service=service, vision_backend=backend)
+    assert tool._vision_backend is backend
 
 
 @pytest.mark.asyncio(loop_scope="function")
-async def test_call_vision_api_no_provider_auto_passes(service) -> None:
-    """_call_vision_api auto-passes with descriptive feedback when no provider."""
-    tool = ComicCreateTool(service=service, vision_provider=None)
+async def test_call_vision_api_no_backend_auto_passes(service) -> None:
+    """_call_vision_api auto-passes with descriptive feedback when no backend."""
+    tool = ComicCreateTool(service=service, vision_backend=None)
     result = await tool._call_vision_api(["/any/path.png"], "check quality")
     assert result["passed"] is True
     assert "auto" in result["feedback"].lower()
 
 
 @pytest.mark.asyncio(loop_scope="function")
-async def test_call_vision_api_with_anthropic_provider(service, tmp_path) -> None:
-    """_call_vision_api reads image bytes and calls Anthropic messages.create."""
+async def test_call_vision_api_with_test_backend(service, tmp_path) -> None:
+    """_call_vision_api reads image bytes and delegates to the backend."""
     img_path = tmp_path / "test.png"
     img_path.write_bytes(_PNG)
 
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="PASS: The image quality is good.")]
-
-    mock_client = MagicMock()
-    mock_client.messages = MagicMock()
-    mock_client.messages.create = AsyncMock(return_value=mock_response)
-
-    mock_provider = MagicMock()
-    mock_provider.name = "anthropic"
-    mock_provider.client = mock_client
-
-    tool = ComicCreateTool(service=service, vision_provider=mock_provider)
+    backend = TestVisionBackend(
+        response='{"passed": true, "feedback": "PASS: The image quality is good."}'
+    )
+    tool = ComicCreateTool(service=service, vision_backend=backend)
     result = await tool._call_vision_api([str(img_path)], "Check image quality")
 
     assert "passed" in result
     assert "feedback" in result
-    assert "PASS" in result["feedback"]
-    mock_client.messages.create.assert_called_once()
+    assert result["passed"] is True
+    assert backend.call_count == 1
 
 
 @pytest.mark.asyncio(loop_scope="function")
-async def test_review_asset_calls_vision_provider_no_base64(service, tmp_path) -> None:
-    """Full review_asset flow: vision provider is called, tool result has no base64."""
+async def test_review_asset_calls_vision_backend_no_base64(service, tmp_path) -> None:
+    """Full review_asset flow: backend is called, tool result has no base64."""
     pid, iid = await _setup_with_panel(service, tmp_path)
 
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="PASS: Looks great.")]
-
-    mock_client = MagicMock()
-    mock_client.messages = MagicMock()
-    mock_client.messages.create = AsyncMock(return_value=mock_response)
-
-    mock_provider = MagicMock()
-    mock_provider.name = "anthropic"
-    mock_provider.client = mock_client
-
-    tool = ComicCreateTool(service=service, vision_provider=mock_provider)
+    backend = TestVisionBackend(
+        response='{"passed": true, "feedback": "PASS: Looks great."}'
+    )
+    tool = ComicCreateTool(service=service, vision_backend=backend)
     result = await tool.execute(
         {
             "action": "review_asset",
@@ -164,25 +161,21 @@ async def test_review_asset_calls_vision_provider_no_base64(service, tmp_path) -
     # Binary image bytes must never reach the tool output
     assert "base64" not in result.output.lower()
     assert "data:image" not in result.output.lower()
-    # The vision provider client must have been called (not the stub)
-    mock_client.messages.create.assert_called_once()
+    # The backend must have been called (not the stub)
+    assert backend.call_count == 1
 
 
 @pytest.mark.asyncio(loop_scope="function")
-async def test_call_vision_api_provider_failure_auto_passes(service, tmp_path) -> None:
-    """If the vision provider call raises, _call_vision_api auto-passes gracefully."""
+async def test_call_vision_api_backend_failure_auto_passes(service, tmp_path) -> None:
+    """If the vision backend raises, _call_vision_api auto-passes gracefully."""
     img_path = tmp_path / "test.png"
     img_path.write_bytes(_PNG)
 
-    mock_client = MagicMock()
-    mock_client.messages = MagicMock()
-    mock_client.messages.create = AsyncMock(side_effect=RuntimeError("API down"))
+    class _FailingBackend:
+        async def review(self, image_parts, prompt):
+            raise RuntimeError("API down")
 
-    mock_provider = MagicMock()
-    mock_provider.name = "anthropic"
-    mock_provider.client = mock_client
-
-    tool = ComicCreateTool(service=service, vision_provider=mock_provider)
+    tool = ComicCreateTool(service=service, vision_backend=_FailingBackend())
     result = await tool._call_vision_api([str(img_path)], "Check quality")
 
     assert result["passed"] is True
@@ -193,24 +186,22 @@ async def test_call_vision_api_provider_failure_auto_passes(service, tmp_path) -
 async def test_review_asset_reports_skipped_refs(service, tmp_path) -> None:
     """S-2: Unresolvable reference URIs appear in 'skipped_refs' in the response."""
     await _setup_with_panel(service, tmp_path)
-    tool = ComicCreateTool(service=service)
 
     bad_uri = "comic://nonexistent-proj/issues/issue-001/panels/ghost_panel"
-    mock_feedback = "Looks fine."
-    with patch.object(
-        tool,
-        "_call_vision_api",
-        new_callable=AsyncMock,
-        return_value={"passed": True, "feedback": mock_feedback},
-    ):
-        result = await tool.execute(
-            {
-                "action": "review_asset",
-                "uri": "comic://test-proj/issues/issue-001/panels/panel_01",
-                "prompt": "Check consistency",
-                "reference_uris": [bad_uri],
-            }
-        )
+    tool = ComicCreateTool(
+        service=service,
+        vision_backend=TestVisionBackend(
+            response='{"passed": true, "feedback": "Looks fine."}'
+        ),
+    )
+    result = await tool.execute(
+        {
+            "action": "review_asset",
+            "uri": "comic://test-proj/issues/issue-001/panels/panel_01",
+            "prompt": "Check consistency",
+            "reference_uris": [bad_uri],
+        }
+    )
 
     assert result.success is True
     data = json.loads(result.output)

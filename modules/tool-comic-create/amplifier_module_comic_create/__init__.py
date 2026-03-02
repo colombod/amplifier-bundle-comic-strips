@@ -29,6 +29,12 @@ except ImportError:  # pragma: no cover
 
 
 from ._version import __version__  # noqa: F401, E402
+from .vision_backends import (  # noqa: F401
+    AnthropicVisionBackend,
+    GeminiVisionBackend,
+    OpenAIVisionBackend,
+    VisionBackend,
+)
 
 __amplifier_module_type__ = "tool"
 
@@ -76,18 +82,11 @@ class ComicCreateTool:
         self,
         service: Any,
         image_gen: Any | None = None,
-        vision_provider: Any | None = None,
-        vision_models: dict[str, str] | None = None,
+        vision_backend: Any | None = None,
     ) -> None:
         self._service = service
         self._image_gen = image_gen  # ComicImageGenTool instance (internal)
-        self._vision_provider = vision_provider  # For review_asset
-        # Per-provider model selection — falls back to module-level defaults
-        self._vision_models: dict[str, str] = vision_models or {
-            "anthropic": _VISION_MODEL_ANTHROPIC,
-            "openai": _VISION_MODEL_OPENAI,
-            "google": _VISION_MODEL_GOOGLE,
-        }
+        self._vision_backend = vision_backend  # VisionBackend for review_asset
 
     @property
     def name(self) -> str:
@@ -431,8 +430,8 @@ class ComicCreateTool:
         Falls back to auto-pass (with a warning) when no provider is
         configured or when the provider call fails.
         """
-        if self._vision_provider is None:
-            logger.warning("No vision provider available — auto-passing review")
+        if self._vision_backend is None:
+            logger.warning("No vision backend available — auto-passing review")
             return {
                 "passed": True,
                 "feedback": "Vision review not available — auto-passing.",
@@ -470,7 +469,7 @@ class ComicCreateTool:
         )
 
         try:
-            text = await self._invoke_vision_provider(
+            text = await self._vision_backend.review(
                 image_parts, prompt_with_structure
             )
         except Exception as exc:
@@ -509,84 +508,6 @@ class ComicCreateTool:
             )
         )
         return {"passed": not failed, "feedback": text}
-
-    async def _invoke_vision_provider(
-        self, image_parts: list[dict[str, str]], prompt: str
-    ) -> str:
-        """Dispatch the vision call to the right provider API.
-
-        Detects provider type from ``provider.name`` and calls the
-        corresponding chat/messages endpoint with base64-encoded images.
-
-        Returns the raw text response from the model.
-        Raises on API errors (caller handles graceful fallback).
-        """
-        provider = self._vision_provider
-        provider_name: str = getattr(provider, "name", "").lower()
-        client = provider.client
-
-        if "anthropic" in provider_name:
-            content: list[dict[str, Any]] = []
-            for img in image_parts:
-                content.append(
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": img["media_type"],
-                            "data": img["data"],
-                        },
-                    }
-                )
-            content.append({"type": "text", "text": prompt})
-            response = await client.messages.create(
-                model=self._vision_models.get("anthropic", _VISION_MODEL_ANTHROPIC),
-                max_tokens=1024,
-                messages=[{"role": "user", "content": content}],
-            )
-            return str(response.content[0].text)
-
-        if "openai" in provider_name:
-            msg_content: list[dict[str, Any]] = []
-            for img in image_parts:
-                data_uri = f"data:{img['media_type']};base64,{img['data']}"
-                msg_content.append(
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": data_uri},
-                    }
-                )
-            msg_content.append({"type": "text", "text": prompt})
-            response = await client.chat.completions.create(
-                model=self._vision_models.get("openai", _VISION_MODEL_OPENAI),
-                max_tokens=1024,
-                messages=[{"role": "user", "content": msg_content}],
-            )
-            return str(response.choices[0].message.content)
-
-        if "google" in provider_name or "gemini" in provider_name:
-            import base64 as _b64
-
-            from google.genai import types  # type: ignore[import-untyped]
-
-            parts: list[Any] = []
-            for img in image_parts:
-                img_bytes = _b64.b64decode(img["data"])
-                parts.append(
-                    types.Part.from_bytes(data=img_bytes, mime_type=img["media_type"])
-                )
-            parts.append(types.Part.from_text(text=prompt))
-            response = await client.aio.models.generate_content(
-                model=self._vision_models.get("google", _VISION_MODEL_GOOGLE),
-                contents=parts,
-            )
-            return str(response.text)
-
-        raise ValueError(
-            f"Unsupported vision provider '{provider_name}'. "
-            "Expected a provider whose name contains 'anthropic', 'openai', "
-            "'google', or 'gemini'."
-        )
 
     async def _review_asset(self, params: dict[str, Any]) -> ToolResult:
         """Vision-based review. Resolve URI → image path → vision API → text feedback."""
@@ -854,6 +775,45 @@ def _discover_vision_provider(providers: dict[str, Any]) -> Any | None:
     return None
 
 
+def _create_vision_backend(
+    provider: Any, vision_models: dict[str, str]
+) -> "VisionBackend | None":
+    """Build the appropriate VisionBackend for a coordinator provider.
+
+    Detects provider type from ``provider.name`` and instantiates the
+    matching concrete backend with the provider's client and the requested
+    model string.  Returns ``None`` when the provider is ``None`` or
+    unrecognised (review_asset will auto-pass gracefully).
+    """
+    if provider is None:
+        return None
+
+    provider_name: str = getattr(provider, "name", "").lower()
+    client = provider.client
+
+    if "anthropic" in provider_name:
+        return AnthropicVisionBackend(
+            client=client,
+            model=vision_models.get("anthropic", _VISION_MODEL_ANTHROPIC),
+        )
+    if "openai" in provider_name:
+        return OpenAIVisionBackend(
+            client=client,
+            model=vision_models.get("openai", _VISION_MODEL_OPENAI),
+        )
+    if "google" in provider_name or "gemini" in provider_name:
+        return GeminiVisionBackend(
+            client=client,
+            model=vision_models.get("google", _VISION_MODEL_GOOGLE),
+        )
+
+    logger.warning(
+        "comic_create: unrecognised vision provider '%s' — review_asset will auto-pass.",
+        provider_name,
+    )
+    return None
+
+
 async def mount(coordinator: Any, config: Any = None) -> None:
     """Amplifier module entry point — build service and register the tool."""
     from amplifier_module_comic_assets.service import ComicProjectService
@@ -880,9 +840,9 @@ async def mount(coordinator: Any, config: Any = None) -> None:
     except Exception:
         pass
 
-    # Discover a vision-capable provider for review_asset.
+    # Discover a vision-capable provider and build the VisionBackend.
     # Falls back to None gracefully — review_asset auto-passes when absent.
-    vision_provider = None
+    vision_backend = None
     try:
         providers = coordinator.get("providers") or {}
         vision_provider = _discover_vision_provider(providers)
@@ -892,6 +852,16 @@ async def mount(coordinator: Any, config: Any = None) -> None:
                 "(providers: %s). review_asset will auto-pass.",
                 list(providers.keys()) or "(none)",
             )
+        else:
+            vision_config = cfg.get("vision", {})
+            vision_models = {
+                "anthropic": vision_config.get(
+                    "anthropic_model", _VISION_MODEL_ANTHROPIC
+                ),
+                "openai": vision_config.get("openai_model", _VISION_MODEL_OPENAI),
+                "google": vision_config.get("google_model", _VISION_MODEL_GOOGLE),
+            }
+            vision_backend = _create_vision_backend(vision_provider, vision_models)
     except Exception:
         logger.warning(
             "comic_create: could not query coordinator providers — "
@@ -899,17 +869,9 @@ async def mount(coordinator: Any, config: Any = None) -> None:
             exc_info=True,
         )
 
-    vision_config = cfg.get("vision", {})
-    vision_models = {
-        "anthropic": vision_config.get("anthropic_model", _VISION_MODEL_ANTHROPIC),
-        "openai": vision_config.get("openai_model", _VISION_MODEL_OPENAI),
-        "google": vision_config.get("google_model", _VISION_MODEL_GOOGLE),
-    }
-
     tool = ComicCreateTool(
         service=service,
         image_gen=image_gen,
-        vision_provider=vision_provider,
-        vision_models=vision_models,
+        vision_backend=vision_backend,
     )
     await coordinator.mount("tools", tool, name=tool.name)

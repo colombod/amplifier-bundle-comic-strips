@@ -1,32 +1,44 @@
 """Tests for vision helper improvements.
 
 Covers:
-  Fix 1: Module-level vision model constants + configurable via vision_models dict
+  Fix 1: Module-level vision model constants
   Fix 2: _detect_mime module-level helper
   Fix 3: Structured JSON response parsing with keyword fallback
 
-Why MagicMock is appropriate here (unlike image_gen tests):
-  The vision provider mock replaces an Anthropic/OpenAI/Google API client whose
-  *only* job is to return a text string.  The tests in Fix 3 specifically exercise
-  how ``_call_vision_api`` and ``_invoke_vision_provider`` parse different API
-  response formats: structured JSON (passed=true/false), plain keyword text, JSON
-  embedded in prose, and provider-specific model routing.
+Why TestVisionBackend (not MagicMock) for the parsing tests:
+  _call_vision_api's job is (1) read & encode images, (2) call backend.review(),
+  (3) parse the text response.  By injecting specific response strings via
+  TestVisionBackend we test step (3) deterministically without any real API
+  calls and without hiding the review() interface behind a MagicMock.
 
-  The mock *is* the test subject — we inject precise response text to verify each
-  parsing path deterministically.  A real provider client would hit the network,
-  return unpredictable text, and make these parse-behavior tests non-deterministic.
-
-  This is fundamentally different from the image_gen case: there the mock was hiding
-  an interface contract (wrong method, changed return shape would silently pass).
-  For vision providers the interface is trivial (``provider.name``, ``provider.client``,
-  one async method call); the real test value is in the *parsing logic*, not the call.
+  SDK-specific model routing tests (Anthropic/OpenAI/Gemini) live in
+  test_vision_backends.py where MagicMock IS appropriate because those tests
+  target the SDK adapter layer, not the _call_vision_api parsing logic.
 """
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
+
+
+class TestVisionBackend:
+    """Real class following VisionBackend protocol — no MagicMock."""
+
+    __test__ = False  # prevent pytest from treating this as a test class
+
+    def __init__(
+        self, response: str = '{"passed": true, "feedback": "Looks good."}'
+    ) -> None:
+        self.response = response
+        self.call_count = 0
+        self.last_prompt: str | None = None
+
+    async def review(
+        self, image_parts: list[dict[str, str]], prompt: str
+    ) -> str:
+        self.call_count += 1
+        self.last_prompt = prompt
+        return self.response
 
 
 # ---------------------------------------------------------------------------
@@ -50,98 +62,6 @@ def test_vision_model_constant_default_values() -> None:
     assert m._VISION_MODEL_ANTHROPIC == "claude-opus-4-5"
     assert m._VISION_MODEL_OPENAI == "gpt-4o"
     assert m._VISION_MODEL_GOOGLE == "gemini-2.0-flash"
-
-
-def test_comic_create_tool_accepts_vision_models_kwarg() -> None:
-    """ComicCreateTool.__init__ accepts an optional vision_models dict."""
-    from amplifier_module_comic_create import ComicCreateTool
-
-    service = MagicMock()
-    custom_models = {
-        "anthropic": "claude-custom-model",
-        "openai": "gpt-4o-mini",
-        "google": "gemini-1.5-pro",
-    }
-    tool = ComicCreateTool(service=service, vision_models=custom_models)
-    assert tool._vision_models == custom_models
-
-
-def test_comic_create_tool_vision_models_defaults_to_constants() -> None:
-    """When vision_models is not supplied, tool defaults to the module constants."""
-    import amplifier_module_comic_create as m
-    from amplifier_module_comic_create import ComicCreateTool
-
-    service = MagicMock()
-    tool = ComicCreateTool(service=service)
-    assert tool._vision_models["anthropic"] == m._VISION_MODEL_ANTHROPIC
-    assert tool._vision_models["openai"] == m._VISION_MODEL_OPENAI
-    assert tool._vision_models["google"] == m._VISION_MODEL_GOOGLE
-
-
-@pytest.mark.asyncio(loop_scope="function")
-async def test_invoke_vision_anthropic_uses_vision_models_dict(service) -> None:
-    """_invoke_vision_provider passes model from _vision_models to Anthropic API."""
-    from amplifier_module_comic_create import ComicCreateTool
-
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="Looks great.")]
-    mock_client = MagicMock()
-    mock_client.messages = MagicMock()
-    mock_client.messages.create = AsyncMock(return_value=mock_response)
-
-    mock_provider = MagicMock()
-    mock_provider.name = "anthropic"
-    mock_provider.client = mock_client
-
-    custom_models = {
-        "anthropic": "claude-custom-model",
-        "openai": "gpt-4o",
-        "google": "gemini-2.0-flash",
-    }
-    tool = ComicCreateTool(
-        service=service, vision_provider=mock_provider, vision_models=custom_models
-    )
-
-    image_parts = [{"data": "abc123", "media_type": "image/png"}]
-    await tool._invoke_vision_provider(image_parts, "Check this.")
-
-    call_kwargs = mock_client.messages.create.call_args
-    assert call_kwargs.kwargs["model"] == "claude-custom-model"
-
-
-@pytest.mark.asyncio(loop_scope="function")
-async def test_invoke_vision_openai_uses_vision_models_dict(service) -> None:
-    """_invoke_vision_provider passes model from _vision_models to OpenAI API."""
-    from amplifier_module_comic_create import ComicCreateTool
-
-    mock_choice = MagicMock()
-    mock_choice.message.content = "Looks great."
-    mock_response = MagicMock()
-    mock_response.choices = [mock_choice]
-
-    mock_client = MagicMock()
-    mock_client.chat = MagicMock()
-    mock_client.chat.completions = MagicMock()
-    mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
-
-    mock_provider = MagicMock()
-    mock_provider.name = "openai"
-    mock_provider.client = mock_client
-
-    custom_models = {
-        "anthropic": "claude-opus-4-5",
-        "openai": "gpt-4o-mini",
-        "google": "gemini-2.0-flash",
-    }
-    tool = ComicCreateTool(
-        service=service, vision_provider=mock_provider, vision_models=custom_models
-    )
-
-    image_parts = [{"data": "abc123", "media_type": "image/png"}]
-    await tool._invoke_vision_provider(image_parts, "Check this.")
-
-    call_kwargs = mock_client.chat.completions.create.call_args
-    assert call_kwargs.kwargs["model"] == "gpt-4o-mini"
 
 
 # ---------------------------------------------------------------------------
@@ -200,18 +120,10 @@ async def test_call_vision_api_parses_json_passed_true(service, tmp_path) -> Non
     img_path = tmp_path / "test.png"
     img_path.write_bytes(_PNG)
 
-    json_response = '{"passed": true, "feedback": "All checks passed successfully."}'
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=json_response)]
-    mock_client = MagicMock()
-    mock_client.messages = MagicMock()
-    mock_client.messages.create = AsyncMock(return_value=mock_response)
-
-    mock_provider = MagicMock()
-    mock_provider.name = "anthropic"
-    mock_provider.client = mock_client
-
-    tool = ComicCreateTool(service=service, vision_provider=mock_provider)
+    backend = TestVisionBackend(
+        response='{"passed": true, "feedback": "All checks passed successfully."}'
+    )
+    tool = ComicCreateTool(service=service, vision_backend=backend)
     result = await tool._call_vision_api([str(img_path)], "Check quality")
 
     assert result["passed"] is True
@@ -226,18 +138,10 @@ async def test_call_vision_api_parses_json_passed_false(service, tmp_path) -> No
     img_path = tmp_path / "test.png"
     img_path.write_bytes(_PNG)
 
-    json_response = '{"passed": false, "feedback": "Character proportions are off."}'
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=json_response)]
-    mock_client = MagicMock()
-    mock_client.messages = MagicMock()
-    mock_client.messages.create = AsyncMock(return_value=mock_response)
-
-    mock_provider = MagicMock()
-    mock_provider.name = "anthropic"
-    mock_provider.client = mock_client
-
-    tool = ComicCreateTool(service=service, vision_provider=mock_provider)
+    backend = TestVisionBackend(
+        response='{"passed": false, "feedback": "Character proportions are off."}'
+    )
+    tool = ComicCreateTool(service=service, vision_backend=backend)
     result = await tool._call_vision_api([str(img_path)], "Check quality")
 
     assert result["passed"] is False
@@ -253,20 +157,10 @@ async def test_call_vision_api_json_avoids_false_positive(service, tmp_path) -> 
     img_path.write_bytes(_PNG)
 
     # This text WOULD trigger keyword detection ("fail") but JSON explicitly says passed=true
-    json_response = (
-        '{"passed": true, "feedback": "The characters do not fail to match the style."}'
+    backend = TestVisionBackend(
+        response='{"passed": true, "feedback": "The characters do not fail to match the style."}'
     )
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=json_response)]
-    mock_client = MagicMock()
-    mock_client.messages = MagicMock()
-    mock_client.messages.create = AsyncMock(return_value=mock_response)
-
-    mock_provider = MagicMock()
-    mock_provider.name = "anthropic"
-    mock_provider.client = mock_client
-
-    tool = ComicCreateTool(service=service, vision_provider=mock_provider)
+    tool = ComicCreateTool(service=service, vision_backend=backend)
     result = await tool._call_vision_api([str(img_path)], "Check quality")
 
     # JSON says true — keyword "fail" must NOT override this
@@ -283,18 +177,10 @@ async def test_call_vision_api_falls_back_to_keyword_when_no_json(
     img_path = tmp_path / "test.png"
     img_path.write_bytes(_PNG)
 
-    plain_response = "This image does not pass quality review."
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=plain_response)]
-    mock_client = MagicMock()
-    mock_client.messages = MagicMock()
-    mock_client.messages.create = AsyncMock(return_value=mock_response)
-
-    mock_provider = MagicMock()
-    mock_provider.name = "anthropic"
-    mock_provider.client = mock_client
-
-    tool = ComicCreateTool(service=service, vision_provider=mock_provider)
+    backend = TestVisionBackend(
+        response="This image does not pass quality review."
+    )
+    tool = ComicCreateTool(service=service, vision_backend=backend)
     result = await tool._call_vision_api([str(img_path)], "Check quality")
 
     # "not pass" keyword → failed=True → passed=False
@@ -310,18 +196,10 @@ async def test_call_vision_api_json_in_prose_wrapper(service, tmp_path) -> None:
     img_path.write_bytes(_PNG)
 
     # Model may wrap JSON in prose — we should still extract it
-    prose_response = 'Here is my assessment: {"passed": false, "feedback": "Too dark overall."} End of review.'
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=prose_response)]
-    mock_client = MagicMock()
-    mock_client.messages = MagicMock()
-    mock_client.messages.create = AsyncMock(return_value=mock_response)
-
-    mock_provider = MagicMock()
-    mock_provider.name = "anthropic"
-    mock_provider.client = mock_client
-
-    tool = ComicCreateTool(service=service, vision_provider=mock_provider)
+    backend = TestVisionBackend(
+        response='Here is my assessment: {"passed": false, "feedback": "Too dark overall."} End of review.'
+    )
+    tool = ComicCreateTool(service=service, vision_backend=backend)
     result = await tool._call_vision_api([str(img_path)], "Check quality")
 
     assert result["passed"] is False

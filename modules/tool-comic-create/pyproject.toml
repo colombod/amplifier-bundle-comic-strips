@@ -27,3 +27,7 @@ packages = ["amplifier_module_comic_create"]
 testpaths = ["tests"]
 addopts = "--import-mode=importlib"
 asyncio_mode = "strict"
+
+[tool.uv.sources]
+amplifier-module-tool-comic-assets = { path = "../tool-comic-assets", editable = true }
+amplifier-module-tool-comic-image-gen = { path = "../tool-comic-image-gen", editable = true }

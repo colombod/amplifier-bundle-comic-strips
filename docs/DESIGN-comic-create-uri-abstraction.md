@@ -61,31 +61,48 @@ Agents work in **comic domain concepts**. Tools work in **files and APIs**. Clea
 
 Universal asset reference format used everywhere in the system.
 
-**Format:**
+**v2 Format — Two Scopes:**
 
+Characters and styles are **project-scoped** (shared across all issues of a project):
 ```
-comic://project/issue/type/name
-comic://project/issue/type/name?v=2
+comic://project/characters/name
+comic://project/styles/name
+comic://project/characters/name?v=2
 ```
+
+Panels, covers, storyboards, and other per-issue assets are **issue-scoped**:
+```
+comic://project/issues/issue/panels/name
+comic://project/issues/issue/covers/name
+comic://project/issues/issue/storyboards/name
+comic://project/issues/issue/research/name
+comic://project/issues/issue/finals/name
+comic://project/issues/issue/panels/name?v=2
+```
+
+> **Amendment note:** This document was originally written with a flat v1 URI format
+> (`comic://project/issue/type/name`). The v2 design separates project-scoped resources
+> (characters, styles) from issue-scoped resources (panels, covers, etc.), with collection
+> names pluralised. See WP-1 through WP-7 for the full v2 implementation.
 
 **Rules:**
-- Fully qualified: project, issue, type, and name are always present
-- Version is a query parameter `?v=N`
-- Absence of version means latest
+- Version is a query parameter `?v=N`; absence of version means latest
+- Collection names are always **plural**: `characters`, `styles`, `panels`, `covers`, `storyboards`, `research`, `finals`, `avatars`
 - Human-readable in logs, recipe context, and debugging output
-- Character URIs include the issue segment for provenance tracking, but character retrieval is project-scoped.
+- Characters and styles are project-scoped: no issue segment, reusable across all issues
+- Panels, covers, and other assets are issue-scoped: always include the `issues/<issue>/` path segment
 
-**Asset types:** `panel`, `cover`, `avatar`, `character`, `storyboard`, `style`, `research`, `final`, `qa_screenshot`
+**Asset types:** `panels`, `covers`, `avatars`, `characters`, `storyboards`, `styles`, `research`, `finals`, `qa_screenshots`
 
 **Examples:**
 
 ```
-comic://my-comic/issue-001/panel/panel_01
-comic://my-comic/issue-001/character/the-explorer
-comic://my-comic/issue-001/cover/cover
-comic://my-comic/issue-001/character/the-explorer?v=2
-comic://my-comic/issue-001/storyboard/main
-comic://my-comic/issue-001/style/manga
+comic://my-comic/characters/the-explorer
+comic://my-comic/characters/the-explorer?v=2
+comic://my-comic/styles/manga
+comic://my-comic/issues/issue-001/panels/panel_01
+comic://my-comic/issues/issue-001/covers/cover
+comic://my-comic/issues/issue-001/storyboards/main
 ```
 
 ### New Tool: `comic_create`
@@ -113,7 +130,7 @@ High-level orchestration tool with five actions. Binary stays internal; agents r
 **Returns:**
 
 ```json
-{"uri": "comic://proj/issue/character/name", "version": 1}
+{"uri": "comic://proj/characters/name", "version": 1}
 ```
 
 #### Action: `create_panel`
@@ -137,7 +154,7 @@ High-level orchestration tool with five actions. Binary stays internal; agents r
 **Returns:**
 
 ```json
-{"uri": "comic://proj/issue/panel/panel_03", "version": 1}
+{"uri": "comic://proj/issues/issue/panels/panel_03", "version": 1}
 ```
 
 #### Action: `create_cover`
@@ -160,7 +177,7 @@ High-level orchestration tool with five actions. Binary stays internal; agents r
 **Returns:**
 
 ```json
-{"uri": "comic://proj/issue/cover/cover", "version": 1}
+{"uri": "comic://proj/issues/issue/covers/cover", "version": 1}
 ```
 
 #### Action: `review_asset`
@@ -181,7 +198,7 @@ High-level orchestration tool with five actions. Binary stays internal; agents r
 
 ```json
 {
-  "uri": "comic://proj/issue/panel/panel_03",
+  "uri": "comic://proj/issues/issue/panels/panel_03",
   "passed": false,
   "feedback": "Character proportions differ from reference -- head is too large relative to body. Framing is correct."
 }
@@ -221,9 +238,9 @@ The compositor provides structured layout data with precise text overlay positio
 ```json
 {
   "title": "The Great Debug",
-  "style_uri": "comic://proj/issue/style/manga",
+  "style_uri": "comic://proj/styles/manga",
   "cover": {
-    "uri": "comic://proj/issue/cover/cover",
+    "uri": "comic://proj/issues/issue/covers/cover",
     "title": "The Great Debug",
     "subtitle": "Issue #1",
     "branding": "AmpliVerse"
@@ -233,7 +250,7 @@ The compositor provides structured layout data with precise text overlay positio
       "layout": "manga-dynamic-4",
       "panels": [
         {
-          "uri": "comic://proj/issue/panel/panel_01",
+          "uri": "comic://proj/issues/issue/panels/panel_01",
           "shape": "tall-left",
           "overlays": [
             {
@@ -254,7 +271,7 @@ The compositor provides structured layout data with precise text overlay positio
           ]
         },
         {
-          "uri": "comic://proj/issue/panel/panel_02",
+          "uri": "comic://proj/issues/issue/panels/panel_02",
           "shape": "wide-top-right",
           "overlays": [
             {
@@ -311,7 +328,7 @@ The compositor provides structured layout data with precise text overlay positio
 
 ```json
 {
-  "uri": "comic://proj/issue/panel/panel_03",
+  "uri": "comic://proj/issues/issue/panels/panel_03",
   "path": "/absolute/path/to/panel_03.png",
   "type": "image/png",
   "hint": "open /absolute/path/to/panel_03.png"
@@ -379,14 +396,14 @@ Creation agents each go from 3-4 tools down to 2, significantly reducing halluci
 ### End-to-End Flow Example
 
 ```
-1. style-curator    -> comic_style(store)          -> "comic://proj/issue/style/manga"
-2. storyboard-writer -> comic_asset(store)          -> "comic://proj/issue/storyboard/main"
-3. character-designer -> comic_create(create_char)   -> "comic://proj/issue/character/explorer"
-4. panel-artist      -> comic_create(create_panel)   -> "comic://proj/issue/panel/panel_01"
+1. style-curator    -> comic_style(store)          -> "comic://proj/styles/manga"
+2. storyboard-writer -> comic_asset(store)          -> "comic://proj/issues/issue/storyboards/main"
+3. character-designer -> comic_create(create_char)   -> "comic://proj/characters/explorer"
+4. panel-artist      -> comic_create(create_panel)   -> "comic://proj/issues/issue/panels/panel_01"
    panel-artist      -> comic_create(review_asset)   -> {passed: false, feedback: "..."}
-   panel-artist      -> comic_create(create_panel)   -> "comic://proj/issue/panel/panel_01?v=2"
+   panel-artist      -> comic_create(create_panel)   -> "comic://proj/issues/issue/panels/panel_01?v=2"
    panel-artist      -> comic_create(review_asset)   -> {passed: true}
-5. cover-artist      -> comic_create(create_cover)   -> "comic://proj/issue/cover/cover"
+5. cover-artist      -> comic_create(create_cover)   -> "comic://proj/issues/issue/covers/cover"
 6. strip-compositor  -> comic_asset(get storyboard)  -> layout structure with panel sequence
    strip-compositor  -> comic_create(review_asset)   -> visual composition descriptions per panel
    strip-compositor  -> comic_create(assemble_comic) -> "/path/to/final.html"

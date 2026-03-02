@@ -61,24 +61,43 @@ All comic narratives must follow these rules:
 
 All assets in the pipeline are referenced using `comic://` URIs. These identifiers flow between agents, recipe stages, and tool calls. Image bytes never enter conversation context.
 
-**Format:** `comic://project/issue/type/name` or `comic://project/issue/type/name?v=N`
+**Two scopes — choose based on asset lifetime:**
 
-**Asset types:** `panel`, `cover`, `avatar`, `character`, `storyboard`, `style`, `research`, `final`
+**Characters and styles are project-scoped** (shared and reusable across all issues within a project):
+```
+comic://project/characters/name
+comic://project/styles/name
+comic://project/characters/name?v=N
+```
+
+**Panels, covers, storyboards, and other per-issue assets are issue-scoped** (bound to a specific issue):
+```
+comic://project/issues/issue/panels/name
+comic://project/issues/issue/covers/name
+comic://project/issues/issue/storyboards/name
+comic://project/issues/issue/research/name
+comic://project/issues/issue/finals/name
+comic://project/issues/issue/panels/name?v=N
+```
 
 **Examples:**
 ```
-comic://my-comic/issue-001/panel/panel_01
-comic://my-comic/issue-001/character/the-explorer
-comic://my-comic/issue-001/cover/cover
-comic://my-comic/issue-001/character/the-explorer?v=2
-comic://my-comic/issue-001/storyboard/main
-comic://my-comic/issue-001/style/manga
+comic://my-comic/characters/the-explorer
+comic://my-comic/characters/the-explorer?v=2
+comic://my-comic/styles/manga
+comic://my-comic/issues/issue-001/panels/panel_01
+comic://my-comic/issues/issue-001/covers/cover
+comic://my-comic/issues/issue-001/storyboards/main
 ```
+
+**Collection names are always plural:** `characters`, `styles`, `panels`, `covers`, `storyboards`, `research`, `finals`, `avatars`.
 
 **Rules:**
 - Absence of `?v=N` means latest version
 - Human-readable in logs, recipe context, and debugging output
 - Tools resolve URIs to disk paths internally — agents never handle file paths or bytes directly
+- Characters and styles are **project-scoped**: no issue segment, reusable across all issues
+- Panels, covers, and other assets are **issue-scoped**: always include the `issues/<issue>/` segment
 
 ## Output Format Requirements
 
@@ -96,10 +115,13 @@ The final comic output must meet these requirements:
 The comic creation pipeline passes data between agents in five stages:
 
 1. **Research JSON** - The story-researcher agent outputs structured research JSON containing session events, metrics, and narrative arcs extracted from source material.
-2. **Style URI** - The style-curator agent stores a structured style guide and returns a `comic://` URI (e.g., `comic://proj/issue/style/manga`). All downstream agents retrieve it via `comic_style(action='get')`.
-3. **Storyboard URI** - The storyboard-writer agent generates a storyboard with panel sequence, dialogue, camera angles, page layout structure, and page breaks, stores it, and returns a `comic://` URI.
-4. **Panel URIs** - The panel-artist agent renders each panel via `comic_create(action='create_panel')` and returns a `comic://` URI per panel. No image bytes flow through recipe context.
-5. **Cover URI** - The cover-artist agent produces the cover via `comic_create(action='create_cover')` and returns a `comic://` URI. No image bytes flow through recipe context.
+2. **Style URI** *(project-scoped)* - The style-curator agent stores a structured style guide and returns a project-scoped `comic://` URI (e.g., `comic://proj/styles/manga`). Styles are shared across all issues of a project. All downstream agents retrieve the style via `comic_style(action='get')`.
+3. **Storyboard + Character URIs** *(storyboard is issue-scoped; characters are project-scoped)* - The storyboard-writer agent generates a storyboard with panel sequence, dialogue, camera angles, page layout structure, page breaks, and a `character_list` defining the cast. It stores the storyboard at an issue-scoped URI (e.g., `comic://proj/issues/issue-001/storyboards/storyboard`). The `character_list` is then fed to character-designer, which creates a project-scoped character URI for each character (e.g., `comic://proj/characters/the-explorer`). These project-scoped URIs act as cast bindings — they tie the visual reference to the character across any panel or issue.
+4. **Panel URIs** *(issue-scoped)* - The panel-artist agent renders each panel via `comic_create(action='create_panel')` and returns an issue-scoped `comic://` URI per panel (e.g., `comic://proj/issues/issue-001/panels/panel_01`). No image bytes flow through recipe context.
+5. **Cover URI** *(issue-scoped)* - The cover-artist agent produces the cover via `comic_create(action='create_cover')` and returns an issue-scoped `comic://` URI (e.g., `comic://proj/issues/issue-001/covers/cover`). No image bytes flow through recipe context.
+
+**Characters and styles are project-scoped** — defined once, shared across all issues.
+**Panels, covers, storyboards, and other assets are issue-scoped** — each issue has its own set.
 
 All recipe context variables carry URIs and text metadata only. Total recipe state is approximately 1 KB.
 

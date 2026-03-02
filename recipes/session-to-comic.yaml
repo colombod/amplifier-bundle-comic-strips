@@ -1,6 +1,6 @@
 name: "session-to-comic"
 description: "Transform an Amplifier session into an illustrated comic strip with quality review, character consistency, dramatized storytelling, and AmpliVerse publisher branding"
-version: "7.1.0"
+version: "7.2.0"
 author: "amplifier-comic-strips"
 tags: ["comic", "visual-storytelling", "session-analysis", "uri-protocol"]
 
@@ -8,7 +8,15 @@ tags: ["comic", "visual-storytelling", "session-analysis", "uri-protocol"]
 # CHANGELOG
 # =============================================================================
 #
-# v7.1.0 (WP-6):
+# v7.2.0 (2026-03-02):
+#   - FIX: Remove rate_limit step-level field (not in schema) from design-characters
+#     and generate-panels foreach steps. Concurrency is already bounded by parallel: 2.
+#   - FIX: Change retry.delay to retry.initial_delay (correct schema field name) in
+#     design-characters, generate-panels, and generate-cover steps.
+#   - RENAME: character_sheet collect variable renamed to character_uris throughout.
+#     More self-documenting since it holds a list of comic:// URI strings, not a sheet.
+#
+# v7.1.0 (2026-03-02) (WP-6):
 #   - CHANGE: All comic:// URI examples updated to v2 scoped format.
 #     Characters and styles are now project-scoped (no issue segment):
 #       "comic://proj/characters/explorer"  (was "comic://proj/issue/character/explorer")
@@ -20,7 +28,7 @@ tags: ["comic", "visual-storytelling", "session-analysis", "uri-protocol"]
 #   - NOTE: No runtime behavior change — this version documents the v2 URI format
 #     already implemented in the underlying tools (WP-1 through WP-4).
 #
-# v7.0.0 (WP-10):
+# v7.0.0 (2026-03-02) (WP-10):
 #   - FEAT: Switch to URI-based context variables throughout. All recipe state
 #     now carries comic:// URIs and text metadata only — no binary data, no
 #     base64 blobs, no file paths in recipe context.
@@ -355,9 +363,7 @@ stages:
         max_iterations: 6
         retry:
           max_attempts: 2
-          delay: 5
-        rate_limit:
-          max_per_minute: 10
+          initial_delay: 5
         prompt: |
           Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}, style={{style}}
 
@@ -385,7 +391,7 @@ stages:
           Return ONLY the character URI string from the comic_create response
           (e.g., "comic://proj/characters/the-explorer").
           Do NOT return JSON objects, image paths, or base64 data.
-        collect: "character_sheet"
+        collect: "character_uris"
         timeout: 900
 
       # ============================================
@@ -400,9 +406,7 @@ stages:
         max_iterations: 12
         retry:
           max_attempts: 2
-          delay: 5
-        rate_limit:
-          max_per_minute: 10
+          initial_delay: 5
         prompt: |
           Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}, style={{style}}
 
@@ -412,7 +416,7 @@ stages:
           {{panel_item}}
 
           Character URIs (for visual consistency — pass these directly to comic_create):
-          {{character_sheet}}
+          {{character_uris}}
 
           Style Guide URI: {{style_guide}}
           Load the style guide using: comic_style(action='get', uri='{{style_guide}}')
@@ -423,7 +427,7 @@ stages:
                        issue='{{project_init.issue_id}}',
                        name=<panel-name-slug from panel_item>,
                        prompt=<scene description from panel_item informed by style guide>,
-                       character_uris=<list of URIs from {{character_sheet}} whose characters appear in this panel>,
+                       character_uris=<list of URIs from {{character_uris}} whose characters appear in this panel>,
                        size=<landscape/portrait/square as appropriate for panel_item>,
                        camera_angle=<framing hint from panel_item>)
 
@@ -431,7 +435,7 @@ stages:
           comic_create(action='review_asset',
                        uri=<returned panel URI>,
                        prompt="Are faces visible and unobstructed? Is there a clear focal point? Does it tell the story visually? Does it match the style?",
-                       reference_uris=<character URIs from character_sheet for consistency check>)
+                       reference_uris=<character URIs from character_uris for consistency check>)
 
           If the review fails (passed=false), regenerate with an adjusted prompt (max 3 attempts).
 
@@ -449,7 +453,7 @@ stages:
         depends_on: ["design-characters"]
         retry:
           max_attempts: 2
-          delay: 5
+          initial_delay: 5
         prompt: |
           Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}, style={{style}}
 
@@ -462,7 +466,7 @@ stages:
           {{storyboard}}
 
           Character URIs (pass featured characters directly to comic_create):
-          {{character_sheet}}
+          {{character_uris}}
 
           Research Data (for title and story tone):
           {{research_data}}
@@ -472,7 +476,7 @@ stages:
                        project='{{project_init.project_id}}',
                        issue='{{project_init.issue_id}}',
                        prompt=<dramatic cover concept: main characters, pose, setting, tone>,
-                       character_uris=<list of featured character URIs from {{character_sheet}}>,
+                       character_uris=<list of featured character URIs from {{character_uris}}>,
                        title='{{storyboard.title}}',
                        subtitle='{{storyboard.subtitle}}')
 
@@ -480,7 +484,7 @@ stages:
           comic_create(action='review_asset',
                        uri=<returned cover URI>,
                        prompt="Are main characters in a dramatic pose with faces visible? Is the composition striking? Does it match the style?",
-                       reference_uris=<character URIs from {{character_sheet}}>)
+                       reference_uris=<character URIs from {{character_uris}}>)
 
           If the review fails (passed=false), regenerate with an adjusted prompt (max 3 attempts).
 

@@ -2,6 +2,11 @@
 
 I-6: All three CRUD tools should accept `uri` as an alternative to decomposed
 project/issue/type/name parameters.
+
+v2 URI formats:
+  - Issue-scoped:   comic://project/issues/issue-id/panels/panel_01
+  - Project-scoped: comic://project/characters/explorer
+  - Project-scoped: comic://project/styles/manga
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ from amplifier_module_comic_assets import (
     ComicProjectTool,
     ComicStyleTool,
 )
+from amplifier_module_comic_assets import _parse_uri_params  # type: ignore[attr-defined]
 
 _PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 _PNG_B64 = base64.b64encode(_PNG).decode("ascii")
@@ -34,9 +40,45 @@ _CHAR_STORE_PARAMS = dict(
 async def _setup_project(service, project: str = "uri_test_proj", title: str = "I1"):
     """Create a project+issue, return (project_id, issue_id)."""
     tool = ComicProjectTool(service)
-    r = await tool.execute({"action": "create_issue", "project": project, "title": title})
+    r = await tool.execute(
+        {"action": "create_issue", "project": project, "title": title}
+    )
     data = json.loads(r.output)
     return data["project_id"], data["issue_id"]
+
+
+# ---------------------------------------------------------------------------
+# _parse_uri_params unit tests — scope-awareness and singularization
+# ---------------------------------------------------------------------------
+
+
+def test_project_scoped_uri_does_not_set_issue() -> None:
+    """Project-scoped URI (characters) must NOT populate params['issue']."""
+    params: dict = {"uri": "comic://my-project/characters/explorer"}
+    err = _parse_uri_params(params)
+    assert err is None
+    assert "issue" not in params
+    assert params["project"] == "my-project"
+    assert params["name"] == "explorer"
+    assert params["type"] == "character"  # singularized from "characters"
+
+
+def test_issue_scoped_uri_sets_issue() -> None:
+    """Issue-scoped URI (panels) MUST populate params['issue']."""
+    params: dict = {"uri": "comic://my-project/issues/issue-001/panels/panel_01"}
+    err = _parse_uri_params(params)
+    assert err is None
+    assert params["issue"] == "issue-001"
+    assert params["project"] == "my-project"
+    assert params["name"] == "panel_01"
+    assert params["type"] == "panel"  # singularized from "panels"
+
+
+def test_type_is_singularized() -> None:
+    """URI uses plural collection name 'panels'; params['type'] must be singular 'panel'."""
+    params: dict = {"uri": "comic://my-project/issues/issue-001/panels/panel_01"}
+    _parse_uri_params(params)
+    assert params["type"] == "panel"
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +88,7 @@ async def _setup_project(service, project: str = "uri_test_proj", title: str = "
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_comic_asset_get_via_uri(service) -> None:
-    """comic_asset(action='get', uri='comic://proj/issue/panel/panel_01') resolves correctly."""
+    """comic_asset(action='get', uri='comic://proj/issues/issue-001/panels/panel_01') resolves correctly."""
     pid, iid = await _setup_project(service, "asset_uri_proj", "I1")
     tool = ComicAssetTool(service)
 
@@ -63,8 +105,8 @@ async def test_comic_asset_get_via_uri(service) -> None:
     )
     assert store.success is True
 
-    # Retrieve via URI — no project/issue/type/name explicitly
-    uri = f"comic://{pid}/{iid}/panel/panel_01"
+    # Retrieve via v2 issue-scoped URI — no project/issue/type/name explicitly
+    uri = f"comic://{pid}/issues/{iid}/panels/panel_01"
     result = await tool.execute({"action": "get", "uri": uri})
 
     assert result.success is True
@@ -79,7 +121,7 @@ async def test_comic_asset_get_via_uri(service) -> None:
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_comic_character_get_via_uri(service) -> None:
-    """comic_character(action='get', uri='comic://proj/issue/character/explorer') resolves correctly."""
+    """comic_character(action='get', uri='comic://proj/characters/explorer') resolves correctly."""
     pid, iid = await _setup_project(service, "char_uri_proj", "I1")
     tool = ComicCharacterTool(service)
 
@@ -97,8 +139,8 @@ async def test_comic_character_get_via_uri(service) -> None:
     )
     assert store.success is True
 
-    # Retrieve via URI
-    uri = f"comic://{pid}/{iid}/character/explorer"
+    # Retrieve via v2 project-scoped URI — no project/name explicitly
+    uri = f"comic://{pid}/characters/explorer"
     result = await tool.execute({"action": "get", "uri": uri})
 
     assert result.success is True
@@ -113,7 +155,7 @@ async def test_comic_character_get_via_uri(service) -> None:
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_comic_style_get_via_uri(service) -> None:
-    """comic_style(action='get', uri='comic://proj/issue/style/manga') resolves correctly."""
+    """comic_style(action='get', uri='comic://proj/styles/manga') resolves correctly."""
     pid, iid = await _setup_project(service, "style_uri_proj", "I1")
     tool = ComicStyleTool(service)
 
@@ -129,8 +171,8 @@ async def test_comic_style_get_via_uri(service) -> None:
     )
     assert store.success is True
 
-    # Retrieve via URI
-    uri = f"comic://{pid}/{iid}/style/manga"
+    # Retrieve via v2 project-scoped URI
+    uri = f"comic://{pid}/styles/manga"
     result = await tool.execute({"action": "get", "uri": uri})
 
     assert result.success is True
@@ -168,8 +210,8 @@ async def test_explicit_params_override_uri(service) -> None:
         )
         assert r.success is True
 
-    # URI points to panel_01, but explicit name=panel_02 should win
-    uri = f"comic://{pid}/{iid}/panel/panel_01"
+    # URI points to panel_01 (v2 format), but explicit name=panel_02 should win
+    uri = f"comic://{pid}/issues/{iid}/panels/panel_01"
     result = await tool.execute(
         {
             "action": "get",

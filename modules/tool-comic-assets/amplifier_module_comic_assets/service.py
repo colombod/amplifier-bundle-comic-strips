@@ -406,7 +406,9 @@ class ComicProjectService:
             version = max(existing_versions, default=0) + 1
 
             version_dir = f"{char_base_dir}/{style_slug}_v{version}"
-            image_rel = f"{version_dir}/reference.png" if image_bytes is not None else None
+            image_rel = (
+                f"{version_dir}/reference.png" if image_bytes is not None else None
+            )
             metadata_rel = f"{version_dir}/metadata.json"
 
             design = CharacterDesign(
@@ -440,7 +442,7 @@ class ComicProjectService:
                 project_manifest.setdefault("characters", []).append(char_slug)
                 await self._write_project_manifest(project_id, project_manifest)
 
-        uri = ComicURI.for_character(project_id, issue_id, char_slug, version=version)
+        uri = ComicURI.for_character(project_id, char_slug, version=version)
         return {
             "name": name,
             "style": style,
@@ -523,9 +525,7 @@ class ComicProjectService:
         design = CharacterDesign.from_dict(json.loads(meta_text))
         result: dict[str, Any] = design.to_dict()
         result["uri"] = str(
-            ComicURI.for_character(
-                project_id, design.origin_issue_id, char_slug, version=design.version
-            )
+            ComicURI.for_character(project_id, char_slug, version=design.version)
         )
 
         if include == "full":
@@ -572,9 +572,8 @@ class ComicProjectService:
                 if ver_part.isdigit():
                     styles.setdefault(style_part, []).append(int(ver_part))
 
-            # Resolve display name and origin_issue_id from any available metadata file.
+            # Resolve display name from any available metadata file.
             display_name = char_slug
-            origin_issue_id = ""
             for d in reversed(dirs):
                 try:
                     meta = json.loads(
@@ -583,27 +582,24 @@ class ComicProjectService:
                         )
                     )
                     display_name = meta.get("name", char_slug)
-                    origin_issue_id = meta.get("origin_issue_id", "")
                     break
                 except (FileNotFoundError, json.JSONDecodeError):
                     continue
 
-            latest_style_version = max(
-                (max(vs) for vs in styles.values()), default=1
-            ) if styles else 1
+            latest_style_version = (
+                max((max(vs) for vs in styles.values()), default=1) if styles else 1
+            )
             entry: dict[str, Any] = {
                 "name": display_name,
                 "char_slug": char_slug,
                 "styles": {s: max(vs) for s, vs in styles.items()},
                 "total_versions": sum(len(vs) for vs in styles.values()),
-            }
-            if origin_issue_id:
-                entry["uri"] = str(
+                "uri": str(
                     ComicURI.for_character(
-                        project_id, origin_issue_id, char_slug,
-                        version=latest_style_version,
+                        project_id, char_slug, version=latest_style_version
                     )
-                )
+                ),
+            }
             result.append(entry)
 
         return result
@@ -700,7 +696,9 @@ class ComicProjectService:
 
         input_count = sum(x is not None for x in (source_path, data, content))
         if input_count == 0:
-            raise ValueError("store_asset requires exactly one of: source_path, data, content")
+            raise ValueError(
+                "store_asset requires exactly one of: source_path, data, content"
+            )
         if input_count > 1:
             raise ValueError(
                 f"store_asset accepts exactly one of: source_path, data, content (got {input_count})"
@@ -761,11 +759,15 @@ class ComicProjectService:
                 if source_path:
                     mime_type = guess_mime(source_path)
                 elif raw_bytes and len(raw_bytes) >= 8:
-                    if raw_bytes[:8] == b'\x89PNG\r\n\x1a\n':
+                    if raw_bytes[:8] == b"\x89PNG\r\n\x1a\n":
                         mime_type = "image/png"
-                    elif raw_bytes[:3] == b'\xff\xd8\xff':
+                    elif raw_bytes[:3] == b"\xff\xd8\xff":
                         mime_type = "image/jpeg"
-                    elif raw_bytes[:4] == b'RIFF' and len(raw_bytes) >= 12 and raw_bytes[8:12] == b'WEBP':
+                    elif (
+                        raw_bytes[:4] == b"RIFF"
+                        and len(raw_bytes) >= 12
+                        and raw_bytes[8:12] == b"WEBP"
+                    ):
                         mime_type = "image/webp"
                     else:
                         mime_type = "image/png"
@@ -806,7 +808,9 @@ class ComicProjectService:
             }
             await self._write_issue_manifest(project_id, issue_id, issue_manifest)
 
-        uri = ComicURI.for_asset(project_id, issue_id, asset_type, name, version=version)
+        uri = ComicURI.for_asset(
+            project_id, issue_id, asset_type, name, version=version
+        )
         return {
             "name": name,
             "asset_type": asset_type,
@@ -894,7 +898,9 @@ class ComicProjectService:
                 pass
 
             result["uri"] = str(
-                ComicURI.for_asset(project_id, issue_id, asset_type, name, version=resolved_version)
+                ComicURI.for_asset(
+                    project_id, issue_id, asset_type, name, version=resolved_version
+                )
             )
             return result
 
@@ -936,7 +942,9 @@ class ComicProjectService:
                     )
 
             result["uri"] = str(
-                ComicURI.for_asset(project_id, issue_id, asset_type, name, version=resolved_version)
+                ComicURI.for_asset(
+                    project_id, issue_id, asset_type, name, version=resolved_version
+                )
             )
             return result
 
@@ -964,7 +972,9 @@ class ComicProjectService:
                 continue
 
             latest_ver = entry.get("latest_version", 1)
-            uri = ComicURI.for_asset(project_id, issue_id, atype, aname, version=latest_ver)
+            uri = ComicURI.for_asset(
+                project_id, issue_id, atype, aname, version=latest_ver
+            )
             result.append(
                 {
                     "name": aname,
@@ -1044,21 +1054,29 @@ class ComicProjectService:
 
         if asset_type in _STRUCTURED_TYPES:
             # For structured types, store metadata alongside content
-            version_dir = self._asset_version_dir(project_id, issue_id, asset_type, name, version)
+            version_dir = self._asset_version_dir(
+                project_id, issue_id, asset_type, name, version
+            )
             metadata_rel = f"{version_dir}/metadata.json"
             lock = await self._get_lock(project_id)
             async with lock:
                 try:
                     existing = json.loads(await self._storage.read_text(metadata_rel))
                 except FileNotFoundError:
-                    existing = {"name": name, "asset_type": asset_type, "version": version}
+                    existing = {
+                        "name": name,
+                        "asset_type": asset_type,
+                        "version": version,
+                    }
                 if review_status is not None:
                     existing["review_status"] = review_status
                 if review_feedback is not None:
                     existing["review_feedback"] = review_feedback
                 if metadata is not None:
                     existing.setdefault("metadata", {}).update(metadata)
-                await self._storage.write_text(metadata_rel, json.dumps(existing, indent=2))
+                await self._storage.write_text(
+                    metadata_rel, json.dumps(existing, indent=2)
+                )
             return existing
 
         version_dir = self._asset_version_dir(
@@ -1139,7 +1157,7 @@ class ComicProjectService:
                 project_manifest.setdefault("styles", []).append(style_slug)
                 await self._write_project_manifest(project_id, project_manifest)
 
-        uri = ComicURI.for_style(project_id, issue_id, style_slug, version=version)
+        uri = ComicURI.for_style(project_id, style_slug, version=version)
         return {"name": name, "version": version, "uri": str(uri)}
 
     async def get_style(
@@ -1179,9 +1197,7 @@ class ComicProjectService:
         style_obj = StyleGuide.from_dict(data)
         result = style_obj.to_dict(include_definition=(include == "full"))
         result["uri"] = str(
-            ComicURI.for_style(
-                project_id, style_obj.origin_issue_id, style_slug, version=style_obj.version
-            )
+            ComicURI.for_style(project_id, style_slug, version=style_obj.version)
         )
         return result
 
@@ -1208,11 +1224,9 @@ class ComicProjectService:
             definition_rel = (
                 f"{style_base_dir}/{style_slug}_v{latest_version}/definition.json"
             )
-            origin_issue_id_for_style = ""
             try:
                 data = json.loads(await self._storage.read_text(definition_rel))
                 display_name: str = data.get("name", style_slug)
-                origin_issue_id_for_style = data.get("origin_issue_id", "")
             except (FileNotFoundError, json.JSONDecodeError):
                 display_name = style_slug
 
@@ -1221,14 +1235,10 @@ class ComicProjectService:
                 "style_slug": style_slug,
                 "latest_version": latest_version,
                 "total_versions": len(versions),
+                "uri": str(
+                    ComicURI.for_style(project_id, style_slug, version=latest_version)
+                ),
             }
-            if origin_issue_id_for_style:
-                style_entry["uri"] = str(
-                    ComicURI.for_style(
-                        project_id, origin_issue_id_for_style, style_slug,
-                        version=latest_version,
-                    )
-                )
             result.append(style_entry)
 
         return result

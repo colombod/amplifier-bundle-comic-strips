@@ -81,6 +81,15 @@ def _parse_uri_params(params: dict[str, Any]) -> "ToolResult | None":
     Applies :meth:`dict.setdefault` so that any params already supplied by the
     caller are left untouched (explicit params take priority over URI values).
 
+    Scope-aware behaviour:
+    - Project-scoped URIs (characters, styles): ``parsed.issue`` is ``None``
+      and ``params["issue"]`` is **not** set.
+    - Issue-scoped URIs (panels, covers, etc.): ``parsed.issue`` is present
+      and ``params["issue"]`` is set via ``setdefault``.
+
+    The ``type`` param is always singularized so the service layer (which uses
+    singular forms such as ``"panel"``) receives the correct value.
+
     Returns a ``ToolResult`` error if the URI is malformed, or ``None`` when
     the operation succeeds (including when no ``uri`` key is present at all).
     """
@@ -88,14 +97,15 @@ def _parse_uri_params(params: dict[str, Any]) -> "ToolResult | None":
         return None
     try:
         parsed = parse_comic_uri(params["uri"])
-        params.setdefault("project", parsed.project)
-        params.setdefault("issue", parsed.issue)
-        params.setdefault("type", parsed.asset_type)
-        params.setdefault("name", parsed.name)
-        if parsed.version is not None:
-            params.setdefault("version", parsed.version)
     except ValueError as exc:
         return ToolResult(success=False, output=f"Invalid URI: {exc}")
+    params.setdefault("project", parsed.project)
+    if parsed.issue is not None:
+        params.setdefault("issue", parsed.issue)
+    params.setdefault("type", singularize_type(parsed.asset_type))
+    params.setdefault("name", parsed.name)
+    if parsed.version is not None:
+        params.setdefault("version", parsed.version)
     return None
 
 
@@ -403,7 +413,10 @@ class ComicCharacterTool:
                 },
                 "uri": {
                     "type": "string",
-                    "description": "comic:// URI (alternative to separate project/issue/type/name params).",
+                    "description": (
+                        "comic:// URI (alternative to separate project/name params). "
+                        "Project-scoped format: comic://project/characters/name[?v=N]."
+                    ),
                 },
             },
             "required": ["action"],
@@ -661,7 +674,10 @@ class ComicAssetTool:
                 },
                 "uri": {
                     "type": "string",
-                    "description": "comic:// URI (alternative to separate project/issue/type/name params).",
+                    "description": (
+                        "comic:// URI (alternative to separate project/issue/type/name params). "
+                        "Issue-scoped format: comic://project/issues/issue-id/collection/name[?v=N]."
+                    ),
                 },
             },
             "required": ["action"],
@@ -871,7 +887,10 @@ class ComicStyleTool:
                 },
                 "uri": {
                     "type": "string",
-                    "description": "comic:// URI (alternative to separate project/issue/type/name params).",
+                    "description": (
+                        "comic:// URI (alternative to separate project/name params). "
+                        "Project-scoped format: comic://project/styles/name[?v=N]."
+                    ),
                 },
             },
             "required": ["action"],

@@ -73,8 +73,9 @@ comic://project/issue/type/name?v=2
 - Version is a query parameter `?v=N`
 - Absence of version means latest
 - Human-readable in logs, recipe context, and debugging output
+- Character URIs include the issue segment for provenance tracking, but character retrieval is project-scoped.
 
-**Asset types:** `panel`, `cover`, `avatar`, `character`, `storyboard`, `style`, `research`, `final`
+**Asset types:** `panel`, `cover`, `avatar`, `character`, `storyboard`, `style`, `research`, `final`, `qa_screenshot`
 
 **Examples:**
 

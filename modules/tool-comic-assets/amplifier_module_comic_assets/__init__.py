@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import platform
 from dataclasses import dataclass
 from typing import Any
 
@@ -539,6 +540,7 @@ class ComicAssetTool:
                         "get",
                         "list",
                         "update_metadata",
+                        "preview",
                     ],
                 },
                 "project": {
@@ -708,11 +710,34 @@ class ComicAssetTool:
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
+        async def _preview() -> ToolResult:
+            if m := _require(params, "project", "issue", "type", "name"):
+                return _missing_error(m)
+            try:
+                asset = await self._service.get_asset(
+                    params["project"],
+                    params["issue"],
+                    params["type"],
+                    params["name"],
+                    include="full",
+                    format="path",
+                )
+                hint_cmd = "open" if platform.system() == "Darwin" else "xdg-open"
+                return _ok({
+                    "uri": asset.get("uri", ""),
+                    "path": asset.get("image", ""),
+                    "type": asset.get("mime_type", "application/octet-stream"),
+                    "hint": hint_cmd,
+                })
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
         dispatch: dict[str, Any] = {
             "store": _store,
             "get": _get,
             "list": _list,
             "update_metadata": _update_metadata,
+            "preview": _preview,
         }
 
         handler = dispatch.get(action)  # type: ignore[arg-type]

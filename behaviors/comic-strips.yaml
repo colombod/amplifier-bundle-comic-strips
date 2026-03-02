@@ -17,8 +17,8 @@ recipes:
     path: comic-strips:recipes/session-to-comic.yaml
 
 tools:
-  - module: tool-comic-image-gen
-    source: git+https://github.com/colombod/amplifier-bundle-comic-strips@main#subdirectory=modules/tool-comic-image-gen
+  - module: tool-comic-create
+    source: git+https://github.com/colombod/amplifier-bundle-comic-strips@main#subdirectory=modules/tool-comic-create
   - module: tool-comic-assets
     source: git+https://github.com/colombod/amplifier-bundle-comic-strips@main#subdirectory=modules/tool-comic-assets
   - module: tool-skills
@@ -26,3 +26,7 @@ tools:
     config:
       skills:
         - "git+https://github.com/colombod/amplifier-bundle-comic-strips@main#subdirectory=skills"
+# NOTE: tool-comic-image-gen is NOT exposed to agents. generate_image is an
+# internal implementation detail of comic_create (tool-comic-create). The
+# tool-comic-image-gen module remains as a code dependency but is not
+# registered in the tool surface.

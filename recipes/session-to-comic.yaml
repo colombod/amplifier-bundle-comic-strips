@@ -1,12 +1,54 @@
 name: "session-to-comic"
 description: "Transform an Amplifier session into an illustrated comic strip with quality review, character consistency, dramatized storytelling, and AmpliVerse publisher branding"
-version: "6.0.0"
+version: "7.0.0"
 author: "amplifier-comic-strips"
-tags: ["comic", "visual-storytelling", "session-analysis", "image-generation"]
+tags: ["comic", "visual-storytelling", "session-analysis", "uri-protocol"]
 
 # =============================================================================
 # CHANGELOG
 # =============================================================================
+#
+# v7.0.0 (WP-10):
+#   - FEAT: Switch to URI-based context variables throughout. All recipe state
+#     now carries comic:// URIs and text metadata only — no binary data, no
+#     base64 blobs, no file paths in recipe context.
+#   - CHANGE: {{character_sheet}} is now a list of character URI strings
+#     (e.g. "comic://proj/issue/character/explorer"), replacing the old list
+#     of parsed JSON objects containing image paths.
+#   - CHANGE: {{panel_results}} is now a list of panel URI strings, replacing
+#     the old list of parsed image-path JSON objects.
+#   - CHANGE: {{cover_results}} is now a single cover URI string (~60 bytes),
+#     replacing the old ~2 MB HTML blob with embedded base64 cover image.
+#   - CHANGE: {{style_guide}} is now a style URI string, replacing the old
+#     full style-guide text. Downstream agents load content via comic_style.
+#   - NOTE: {{storyboard}} remains a parsed JSON object — the recipe engine
+#     foreach loops that drive character design and panel generation require
+#     dot-notation access to storyboard.character_list and storyboard.panel_list.
+#   - CHANGE: design-characters and generate-panels steps now use
+#     comic_create(action='create_character_ref') and
+#     comic_create(action='create_panel') respectively. generate_image is no
+#     longer referenced in agent instructions.
+#   - CHANGE: generate-cover step uses comic_create(action='create_cover') and
+#     comic_create(action='review_asset') for self-review. No more base64 HTML
+#     assembly in agent context.
+#   - CHANGE: composition step is significantly simplified — receives URI list
+#     for panels, a single cover URI, and storyboard metadata. Calls
+#     comic_create(action='assemble_comic') with a structured layout object.
+#     All binary encoding is internal to the tool.
+#   - REMOVED: generate_image-specific context variables
+#     (character_design_needs_reference_images, character_design_detail_level,
+#     generate_panels_needs_reference_images, generate_panels_detail_level,
+#     generate_cover_needs_reference_images, generate_cover_detail_level).
+#   - REMOVED: parse_json: true from design-characters and generate-panels
+#     collect steps (URIs are plain strings, not JSON objects).
+#
+# v6.1.0 (WP-6):
+#   - FEAT: Add retry (max_attempts: 2, delay: 5s) to all three image-generation
+#     steps (design-characters, generate-panels, generate-cover) so transient
+#     provider failures are automatically retried before the recipe aborts.
+#   - FEAT: Add rate_limit (max_per_minute: 10) to the two foreach steps
+#     (design-characters, generate-panels) to prevent image-generation API
+#     rate-limit errors when running with parallel: 2 across many iterations.
 #
 # v6.0.0 (2026-03-03):
 #   - FEAT: Integrate comic asset manager (tool-comic-assets) for all asset tracking.
@@ -99,15 +141,6 @@ context:
   output_name: ""         # Optional: custom output filename (defaults to comic-{timestamp})
   project_name: ""     # Optional: project name (defaults to "comic-project")
   issue_title: ""      # Optional: issue title (defaults to comic title from research)
-  # Pipeline step requirements for generate_image tool parameters.
-  # Flattened to individual keys to avoid nested dict serialization issues
-  # in the recipe engine's substitute_variables() (see amplifier-support#91).
-  character_design_needs_reference_images: false
-  character_design_detail_level: "high"
-  generate_panels_needs_reference_images: true
-  generate_panels_detail_level: "medium"
-  generate_cover_needs_reference_images: true
-  generate_cover_detail_level: "high"
 
 stages:
   # ==========================================================================
@@ -200,11 +233,13 @@ stages:
 
           If it's a custom description, interpret it and generate a complete style guide.
 
-          Output the full structured style guide.
-
           Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}, style={{style}}
-          After producing the style guide, store it using:
+          Store the completed style guide using:
           comic_style(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', name='{{style}}', definition=<your style guide output>)
+
+          Return ONLY the style URI from the comic_style response (e.g., "comic://proj/issue/style/manga").
+          Do NOT return the full style guide text — just the URI string.
+          Downstream agents will load the style guide content via comic_style(action='get', uri=<uri>) when needed.
         output: "style_guide"
         timeout: 300
 
@@ -219,8 +254,8 @@ stages:
           Research Data:
           {{research_data}}
 
-          Style Guide:
-          {{style_guide}}
+          Style Guide URI: {{style_guide}}
+          Load the style guide content using: comic_style(action='get', uri='{{style_guide}}')
 
           IMPORTANT: You are a TWO-PHASE agent.
 
@@ -306,25 +341,39 @@ stages:
         agent: "comic-strips:character-designer"
         parallel: 2
         max_iterations: 6
+        retry:
+          max_attempts: 2
+          delay: 5
+        rate_limit:
+          max_per_minute: 10
         prompt: |
           Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}, style={{style}}
 
-          Create a character reference sheet for this single character.
+          Create a character reference sheet for this single character using comic_create.
 
           Character to design:
           {{character_item}}
 
-          Style Guide:
-          {{style_guide}}
-
-          Pipeline requirements: needs_reference_images={{character_design_needs_reference_images}}, detail_level={{character_design_detail_level}}
+          Style Guide URI: {{style_guide}}
+          Load the style guide using: comic_style(action='get', uri='{{style_guide}}')
 
           Design this character with bundle-affiliation visual markers -- characters from the
           same bundle share team colors, insignia, or uniform elements.
 
-          Output a structured character entry with image path and description for this character.
+          Call:
+          comic_create(action='create_character_ref',
+                       project='{{project_init.project_id}}',
+                       issue='{{project_init.issue_id}}',
+                       name=<character-name-slug>,
+                       visual_traits=<visual description from character_item>,
+                       distinctive_features=<identifying features from character_item>,
+                       personality=<personality context from character_item>,
+                       prompt=<generation prompt combining visual_traits, style, and bundle affiliation>)
+
+          Return ONLY the character URI string from the comic_create response
+          (e.g., "comic://proj/issue/character/the-explorer").
+          Do NOT return JSON objects, image paths, or base64 data.
         collect: "character_sheet"
-        parse_json: true
         timeout: 900
 
       # ============================================
@@ -337,29 +386,47 @@ stages:
         agent: "comic-strips:panel-artist"
         parallel: 2
         max_iterations: 12
+        retry:
+          max_attempts: 2
+          delay: 5
+        rate_limit:
+          max_per_minute: 10
         prompt: |
           Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}, style={{style}}
 
-          Generate the artwork for a single comic panel.
+          Generate the artwork for a single comic panel using comic_create.
 
           Panel to generate:
           {{panel_item}}
 
-          Character Sheet (reference images for visual consistency):
+          Character URIs (for visual consistency — pass these directly to comic_create):
           {{character_sheet}}
 
-          Style Guide:
-          {{style_guide}}
+          Style Guide URI: {{style_guide}}
+          Load the style guide using: comic_style(action='get', uri='{{style_guide}}')
 
-          Pipeline requirements: needs_reference_images={{generate_panels_needs_reference_images}}, detail_level={{generate_panels_detail_level}}
+          Call:
+          comic_create(action='create_panel',
+                       project='{{project_init.project_id}}',
+                       issue='{{project_init.issue_id}}',
+                       name=<panel-name-slug from panel_item>,
+                       prompt=<scene description from panel_item informed by style guide>,
+                       character_uris=<list of URIs from {{character_sheet}} whose characters appear in this panel>,
+                       size=<landscape/portrait/square as appropriate for panel_item>,
+                       camera_angle=<framing hint from panel_item>)
 
-          Generate the image for this panel, then self-review it using vision.
-          Check: are faces visible and unobstructed? Is there a clear focal point?
-          Does it tell the story visually? Does it match the style?
-          ALWAYS pass reference_images from the character sheet for consistency.
-          If the panel fails review, regenerate with an adjusted prompt (max 3 attempts).
+          After generating, self-review using:
+          comic_create(action='review_asset',
+                       uri=<returned panel URI>,
+                       prompt="Are faces visible and unobstructed? Is there a clear focal point? Does it tell the story visually? Does it match the style?",
+                       reference_uris=<character URIs from character_sheet for consistency check>)
+
+          If the review fails (passed=false), regenerate with an adjusted prompt (max 3 attempts).
+
+          Return ONLY the panel URI string from the final successful comic_create response
+          (e.g., "comic://proj/issue/panel/panel_03").
+          Do NOT return JSON objects, image paths, or base64 data.
         collect: "panel_results"
-        parse_json: true
         timeout: 1200
 
       # ============================================
@@ -368,31 +435,46 @@ stages:
       - id: "generate-cover"
         agent: "comic-strips:cover-artist"
         depends_on: ["design-characters"]
+        retry:
+          max_attempts: 2
+          delay: 5
         prompt: |
           Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}, style={{style}}
 
-          You are generating cover art for a comic strip.
+          You are generating cover art for a comic strip using comic_create.
 
-          Pipeline requirements for this step: needs_reference_images={{generate_cover_needs_reference_images}}, detail_level={{generate_cover_detail_level}}
+          Style Guide URI: {{style_guide}}
+          Load the style guide using: comic_style(action='get', uri='{{style_guide}}')
 
-          Style Guide:
-          {{style_guide}}
-
-          Storyboard:
+          Storyboard (for cover concept — title, theme, key characters):
           {{storyboard}}
 
-          Character Sheet (reference images for visual consistency):
+          Character URIs (pass featured characters directly to comic_create):
           {{character_sheet}}
 
-          Research Data:
+          Research Data (for title and story tone):
           {{research_data}}
 
-          Generate a single cover hero image and assemble cover HTML with AmpliVerse branding.
-          CRITICAL: The AmpliVerse logo MUST be the ACTUAL Amplifier avatar image fetched from
-          https://github.com/microsoft-amplifier.png and embedded as a base64 <img> tag.
-          Do NOT use CSS text or a colored badge as a substitute.
-          Self-review the cover image using vision before assembling HTML (max 3 attempts).
-          Ensure main characters are in a dramatic pose with faces visible.
+          Call:
+          comic_create(action='create_cover',
+                       project='{{project_init.project_id}}',
+                       issue='{{project_init.issue_id}}',
+                       prompt=<dramatic cover concept: main characters, pose, setting, tone>,
+                       character_uris=<list of featured character URIs from {{character_sheet}}>,
+                       title='{{storyboard.title}}',
+                       subtitle='{{storyboard.subtitle}}')
+
+          After generating, self-review using:
+          comic_create(action='review_asset',
+                       uri=<returned cover URI>,
+                       prompt="Are main characters in a dramatic pose with faces visible? Is the composition striking? Does it match the style?",
+                       reference_uris=<character URIs from {{character_sheet}}>)
+
+          If the review fails (passed=false), regenerate with an adjusted prompt (max 3 attempts).
+
+          Return ONLY the cover URI string from the final successful comic_create response
+          (e.g., "comic://proj/issue/cover/cover").
+          Do NOT return HTML, base64 data, or image paths.
         output: "cover_results"
         timeout: 900
 
@@ -405,43 +487,47 @@ stages:
         prompt: |
           Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}, style={{style}}
 
-          IMPORTANT: Retrieve ALL assets from the asset manager instead of relying on recipe context variables.
-          Use comic_asset, comic_character, and comic_style tools to fetch what you need.
+          Assemble the final comic strip HTML from URIs using comic_create.
 
-          Assemble the final comic strip HTML.
-
-          Panel Art Results:
+          Panel URIs (in order):
           {{panel_results}}
 
-          Cover Art Results:
+          Cover URI:
           {{cover_results}}
 
-          Storyboard (for dialogue, captions, sound effects):
+          Storyboard (for dialogue, captions, sound effects per panel):
           {{storyboard}}
 
-          Character Sheet (for character intro page):
-          {{character_sheet}}
-
-          Style Guide (for layout, fonts, colors, borders):
-          {{style_guide}}
-
-          Research Data (for title and metadata):
-          {{research_data}}
+          Style Guide URI: {{style_guide}}
+          Load layout conventions using: comic_style(action='get', uri='{{style_guide}}')
 
           Output filename: {{output_name}}
 
-          Assemble the cover page and all panel images into a single self-contained HTML file.
-          Apply speech bubbles, captions, and sound effects as CSS overlays.
+          WORKFLOW:
+          1. Load the style guide to understand layout conventions, bubble styles, and page structure.
+          2. For each panel URI in {{panel_results}}, call:
+             comic_create(action='review_asset', uri=<panel_uri>,
+                          prompt="Describe character positions, negative space, and focal points for text overlay placement.")
+             Use the visual descriptions to make precise text overlay placement decisions.
+          3. Build a layout object mapping each panel URI to its storyboard dialogue, captions,
+             and sound effects. Use overlay coordinates (0-100% of panel dimensions) informed by
+             the visual composition analysis.
+          4. Call:
+             comic_create(action='assemble_comic',
+                          project='{{project_init.project_id}}',
+                          issue='{{project_init.issue_id}}',
+                          output_path=<output filename>,
+                          style_uri='{{style_guide}}',
+                          layout={
+                            "title": "{{storyboard.title}}",
+                            "cover": {"uri": "{{cover_results}}", "title": "{{storyboard.title}}",
+                                      "subtitle": "{{storyboard.subtitle}}", "branding": "AmpliVerse"},
+                            "pages": [<pages with panel URIs, shapes, and text overlays>]
+                          })
 
-          Run visual QA by delegating to browser-tester:visual-documenter with SPECIFIC criteria:
-          - Cover: dramatic hero image? AmpliVerse logo as actual image (not CSS text)? Title readable?
-          - Character intro: 3-6 characters displayed? Each with image, name, role?
-          - Story pages: bubbles not covering faces? Natural dialogue (no UUIDs/raw data)? Visual consistency?
-          - Overall: navigation works? Page count correct? Rate overall quality 1-10.
-
-          Fix any issues found (max 2 assembly review iterations).
+          The tool handles all base64 encoding, SVG bubble rendering, and HTML assembly internally.
+          Do NOT fetch image bytes or call base64 encoding tools.
 
           Do NOT delete intermediate files. All assets are managed by the asset manager.
-          Cleanup is handled separately via an explicit recipe step with user approval.
         output: "final_output"
         timeout: 1200

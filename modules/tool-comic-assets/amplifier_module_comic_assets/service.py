@@ -28,10 +28,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .comic_uri import ComicURI
 from .encoding import bytes_to_base64, bytes_to_data_uri, guess_mime
 from .models import (
     ASSET_TYPES,
@@ -41,6 +43,18 @@ from .models import (
     slugify,
 )
 from .storage import StorageProtocol
+
+_SAFE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+
+def _validate_id(value: str, label: str) -> str:
+    """Validate that value is a safe identifier."""
+    if not value or not _SAFE_ID_RE.match(value):
+        raise ValueError(
+            f"Invalid {label}: {value!r}. "
+            f"Must match [a-z0-9][a-z0-9_-]* (no slashes, no '..', no uppercase)."
+        )
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +199,7 @@ class ComicProjectService:
             whether the **project** was newly created.
         """
         project_id = slugify(project_name)
+        _validate_id(project_id, "project_id")
         lock = await self._get_lock(project_id)
 
         async with lock:
@@ -259,6 +274,7 @@ class ComicProjectService:
 
     async def list_issues(self, project_id: str) -> list[dict[str, Any]]:
         """Return issue summaries for the given project."""
+        _validate_id(project_id, "project_id")
         project_manifest = await self._read_project_manifest(project_id)
         summaries: list[dict[str, Any]] = []
         for iid in project_manifest.get("issues", []):
@@ -280,6 +296,8 @@ class ComicProjectService:
 
     async def get_issue(self, project_id: str, issue_id: str) -> dict[str, Any]:
         """Return issue details with asset count breakdown by type."""
+        _validate_id(project_id, "project_id")
+        _validate_id(issue_id, "issue_id")
         manifest = await self._read_issue_manifest(project_id, issue_id)
         assets: dict[str, Any] = manifest.get("assets", {})
 
@@ -300,6 +318,8 @@ class ComicProjectService:
 
     async def cleanup_issue(self, project_id: str, issue_id: str) -> dict[str, Any]:
         """Delete issue directory tree and remove from project manifest."""
+        _validate_id(project_id, "project_id")
+        _validate_id(issue_id, "issue_id")
         lock = await self._get_lock(project_id)
         async with lock:
             await self._storage.delete(f"projects/{project_id}/issues/{issue_id}")
@@ -315,6 +335,7 @@ class ComicProjectService:
 
     async def cleanup_project(self, project_id: str) -> dict[str, Any]:
         """Delete entire project directory tree and remove from workspace."""
+        _validate_id(project_id, "project_id")
         lock = await self._get_lock(project_id)
         async with lock:
             await self._storage.delete(f"projects/{project_id}")
@@ -354,8 +375,12 @@ class ComicProjectService:
         Image source priority: source_path → data → no image written.
         Version is auto-incremented per (slugify(name), slugify(style)) within project.
         """
+        _validate_id(project_id, "project_id")
+        _validate_id(issue_id, "issue_id")
         char_slug = slugify(name)
+        _validate_id(char_slug, "name")
         style_slug = slugify(style)
+        _validate_id(style_slug, "style")
 
         # Read source file ONCE before acquiring the lock — no double reads.
         image_bytes: bytes | None = None
@@ -381,7 +406,7 @@ class ComicProjectService:
             version = max(existing_versions, default=0) + 1
 
             version_dir = f"{char_base_dir}/{style_slug}_v{version}"
-            image_rel = f"{version_dir}/reference.png"
+            image_rel = f"{version_dir}/reference.png" if image_bytes is not None else None
             metadata_rel = f"{version_dir}/metadata.json"
 
             design = CharacterDesign(
@@ -415,11 +440,13 @@ class ComicProjectService:
                 project_manifest.setdefault("characters", []).append(char_slug)
                 await self._write_project_manifest(project_id, project_manifest)
 
+        uri = ComicURI.for_character(project_id, issue_id, char_slug, version=version)
         return {
             "name": name,
             "style": style,
             "version": version,
             "storage_path": version_dir,
+            "uri": str(uri),
         }
 
     async def get_character(
@@ -439,7 +466,9 @@ class ComicProjectService:
         - style only: latest version of that style.
         - neither: latest version of any style (most recent created_at).
         """
+        _validate_id(project_id, "project_id")
         char_slug = slugify(name)
+        _validate_id(char_slug, "name")
         char_base_dir = f"projects/{project_id}/characters/{char_slug}"
 
         if style is not None and version is not None:
@@ -493,22 +522,34 @@ class ComicProjectService:
         meta_text = await self._storage.read_text(f"{version_dir}/metadata.json")
         design = CharacterDesign.from_dict(json.loads(meta_text))
         result: dict[str, Any] = design.to_dict()
+        result["uri"] = str(
+            ComicURI.for_character(
+                project_id, design.origin_issue_id, char_slug, version=design.version
+            )
+        )
 
         if include == "full":
-            image_rel = f"{version_dir}/reference.png"
-            if format == "path":
-                result["image"] = await self._storage.abs_path(image_rel)
-            elif format == "base64":
-                img = await self._storage.read_bytes(image_rel)
-                result["image"] = bytes_to_base64(img)
-            elif format == "data_uri":
-                img = await self._storage.read_bytes(image_rel)
-                result["image"] = bytes_to_data_uri(img, "image/png")
+            image_rel = design.image_path
+            if image_rel is None:
+                result["image"] = None
+            else:
+                try:
+                    if format == "path":
+                        result["image"] = await self._storage.abs_path(image_rel)
+                    elif format == "base64":
+                        img = await self._storage.read_bytes(image_rel)
+                        result["image"] = bytes_to_base64(img)
+                    elif format == "data_uri":
+                        img = await self._storage.read_bytes(image_rel)
+                        result["image"] = bytes_to_data_uri(img, "image/png")
+                except FileNotFoundError:
+                    result["image"] = None
 
         return result
 
     async def list_characters(self, project_id: str) -> list[dict[str, Any]]:
         """List all characters with style/version summaries."""
+        _validate_id(project_id, "project_id")
         project_manifest = await self._read_project_manifest(project_id)
         char_slugs: list[str] = project_manifest.get("characters", [])
         result: list[dict[str, Any]] = []
@@ -531,8 +572,9 @@ class ComicProjectService:
                 if ver_part.isdigit():
                     styles.setdefault(style_part, []).append(int(ver_part))
 
-            # Resolve display name from any available metadata file.
+            # Resolve display name and origin_issue_id from any available metadata file.
             display_name = char_slug
+            origin_issue_id = ""
             for d in reversed(dirs):
                 try:
                     meta = json.loads(
@@ -541,18 +583,28 @@ class ComicProjectService:
                         )
                     )
                     display_name = meta.get("name", char_slug)
+                    origin_issue_id = meta.get("origin_issue_id", "")
                     break
                 except (FileNotFoundError, json.JSONDecodeError):
                     continue
 
-            result.append(
-                {
-                    "name": display_name,
-                    "char_slug": char_slug,
-                    "styles": {s: max(vs) for s, vs in styles.items()},
-                    "total_versions": sum(len(vs) for vs in styles.values()),
-                }
-            )
+            latest_style_version = max(
+                (max(vs) for vs in styles.values()), default=1
+            ) if styles else 1
+            entry: dict[str, Any] = {
+                "name": display_name,
+                "char_slug": char_slug,
+                "styles": {s: max(vs) for s, vs in styles.items()},
+                "total_versions": sum(len(vs) for vs in styles.values()),
+            }
+            if origin_issue_id:
+                entry["uri"] = str(
+                    ComicURI.for_character(
+                        project_id, origin_issue_id, char_slug,
+                        version=latest_style_version,
+                    )
+                )
+            result.append(entry)
 
         return result
 
@@ -560,7 +612,9 @@ class ComicProjectService:
         self, project_id: str, name: str
     ) -> list[dict[str, Any]]:
         """Return all versions across all styles for a given character."""
+        _validate_id(project_id, "project_id")
         char_slug = slugify(name)
+        _validate_id(char_slug, "name")
         char_base_dir = f"projects/{project_id}/characters/{char_slug}"
         dirs = await self._storage.list_dir(char_base_dir)
         versions: list[dict[str, Any]] = []
@@ -588,8 +642,11 @@ class ComicProjectService:
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Patch review metadata on a specific character version."""
+        _validate_id(project_id, "project_id")
         char_slug = slugify(name)
+        _validate_id(char_slug, "name")
         style_slug = slugify(style)
+        _validate_id(style_slug, "style")
         metadata_rel = (
             f"projects/{project_id}/characters/{char_slug}"
             f"/{style_slug}_v{version}/metadata.json"
@@ -636,6 +693,17 @@ class ComicProjectService:
             raise ValueError(
                 f"Invalid asset_type '{asset_type}'. "
                 f"Must be one of: {sorted(ASSET_TYPES)}"
+            )
+        _validate_id(project_id, "project_id")
+        _validate_id(issue_id, "issue_id")
+        _validate_id(name, "name")
+
+        input_count = sum(x is not None for x in (source_path, data, content))
+        if input_count == 0:
+            raise ValueError("store_asset requires exactly one of: source_path, data, content")
+        if input_count > 1:
+            raise ValueError(
+                f"store_asset accepts exactly one of: source_path, data, content (got {input_count})"
             )
 
         # Read source file ONCE before acquiring the lock.
@@ -690,7 +758,19 @@ class ComicProjectService:
                         f"Binary asset_type '{asset_type}' requires source_path or data"
                     )
                 size_bytes = len(raw_bytes)
-                mime_type = guess_mime(source_path) if source_path else "image/png"
+                if source_path:
+                    mime_type = guess_mime(source_path)
+                elif raw_bytes and len(raw_bytes) >= 8:
+                    if raw_bytes[:8] == b'\x89PNG\r\n\x1a\n':
+                        mime_type = "image/png"
+                    elif raw_bytes[:3] == b'\xff\xd8\xff':
+                        mime_type = "image/jpeg"
+                    elif raw_bytes[:4] == b'RIFF' and len(raw_bytes) >= 12 and raw_bytes[8:12] == b'WEBP':
+                        mime_type = "image/webp"
+                    else:
+                        mime_type = "image/png"
+                else:
+                    mime_type = "image/png"
 
                 # Derive extension from MIME type.
                 ext = mime_type.split("/")[-1] if "/" in mime_type else "bin"
@@ -726,12 +806,14 @@ class ComicProjectService:
             }
             await self._write_issue_manifest(project_id, issue_id, issue_manifest)
 
+        uri = ComicURI.for_asset(project_id, issue_id, asset_type, name, version=version)
         return {
             "name": name,
             "asset_type": asset_type,
             "version": version,
             "storage_path": storage_path,
             "size_bytes": size_bytes,
+            "uri": str(uri),
         }
 
     async def get_asset(
@@ -753,6 +835,9 @@ class ComicProjectService:
         """
         if asset_type not in ASSET_TYPES:
             raise ValueError(f"Invalid asset_type '{asset_type}'")
+        _validate_id(project_id, "project_id")
+        _validate_id(issue_id, "issue_id")
+        _validate_id(name, "name")
 
         if version is None:
             manifest = await self._read_issue_manifest(project_id, issue_id)
@@ -796,7 +881,22 @@ class ComicProjectService:
                 storage_path=file_rel,
                 content=parsed_content if include == "full" else None,
             )
-            return asset_obj.to_dict(include_payload=(include == "full"))
+            result = asset_obj.to_dict(include_payload=(include == "full"))
+
+            # Merge in sidecar metadata.json if it exists (written by update_asset_metadata).
+            sidecar_rel = f"{version_dir}/metadata.json"
+            try:
+                sidecar = json.loads(await self._storage.read_text(sidecar_rel))
+                for key in ("review_status", "review_feedback", "metadata"):
+                    if key in sidecar:
+                        result[key] = sidecar[key]
+            except FileNotFoundError:
+                pass
+
+            result["uri"] = str(
+                ComicURI.for_asset(project_id, issue_id, asset_type, name, version=resolved_version)
+            )
+            return result
 
         else:
             # Binary asset — read metadata.json written at store time.
@@ -835,6 +935,9 @@ class ComicProjectService:
                         img, asset_obj.mime_type or "image/png"
                     )
 
+            result["uri"] = str(
+                ComicURI.for_asset(project_id, issue_id, asset_type, name, version=resolved_version)
+            )
             return result
 
     async def list_assets(
@@ -845,6 +948,8 @@ class ComicProjectService:
         asset_type: str | None = None,
     ) -> list[dict[str, Any]]:
         """List assets for an issue, optionally filtered by type."""
+        _validate_id(project_id, "project_id")
+        _validate_id(issue_id, "issue_id")
         manifest = await self._read_issue_manifest(project_id, issue_id)
         assets_map: dict[str, Any] = manifest.get("assets", {})
         result: list[dict[str, Any]] = []
@@ -858,11 +963,14 @@ class ComicProjectService:
             if asset_type is not None and atype != asset_type:
                 continue
 
+            latest_ver = entry.get("latest_version", 1)
+            uri = ComicURI.for_asset(project_id, issue_id, atype, aname, version=latest_ver)
             result.append(
                 {
                     "name": aname,
                     "asset_type": atype,
-                    "latest_version": entry.get("latest_version", 1),
+                    "latest_version": latest_ver,
+                    "uri": str(uri),
                 }
             )
 
@@ -883,6 +991,8 @@ class ComicProjectService:
         """
         if asset_type not in ASSET_TYPES:
             raise ValueError(f"Invalid asset_type '{asset_type}'")
+        _validate_id(project_id, "project_id")
+        _validate_id(issue_id, "issue_id")
 
         assets = await self.list_assets(project_id, issue_id, asset_type=asset_type)
         semaphore = asyncio.Semaphore(4)
@@ -919,21 +1029,37 @@ class ComicProjectService:
         review_feedback: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Patch review metadata on a specific binary asset version.
+        """Patch review metadata on a specific asset version.
 
-        Structured assets do not store a separate metadata.json; a note is
-        returned instead of raising an error.
+        Binary assets update their existing metadata.json in-place.
+        Structured assets (research, storyboard, final) store a sibling
+        metadata.json alongside their content file so that review_status,
+        review_feedback, and custom metadata can be persisted and retrieved.
         """
         if asset_type not in ASSET_TYPES:
             raise ValueError(f"Invalid asset_type '{asset_type}'")
+        _validate_id(project_id, "project_id")
+        _validate_id(issue_id, "issue_id")
+        _validate_id(name, "name")
 
         if asset_type in _STRUCTURED_TYPES:
-            return {
-                "name": name,
-                "asset_type": asset_type,
-                "version": version,
-                "note": "Structured assets do not have a separate metadata file.",
-            }
+            # For structured types, store metadata alongside content
+            version_dir = self._asset_version_dir(project_id, issue_id, asset_type, name, version)
+            metadata_rel = f"{version_dir}/metadata.json"
+            lock = await self._get_lock(project_id)
+            async with lock:
+                try:
+                    existing = json.loads(await self._storage.read_text(metadata_rel))
+                except FileNotFoundError:
+                    existing = {"name": name, "asset_type": asset_type, "version": version}
+                if review_status is not None:
+                    existing["review_status"] = review_status
+                if review_feedback is not None:
+                    existing["review_feedback"] = review_feedback
+                if metadata is not None:
+                    existing.setdefault("metadata", {}).update(metadata)
+                await self._storage.write_text(metadata_rel, json.dumps(existing, indent=2))
+            return existing
 
         version_dir = self._asset_version_dir(
             project_id, issue_id, asset_type, name, version
@@ -970,7 +1096,10 @@ class ComicProjectService:
 
         Version is auto-incremented per slugify(name) within the project.
         """
+        _validate_id(project_id, "project_id")
+        _validate_id(issue_id, "issue_id")
         style_slug = slugify(name)
+        _validate_id(style_slug, "name")
         lock = await self._get_lock(project_id)
 
         async with lock:
@@ -1010,7 +1139,8 @@ class ComicProjectService:
                 project_manifest.setdefault("styles", []).append(style_slug)
                 await self._write_project_manifest(project_id, project_manifest)
 
-        return {"name": name, "version": version}
+        uri = ComicURI.for_style(project_id, issue_id, style_slug, version=version)
+        return {"name": name, "version": version, "uri": str(uri)}
 
     async def get_style(
         self,
@@ -1025,7 +1155,9 @@ class ComicProjectService:
         version=None resolves to the latest version of the given style name.
         include='full' adds the definition dict.
         """
+        _validate_id(project_id, "project_id")
         style_slug = slugify(name)
+        _validate_id(style_slug, "name")
         style_base_dir = f"projects/{project_id}/styles"
 
         if version is None:
@@ -1045,10 +1177,17 @@ class ComicProjectService:
         definition_rel = f"{style_base_dir}/{style_slug}_v{version}/definition.json"
         data = json.loads(await self._storage.read_text(definition_rel))
         style_obj = StyleGuide.from_dict(data)
-        return style_obj.to_dict(include_definition=(include == "full"))
+        result = style_obj.to_dict(include_definition=(include == "full"))
+        result["uri"] = str(
+            ComicURI.for_style(
+                project_id, style_obj.origin_issue_id, style_slug, version=style_obj.version
+            )
+        )
+        return result
 
     async def list_styles(self, project_id: str) -> list[dict[str, Any]]:
         """List all style guides with version summaries."""
+        _validate_id(project_id, "project_id")
         project_manifest = await self._read_project_manifest(project_id)
         style_slugs: list[str] = project_manifest.get("styles", [])
         style_base_dir = f"projects/{project_id}/styles"
@@ -1069,19 +1208,27 @@ class ComicProjectService:
             definition_rel = (
                 f"{style_base_dir}/{style_slug}_v{latest_version}/definition.json"
             )
+            origin_issue_id_for_style = ""
             try:
                 data = json.loads(await self._storage.read_text(definition_rel))
                 display_name: str = data.get("name", style_slug)
+                origin_issue_id_for_style = data.get("origin_issue_id", "")
             except (FileNotFoundError, json.JSONDecodeError):
                 display_name = style_slug
 
-            result.append(
-                {
-                    "name": display_name,
-                    "style_slug": style_slug,
-                    "latest_version": latest_version,
-                    "total_versions": len(versions),
-                }
-            )
+            style_entry: dict[str, Any] = {
+                "name": display_name,
+                "style_slug": style_slug,
+                "latest_version": latest_version,
+                "total_versions": len(versions),
+            }
+            if origin_issue_id_for_style:
+                style_entry["uri"] = str(
+                    ComicURI.for_style(
+                        project_id, origin_issue_id_for_style, style_slug,
+                        version=latest_version,
+                    )
+                )
+            result.append(style_entry)
 
         return result

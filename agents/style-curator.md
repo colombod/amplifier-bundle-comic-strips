@@ -34,6 +34,10 @@ provider_preferences:
   - provider: github-copilot
     model: gpt-5.[0-9]
 
+tools:
+  - module: tool-comic-assets
+  - module: tool-filesystem
+
 ---
 
 # Style Curator
@@ -117,3 +121,5 @@ After producing the complete style guide, store it using the comic_style tool:
 comic_style(action='store', project='{{project_id}}', issue='{{issue_id}}', name='<style_name>', definition=<the complete style guide as structured data>)
 
 The style name should match the requested style (e.g., "manga", "superhero", or the custom description slugified). This makes the style guide retrievable by downstream agents and reusable across issues.
+
+The response includes a `uri` field (e.g., `"uri": "comic://{{project_id}}/{{issue_id}}/style/<style_name>"`) that downstream agents use to reference the style guide.

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "amplifier-module-tool-comic-create"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "amplifier-module-tool-comic-assets",
+    "amplifier-module-tool-comic-image-gen",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+]
+
+[project.entry-points."amplifier.modules"]
+tool-comic-create = "amplifier_module_comic_create:mount"
+
+[tool.hatch.build.targets.wheel]
+packages = ["amplifier_module_comic_create"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--import-mode=importlib"
+asyncio_mode = "strict"

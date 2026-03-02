@@ -122,10 +122,14 @@ Return a **single character sheet entry** (not an array) as a JSON object:
   "visual_traits": "seasoned scout in worn leather jacket, alert eyes, compass pendant",
   "team_markers": "blue accent with compass insignia on jacket shoulder",
   "distinctive_features": "leather field bag, binoculars holstered on belt, foundation blue trim",
-  "uri": "comic://{{project_id}}/{{issue_id}}/character/the_explorer",
+  "uri": "comic://{{project_id}}/characters/the_explorer",
   "version": 1
 }
 ```
+
+> **URI scope note:** Character URIs are **project-scoped** — they omit the issue segment.
+> Format: `comic://project/characters/name` (no `issues/` path).
+> This allows characters to be shared and reused across multiple issues of the same project.
 
 **Fields:**
 - `name`: Matches `{{character_item}}.name` exactly

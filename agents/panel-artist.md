@@ -111,7 +111,7 @@ comic_create(
   issue='{{issue_id}}',
   name='panel_<index_padded>',
   prompt='<your composed prompt>',
-  character_uris=['comic://{{project_id}}/{{issue_id}}/character/the_explorer', ...],
+  character_uris=['comic://{{project_id}}/characters/the_explorer', ...],
   size='<mapped aspect ratio>',
   camera_angle='<camera angle from panel_item>'
 )
@@ -162,7 +162,7 @@ Return a **single panel result JSON object**:
 ```json
 {
   "index": 1,
-  "uri": "comic://{{project_id}}/{{issue_id}}/panel/panel_01",
+  "uri": "comic://{{project_id}}/issues/{{issue_id}}/panels/panel_01",
   "version": 1,
   "size": "landscape",
   "attempts": 1,
@@ -183,6 +183,13 @@ Return a **single panel result JSON object**:
 ## Asset Integration
 
 `comic_create(action='create_panel')` handles all storage internally. Do NOT call `comic_asset(action='store')` or `comic_character(action='get')` separately.
+
+> **URI scope note:**
+> - **Panel URIs** are issue-scoped: `comic://project/issues/issue/panels/name`
+> - **Character URIs** are project-scoped (no issue segment): `comic://project/characters/name`
+> - **Style URIs** are project-scoped: `comic://project/styles/name`
+>
+> Characters and styles are shared across issues; panels are per-issue assets.
 
 The character URIs to pass come directly from `{{character_sheet}}` entries:
 ```

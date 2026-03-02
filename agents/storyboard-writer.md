@@ -298,4 +298,12 @@ comic_style(action='get', project='{{project_id}}', name='<style_name>', include
 After producing the complete storyboard JSON (with character_list and panel_list), store it:
 comic_asset(action='store', project='{{project_id}}', issue='{{issue_id}}', type='storyboard', name='storyboard', content=<the complete storyboard JSON>)
 
-The response includes a `uri` field (e.g., `"uri": "comic://{{project_id}}/{{issue_id}}/storyboard/storyboard"`) that downstream agents use to retrieve the storyboard.
+The response includes a `uri` field (e.g., `"uri": "comic://{{project_id}}/issues/{{issue_id}}/storyboards/storyboard"`) that downstream agents use to retrieve the storyboard.
+
+> **URI scope note:**
+> - Storyboards, panels, covers, and other per-issue assets are **issue-scoped**: `comic://project/issues/issue/collection/name`
+> - Characters and styles are **project-scoped** (shared across issues): `comic://project/collection/name`
+>
+> **Cast binding:** The `character_list` defines the cast for this issue. After character-designer runs, each entry
+> in `character_list` maps to a project-scoped character URI (`comic://project/characters/name`). These versioned
+> project-scoped URIs are passed to panel-artist and cover-artist for visual consistency across panels.

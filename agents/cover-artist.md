@@ -105,13 +105,13 @@ comic_create(
   project='{{project_id}}',
   issue='{{issue_id}}',
   prompt='<your composed cover prompt>',
-  character_uris=['comic://{{project_id}}/{{issue_id}}/character/the_explorer', ...],
+  character_uris=['comic://{{project_id}}/characters/the_explorer', ...],
   title='<comic title from research data>',
   subtitle='<subtitle or issue tagline>'
 )
 ```
 
-`comic_create` internally resolves each character URI to its reference image, calls the image generator, and stores the cover asset. Returns `{"uri": "comic://{{project_id}}/{{issue_id}}/cover/cover", "version": 1}`.
+`comic_create` internally resolves each character URI to its reference image, calls the image generator, and stores the cover asset. Returns `{"uri": "comic://{{project_id}}/issues/{{issue_id}}/covers/cover", "version": 1}`.
 
 ### Step 3: Self-Review the Hero Image
 
@@ -145,7 +145,7 @@ Maximum 3 attempts total. Use the best result if all 3 fail.
 ## Self-Review Report Format
 
 ```
-Cover: comic://{{project_id}}/{{issue_id}}/cover/cover
+Cover: comic://{{project_id}}/issues/{{issue_id}}/covers/cover
   Attempt 1: FAIL — characters not in dramatic enough pose, looks like a generic group shot
   Attempt 2: PASS — dynamic composition with characters in action poses, space for title
   Title: "The Comic Strips Design Session"
@@ -155,14 +155,14 @@ Cover: comic://{{project_id}}/{{issue_id}}/cover/cover
 ## Output
 
 Provide:
-1. The cover `comic://` URI (e.g., `comic://{{project_id}}/{{issue_id}}/cover/cover`)
+1. The cover `comic://` URI (e.g., `comic://{{project_id}}/issues/{{issue_id}}/covers/cover`)
 2. The version number from `comic_create`
 3. The comic title, subtitle, and issue number used
 4. Self-review report showing attempt results
 
 ```json
 {
-  "uri": "comic://{{project_id}}/{{issue_id}}/cover/cover",
+  "uri": "comic://{{project_id}}/issues/{{issue_id}}/covers/cover",
   "version": 1,
   "title": "The Comic Title",
   "subtitle": "Issue #1",
@@ -172,6 +172,13 @@ Provide:
 ```
 
 ## Asset Integration
+
+> **URI scope note:**
+> - **Cover URIs** are issue-scoped: `comic://project/issues/issue/covers/name`
+> - **Character URIs** are project-scoped (no issue segment): `comic://project/characters/name`
+> - **Style URIs** are project-scoped: `comic://project/styles/name`
+>
+> Characters and styles are shared across issues; covers are per-issue assets.
 
 `comic_create(action='create_cover')` handles all image generation and storage internally.
 

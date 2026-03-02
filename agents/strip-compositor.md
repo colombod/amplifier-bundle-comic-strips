@@ -147,6 +147,15 @@ Use the composition feedback to make precise overlay placement decisions for tha
 
 Using the storyboard text, style guide conventions, and composition feedback from Step 4, build the structured layout JSON for `assemble_comic`. All image references use `comic://` URIs — never file paths.
 
+> **URI scope reference (v2):**
+> - **Project-scoped** (shared across issues — no issue segment): characters and styles
+>   - Characters: `comic://project/characters/name`
+>   - Styles: `comic://project/styles/name`
+> - **Issue-scoped** (per-issue assets — include `issues/` path segment): panels, covers, storyboards, etc.
+>   - Panels: `comic://project/issues/issue/panels/name`
+>   - Covers: `comic://project/issues/issue/covers/name`
+>   - Storyboards: `comic://project/issues/issue/storyboards/name`
+
 **Overlay positioning:** All coordinates are percentages (0–100) relative to panel dimensions.
 
 **Callout shapes:**
@@ -166,16 +175,16 @@ Example layout structure:
 ```json
 {
   "title": "The Great Debug",
-  "style_uri": "comic://{{project_id}}/{{issue_id}}/style/manga",
+  "style_uri": "comic://{{project_id}}/styles/manga",
   "cover": {
-    "uri": "comic://{{project_id}}/{{issue_id}}/cover/cover",
+    "uri": "comic://{{project_id}}/issues/{{issue_id}}/covers/cover",
     "title": "The Great Debug",
     "subtitle": "Issue #1",
     "branding": "AmpliVerse"
   },
   "characters": [
     {
-      "uri": "comic://{{project_id}}/{{issue_id}}/character/the_explorer",
+      "uri": "comic://{{project_id}}/characters/the_explorer",
       "name": "The Explorer",
       "role": "protagonist",
       "visual_traits": "seasoned scout in worn leather jacket",
@@ -187,7 +196,7 @@ Example layout structure:
       "layout": "manga-dynamic-4",
       "panels": [
         {
-          "uri": "comic://{{project_id}}/{{issue_id}}/panel/panel_01",
+          "uri": "comic://{{project_id}}/issues/{{issue_id}}/panels/panel_01",
           "shape": "tall-left",
           "overlays": [
             {
@@ -235,7 +244,7 @@ comic_create(
   project='{{project_id}}',
   issue='{{issue_id}}',
   output_path='<user-specified path or comic-{timestamp}.html>',
-  style_uri='comic://{{project_id}}/{{issue_id}}/style/{{style}}',
+  style_uri='comic://{{project_id}}/styles/{{style}}',
   layout=<the layout JSON from Step 5>
 )
 ```

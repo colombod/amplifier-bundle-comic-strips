@@ -122,4 +122,7 @@ comic_style(action='store', project='{{project_id}}', issue='{{issue_id}}', name
 
 The style name should match the requested style (e.g., "manga", "superhero", or the custom description slugified). This makes the style guide retrievable by downstream agents and reusable across issues.
 
-The response includes a `uri` field (e.g., `"uri": "comic://{{project_id}}/{{issue_id}}/style/<style_name>"`) that downstream agents use to reference the style guide.
+The response includes a `uri` field (e.g., `"uri": "comic://{{project_id}}/styles/<style_name>"`) that downstream agents use to reference the style guide.
+
+> **URI scope note:** Style URIs are **project-scoped** — they omit the issue segment.
+> Format: `comic://project/styles/name`. Styles are shared and reusable across all issues within a project.

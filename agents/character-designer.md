@@ -98,6 +98,7 @@ comic_create(
   project='{{project_id}}',
   issue='{{issue_id}}',
   name='<character_name_snake_case>',
+  size='portrait',
   visual_traits='<key visual characteristics from description>',
   distinctive_features='<unique identifying features>',
   personality='<personality context for expression choices>',

@@ -40,6 +40,7 @@ tools:
   - module: tool-comic-create
   - module: tool-comic-assets
   - module: tool-skills
+  - module: tool-filesystem
 
 ---
 

@@ -104,6 +104,15 @@ Your output MUST be a structured style guide with these exact sections:
 
 ## AmpliVerse Branding
 - [Placement and treatment per comic-instructions.md rules]
+
+## Panel Shapes
+- available: [list of SVG clip-path shape identifiers available for this style]
+- rectangular: Standard flat-edged panel — dialogue, calm scenes (all styles)
+- diagonal: Angled/skewed panel border — action, movement, dynamic energy
+- circular: Round clip-path — flashbacks, memories, focus shots
+- irregular: Jagged or hand-drawn edge — tension, unease, conflict
+- rounded: Softly rounded corners — friendly, comedic, warm moments
+- [additional style-specific shapes if applicable, e.g. manga-splash, newspaper-equal-3]
 ```
 
 ## Rules
@@ -118,7 +127,9 @@ Your output MUST be a structured style guide with these exact sections:
 
 After producing the complete style guide, store it using the comic_style tool:
 
+```
 comic_style(action='store', project='{{project_id}}', issue='{{issue_id}}', name='<style_name>', definition=<the complete style guide as structured data>)
+```
 
 The style name should match the requested style (e.g., "manga", "superhero", or the custom description slugified). This makes the style guide retrievable by downstream agents and reusable across issues.
 

@@ -293,10 +293,14 @@ These rules are NON-NEGOTIABLE. Every storyboard must follow them.
 ## Asset Integration
 
 Read the style guide from the asset manager instead of relying on recipe context:
+```
 comic_style(action='get', project='{{project_id}}', name='<style_name>', include='full')
+```
 
 After producing the complete storyboard JSON (with character_list and panel_list), store it:
+```
 comic_asset(action='store', project='{{project_id}}', issue='{{issue_id}}', type='storyboard', name='storyboard', content=<the complete storyboard JSON>)
+```
 
 The response includes a `uri` field (e.g., `"uri": "comic://{{project_id}}/issues/{{issue_id}}/storyboards/storyboard"`) that downstream agents use to retrieve the storyboard.
 

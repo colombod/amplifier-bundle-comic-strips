@@ -184,6 +184,8 @@ Return a **single panel result JSON object**:
 
 `comic_create(action='create_panel')` handles all storage internally. Do NOT call `comic_asset(action='store')` or `comic_character(action='get')` separately.
 
+> **Note on `tool-comic-assets`:** This module is declared in the tools list solely to enable `comic_style(action='get')` as a defensive fallback — use it to retrieve the style guide if `{{style_guide}}` was not passed in context. Do NOT use it for `comic_asset` or `comic_character` operations.
+
 > **URI scope note:**
 > - **Panel URIs** are issue-scoped: `comic://project/issues/issue/panels/name`
 > - **Character URIs** are project-scoped (no issue segment): `comic://project/characters/name`

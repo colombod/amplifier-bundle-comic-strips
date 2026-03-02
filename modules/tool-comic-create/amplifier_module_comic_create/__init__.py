@@ -5,6 +5,7 @@ All image plumbing (generation, storage, encoding, vision API) is internal.
 
 Registration entry point: :func:`mount` (called by the Amplifier module loader).
 """
+
 from __future__ import annotations
 
 import json
@@ -106,10 +107,22 @@ class ComicCreateTool:
                 "project": {"type": "string", "description": "Project identifier."},
                 "issue": {"type": "string", "description": "Issue identifier."},
                 "name": {"type": "string", "description": "Asset name."},
-                "prompt": {"type": "string", "description": "Generation or review prompt."},
-                "visual_traits": {"type": "string", "description": "Character visual description."},
-                "distinctive_features": {"type": "string", "description": "Character distinctive features."},
-                "personality": {"type": "string", "description": "Character personality context."},
+                "prompt": {
+                    "type": "string",
+                    "description": "Generation or review prompt.",
+                },
+                "visual_traits": {
+                    "type": "string",
+                    "description": "Character visual description.",
+                },
+                "distinctive_features": {
+                    "type": "string",
+                    "description": "Character distinctive features.",
+                },
+                "personality": {
+                    "type": "string",
+                    "description": "Character personality context.",
+                },
                 "character_uris": {
                     "type": "array",
                     "items": {"type": "string"},
@@ -121,18 +134,33 @@ class ComicCreateTool:
                     "enum": ["landscape", "portrait", "square"],
                     "default": "square",
                 },
-                "camera_angle": {"type": "string", "description": "Camera framing hint."},
+                "camera_angle": {
+                    "type": "string",
+                    "description": "Camera framing hint.",
+                },
                 "title": {"type": "string", "description": "Comic/cover title."},
                 "subtitle": {"type": "string", "description": "Subtitle or tagline."},
-                "uri": {"type": "string", "description": "comic:// URI for review_asset target."},
+                "uri": {
+                    "type": "string",
+                    "description": "comic:// URI for review_asset target.",
+                },
                 "reference_uris": {
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Additional comic:// URIs for visual comparison in review.",
                 },
-                "output_path": {"type": "string", "description": "Output path for assemble_comic."},
-                "style_uri": {"type": "string", "description": "Style guide URI for assembly."},
-                "layout": {"type": "object", "description": "Structured layout for assemble_comic."},
+                "output_path": {
+                    "type": "string",
+                    "description": "Output path for assemble_comic.",
+                },
+                "style_uri": {
+                    "type": "string",
+                    "description": "Style guide URI for assembly.",
+                },
+                "layout": {
+                    "type": "object",
+                    "description": "Structured layout for assemble_comic.",
+                },
             },
             "required": ["action"],
         }
@@ -155,13 +183,22 @@ class ComicCreateTool:
 
     async def _create_character_ref(self, params: dict[str, Any]) -> ToolResult:
         """Generate + store a character reference sheet. Return URI."""
-        required = ("project", "issue", "name", "prompt", "visual_traits", "distinctive_features")
+        required = (
+            "project",
+            "issue",
+            "name",
+            "prompt",
+            "visual_traits",
+            "distinctive_features",
+        )
         for key in required:
             if key not in params:
                 return _error(f"Missing required param: {key}")
 
         if self._image_gen is None:
-            return _error("No image generation backend available. Cannot create character reference.")
+            return _error(
+                "No image generation backend available. Cannot create character reference."
+            )
 
         import os
         import tempfile
@@ -187,7 +224,9 @@ class ComicCreateTool:
             )
 
             if not gen_result.get("success", False):
-                return _error(f"Image generation failed: {gen_result.get('error', 'unknown')}")
+                return _error(
+                    f"Image generation failed: {gen_result.get('error', 'unknown')}"
+                )
 
             # Store the character via the service (copies the file before we exit the with block)
             store_result = await self._service.store_character(
@@ -208,7 +247,7 @@ class ComicCreateTool:
             )
 
         version = store_result["version"]
-        uri = ComicURI.for_character(project, issue, char_slug, version=version)
+        uri = ComicURI.for_character(project, char_slug, version=version)
 
         return _ok({"uri": str(uri), "version": version})
 
@@ -219,9 +258,8 @@ class ComicCreateTool:
         paths: list[str] = []
         for raw in uris:
             parsed = parse_comic_uri(raw)
-            # Characters are project-scoped in the service layer. The issue segment
-            # in character URIs is for provenance/namespacing (origin_issue_id),
-            # not for retrieval scoping.
+            # Characters are project-scoped in both the URI (v2: comic://project/characters/name)
+            # and the service layer — no issue segment needed for retrieval.
             char_data = await self._service.get_character(
                 parsed.project,
                 parsed.name,
@@ -275,12 +313,20 @@ class ComicCreateTool:
             )
 
             if not gen_result.get("success", False):
-                return _error(f"Image generation failed: {gen_result.get('error', 'unknown')}")
+                return _error(
+                    f"Image generation failed: {gen_result.get('error', 'unknown')}"
+                )
 
             store_result = await self._service.store_asset(
-                project, issue, "panel", name,
+                project,
+                issue,
+                "panel",
+                name,
                 source_path=output_path,
-                metadata={"prompt": params["prompt"], "camera_angle": params.get("camera_angle", "")},
+                metadata={
+                    "prompt": params["prompt"],
+                    "camera_angle": params.get("camera_angle", ""),
+                },
             )
 
         version = store_result["version"]
@@ -327,10 +373,15 @@ class ComicCreateTool:
             )
 
             if not gen_result.get("success", False):
-                return _error(f"Image generation failed: {gen_result.get('error', 'unknown')}")
+                return _error(
+                    f"Image generation failed: {gen_result.get('error', 'unknown')}"
+                )
 
             store_result = await self._service.store_asset(
-                project, issue, "cover", name,
+                project,
+                issue,
+                "cover",
+                name,
                 source_path=output_path,
                 metadata={
                     "title": params["title"],
@@ -408,7 +459,13 @@ class ComicCreateTool:
         text_lower = text.lower()
         failed = any(
             kw in text_lower
-            for kw in ("fail", "not pass", "does not pass", "incorrect", "does not meet")
+            for kw in (
+                "fail",
+                "not pass",
+                "does not pass",
+                "incorrect",
+                "does not meet",
+            )
         )
         return {"passed": not failed, "feedback": text}
 
@@ -430,14 +487,16 @@ class ComicCreateTool:
         if "anthropic" in provider_name:
             content: list[dict[str, Any]] = []
             for img in image_parts:
-                content.append({
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": img["media_type"],
-                        "data": img["data"],
-                    },
-                })
+                content.append(
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": img["media_type"],
+                            "data": img["data"],
+                        },
+                    }
+                )
             content.append({"type": "text", "text": prompt})
             response = await client.messages.create(
                 model="claude-opus-4-5",
@@ -450,10 +509,12 @@ class ComicCreateTool:
             msg_content: list[dict[str, Any]] = []
             for img in image_parts:
                 data_uri = f"data:{img['media_type']};base64,{img['data']}"
-                msg_content.append({
-                    "type": "image_url",
-                    "image_url": {"url": data_uri},
-                })
+                msg_content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": data_uri},
+                    }
+                )
             msg_content.append({"type": "text", "text": prompt})
             response = await client.chat.completions.create(
                 model="gpt-4o",
@@ -502,22 +563,28 @@ class ComicCreateTool:
             return _error(f"Invalid URI: {exc}")
 
         # Resolve the target asset to a file path
+        from amplifier_module_comic_assets.comic_uri import singularize_type
+
         try:
-            if parsed.asset_type == "character":
-                # Characters are project-scoped in the service layer. The issue segment
-                # in character URIs is for provenance/namespacing (origin_issue_id),
-                # not for retrieval scoping.
+            if parsed.asset_type == "characters":
+                # Characters are project-scoped in both the URI and service layer.
                 asset_data = await self._service.get_character(
-                    parsed.project, parsed.name,
+                    parsed.project,
+                    parsed.name,
                     version=parsed.version,
-                    include="full", format="path",
+                    include="full",
+                    format="path",
                 )
                 image_path = asset_data.get("image")
             else:
                 asset_data = await self._service.get_asset(
-                    parsed.project, parsed.issue, parsed.asset_type, parsed.name,
+                    parsed.project,
+                    parsed.issue,
+                    singularize_type(parsed.asset_type),
+                    parsed.name,
                     version=parsed.version,
-                    include="full", format="path",
+                    include="full",
+                    format="path",
                 )
                 image_path = asset_data.get("image")
         except (FileNotFoundError, ValueError) as exc:
@@ -534,19 +601,24 @@ class ComicCreateTool:
         for ref_raw in reference_uris:
             try:
                 ref_parsed = parse_comic_uri(ref_raw)
-                if ref_parsed.asset_type == "character":
+                if ref_parsed.asset_type == "characters":
                     ref_data = await self._service.get_character(
-                        ref_parsed.project, ref_parsed.name,
+                        ref_parsed.project,
+                        ref_parsed.name,
                         version=ref_parsed.version,
-                        include="full", format="path",
+                        include="full",
+                        format="path",
                     )
                     ref_image = ref_data.get("image")
                 else:
                     ref_data = await self._service.get_asset(
-                        ref_parsed.project, ref_parsed.issue,
-                        ref_parsed.asset_type, ref_parsed.name,
+                        ref_parsed.project,
+                        ref_parsed.issue,
+                        singularize_type(ref_parsed.asset_type),
+                        ref_parsed.name,
                         version=ref_parsed.version,
-                        include="full", format="path",
+                        include="full",
+                        format="path",
                     )
                     ref_image = ref_data.get("image")
                 if ref_image:
@@ -582,17 +654,27 @@ class ComicCreateTool:
         except ValueError:
             return None
 
+        from amplifier_module_comic_assets.comic_uri import singularize_type
+
         try:
-            if parsed.asset_type == "character":
+            if parsed.asset_type == "characters":
                 asset = await self._service.get_character(
-                    parsed.project, parsed.name,
-                    version=parsed.version, include="full", format="path",
+                    parsed.project,
+                    parsed.name,
+                    version=parsed.version,
+                    include="full",
+                    format="path",
                 )
                 image_path = asset.get("image")
             else:
                 asset = await self._service.get_asset(
-                    parsed.project, parsed.issue, parsed.asset_type, parsed.name,
-                    version=parsed.version, include="full", format="path",
+                    parsed.project,
+                    parsed.issue,
+                    singularize_type(parsed.asset_type),
+                    parsed.name,
+                    version=parsed.version,
+                    include="full",
+                    format="path",
                 )
                 image_path = asset.get("image")
         except (FileNotFoundError, ValueError):
@@ -627,8 +709,13 @@ class ComicCreateTool:
 
         try:
             asset = await self._service.get_asset(
-                parsed.project, parsed.issue, parsed.asset_type, parsed.name,
-                version=parsed.version, include="full", format="content",
+                parsed.project,
+                parsed.issue,
+                parsed.asset_type,
+                parsed.name,
+                version=parsed.version,
+                include="full",
+                format="content",
             )
             css_content = asset.get("content", "")
             return css_content if isinstance(css_content, str) else ""
@@ -687,7 +774,11 @@ class ComicCreateTool:
         # Count embedded images and pages for the response payload
         images_embedded = len(resolved_images)
         page_count = (
-            (1 if layout.get("cover") and layout["cover"].get("uri") in resolved_images else 0)
+            (
+                1
+                if layout.get("cover") and layout["cover"].get("uri") in resolved_images
+                else 0
+            )
             + (1 if layout.get("characters") else 0)
             + len(layout.get("pages", []))
         )
@@ -695,13 +786,17 @@ class ComicCreateTool:
         # --- Render full HTML ---
         html = render_comic_html(layout, resolved_images, style_css)
 
-        await asyncio.to_thread(lambda: Path(output_path).write_text(html, encoding="utf-8"))
+        await asyncio.to_thread(
+            lambda: Path(output_path).write_text(html, encoding="utf-8")
+        )
 
-        return _ok({
-            "output_path": output_path,
-            "pages": page_count,
-            "images_embedded": images_embedded,
-        })
+        return _ok(
+            {
+                "output_path": output_path,
+                "pages": page_count,
+                "images_embedded": images_embedded,
+            }
+        )
 
 
 def _discover_vision_provider(providers: dict[str, Any]) -> Any | None:
@@ -770,5 +865,7 @@ async def mount(coordinator: Any, config: Any = None) -> None:
             exc_info=True,
         )
 
-    tool = ComicCreateTool(service=service, image_gen=image_gen, vision_provider=vision_provider)
+    tool = ComicCreateTool(
+        service=service, image_gen=image_gen, vision_provider=vision_provider
+    )
     await coordinator.mount("tools", tool, name=tool.name)

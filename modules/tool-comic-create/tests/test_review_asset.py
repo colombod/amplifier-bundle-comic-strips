@@ -1,8 +1,8 @@
 """Tests for comic_create(action='review_asset')."""
+
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,7 +20,10 @@ async def _setup_with_panel(service, tmp_path):
     ref_path.write_bytes(_PNG)
 
     await service.store_asset(
-        "test-proj", "issue-001", "panel", "panel_01",
+        "test-proj",
+        "issue-001",
+        "panel",
+        "panel_01",
         source_path=str(ref_path),
     )
     return "test-proj", "issue-001"
@@ -33,17 +36,23 @@ async def test_review_asset_returns_text_feedback(service, tmp_path) -> None:
 
     # Mock the vision API call that review_asset makes internally
     mock_feedback = "Character proportions are consistent. Framing is correct."
-    with patch.object(tool, "_call_vision_api", new_callable=AsyncMock,
-                      return_value={"passed": True, "feedback": mock_feedback}):
-        result = await tool.execute({
-            "action": "review_asset",
-            "uri": f"comic://{pid}/{iid}/panel/panel_01",
-            "prompt": "Check character consistency and framing",
-        })
+    with patch.object(
+        tool,
+        "_call_vision_api",
+        new_callable=AsyncMock,
+        return_value={"passed": True, "feedback": mock_feedback},
+    ):
+        result = await tool.execute(
+            {
+                "action": "review_asset",
+                "uri": f"comic://{pid}/issues/{iid}/panels/panel_01",
+                "prompt": "Check character consistency and framing",
+            }
+        )
 
     assert result.success is True
     data = json.loads(result.output)
-    assert data["uri"] == f"comic://{pid}/{iid}/panel/panel_01"
+    assert data["uri"] == f"comic://{pid}/issues/{iid}/panels/panel_01"
     assert "passed" in data
     assert "feedback" in data
     # Verify no base64 in the result
@@ -53,11 +62,13 @@ async def test_review_asset_returns_text_feedback(service, tmp_path) -> None:
 @pytest.mark.asyncio(loop_scope="function")
 async def test_review_asset_missing_uri(service) -> None:
     tool = ComicCreateTool(service=service)
-    result = await tool.execute({
-        "action": "review_asset",
-        "prompt": "Check quality",
-        # missing: uri
-    })
+    result = await tool.execute(
+        {
+            "action": "review_asset",
+            "prompt": "Check quality",
+            # missing: uri
+        }
+    )
     assert result.success is False
     assert "uri" in result.output.lower()
 
@@ -127,11 +138,13 @@ async def test_review_asset_calls_vision_provider_no_base64(service, tmp_path) -
     mock_provider.client = mock_client
 
     tool = ComicCreateTool(service=service, vision_provider=mock_provider)
-    result = await tool.execute({
-        "action": "review_asset",
-        "uri": f"comic://{pid}/{iid}/panel/panel_01",
-        "prompt": "Check quality",
-    })
+    result = await tool.execute(
+        {
+            "action": "review_asset",
+            "uri": f"comic://{pid}/issues/{iid}/panels/panel_01",
+            "prompt": "Check quality",
+        }
+    )
 
     assert result.success is True
     # Binary image bytes must never reach the tool output
@@ -168,16 +181,22 @@ async def test_review_asset_reports_skipped_refs(service, tmp_path) -> None:
     await _setup_with_panel(service, tmp_path)
     tool = ComicCreateTool(service=service)
 
-    bad_uri = "comic://nonexistent-proj/issue-001/panel/ghost_panel"
+    bad_uri = "comic://nonexistent-proj/issues/issue-001/panels/ghost_panel"
     mock_feedback = "Looks fine."
-    with patch.object(tool, "_call_vision_api", new_callable=AsyncMock,
-                      return_value={"passed": True, "feedback": mock_feedback}):
-        result = await tool.execute({
-            "action": "review_asset",
-            "uri": "comic://test-proj/issue-001/panel/panel_01",
-            "prompt": "Check consistency",
-            "reference_uris": [bad_uri],
-        })
+    with patch.object(
+        tool,
+        "_call_vision_api",
+        new_callable=AsyncMock,
+        return_value={"passed": True, "feedback": mock_feedback},
+    ):
+        result = await tool.execute(
+            {
+                "action": "review_asset",
+                "uri": "comic://test-proj/issues/issue-001/panels/panel_01",
+                "prompt": "Check consistency",
+                "reference_uris": [bad_uri],
+            }
+        )
 
     assert result.success is True
     data = json.loads(result.output)

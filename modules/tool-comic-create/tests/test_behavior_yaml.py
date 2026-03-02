@@ -5,14 +5,14 @@ from already-mounted tools. If tool-comic-image-gen isn't listed in the
 behavior YAML before tool-comic-create, image_gen will always be None and
 every create action will fail.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
 
 BEHAVIOR_YAML = (
-    Path(__file__).parent.parent.parent.parent
-    / "behaviors" / "comic-strips.yaml"
+    Path(__file__).parent.parent.parent.parent / "behaviors" / "comic-strips.yaml"
 )
 
 

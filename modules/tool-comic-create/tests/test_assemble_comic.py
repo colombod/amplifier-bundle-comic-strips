@@ -1,4 +1,5 @@
 """Tests for comic_create(action='assemble_comic')."""
+
 from __future__ import annotations
 
 import json
@@ -40,17 +41,17 @@ async def test_assemble_comic_produces_html(service, tmp_path) -> None:
 
     layout = {
         "title": "Test Comic",
-        "cover": {"uri": f"comic://{pid}/{iid}/cover/cover"},
+        "cover": {"uri": f"comic://{pid}/issues/{iid}/covers/cover"},
         "pages": [
             {
                 "layout": "2x1",
                 "panels": [
                     {
-                        "uri": f"comic://{pid}/{iid}/panel/panel_01",
+                        "uri": f"comic://{pid}/issues/{iid}/panels/panel_01",
                         "overlays": [],
                     },
                     {
-                        "uri": f"comic://{pid}/{iid}/panel/panel_02",
+                        "uri": f"comic://{pid}/issues/{iid}/panels/panel_02",
                         "overlays": [],
                     },
                 ],
@@ -58,14 +59,16 @@ async def test_assemble_comic_produces_html(service, tmp_path) -> None:
         ],
     }
 
-    result = await tool.execute({
-        "action": "assemble_comic",
-        "project": pid,
-        "issue": iid,
-        "output_path": output_path,
-        "style_uri": f"comic://{pid}/{iid}/style/default",
-        "layout": layout,
-    })
+    result = await tool.execute(
+        {
+            "action": "assemble_comic",
+            "project": pid,
+            "issue": iid,
+            "output_path": output_path,
+            "style_uri": f"comic://{pid}/styles/default",
+            "layout": layout,
+        }
+    )
 
     assert result.success is True
     data = json.loads(result.output)
@@ -81,23 +84,25 @@ async def test_assemble_comic_produces_html(service, tmp_path) -> None:
     # Verify proper structure: navigation, panels, no comic:// URIs
     assert "nav-prev" in html or "Prev" in html  # prev button
     assert "nav-next" in html or "Next" in html  # next button
-    assert "page-dot" in html                    # page indicator dots
-    assert "ArrowLeft" in html                   # keyboard support
-    assert "touchstart" in html                  # touch swipe support
-    assert "panel-grid" in html                  # panel grid layout
-    assert "repeat(2" in html                    # 2x1 grid has 2 columns
-    assert "comic://" not in html                # no raw URIs in output
+    assert "page-dot" in html  # page indicator dots
+    assert "ArrowLeft" in html  # keyboard support
+    assert "touchstart" in html  # touch swipe support
+    assert "panel-grid" in html  # panel grid layout
+    assert "repeat(2" in html  # 2x1 grid has 2 columns
+    assert "comic://" not in html  # no raw URIs in output
 
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_assemble_comic_missing_output_path(service) -> None:
     tool = ComicCreateTool(service=service)
-    result = await tool.execute({
-        "action": "assemble_comic",
-        "project": "p",
-        "issue": "i",
-        # missing: output_path, layout
-    })
+    result = await tool.execute(
+        {
+            "action": "assemble_comic",
+            "project": "p",
+            "issue": "i",
+            # missing: output_path, layout
+        }
+    )
     assert result.success is False
 
 
@@ -112,18 +117,20 @@ async def test_assemble_comic_does_not_auto_store(service, tmp_path) -> None:
     output_path = str(tmp_path / "final-comic.html")
     layout = {
         "title": "Test Comic",
-        "cover": {"uri": f"comic://{pid}/{iid}/cover/cover"},
+        "cover": {"uri": f"comic://{pid}/issues/{iid}/covers/cover"},
         "pages": [],
     }
 
     with patch.object(service, "store_asset", new_callable=AsyncMock) as mock_store:
-        result = await tool.execute({
-            "action": "assemble_comic",
-            "project": pid,
-            "issue": iid,
-            "output_path": output_path,
-            "layout": layout,
-        })
+        result = await tool.execute(
+            {
+                "action": "assemble_comic",
+                "project": pid,
+                "issue": iid,
+                "output_path": output_path,
+                "layout": layout,
+            }
+        )
 
     assert result.success is True
     # store_asset must not have been called by assemble_comic

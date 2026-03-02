@@ -1,4 +1,5 @@
 """Shared pytest fixtures for tool-comic-create tests."""
+
 from __future__ import annotations
 
 import asyncio

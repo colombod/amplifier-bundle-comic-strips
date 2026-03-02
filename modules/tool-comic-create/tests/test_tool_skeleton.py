@@ -1,4 +1,5 @@
 """Smoke tests for ComicCreateTool skeleton."""
+
 from __future__ import annotations
 
 import pytest
@@ -25,8 +26,11 @@ async def test_all_actions_listed_in_schema(service) -> None:
     tool = ComicCreateTool(service=service)
     schema_actions = tool.input_schema["properties"]["action"]["enum"]
     expected = [
-        "create_character_ref", "create_panel", "create_cover",
-        "review_asset", "assemble_comic",
+        "create_character_ref",
+        "create_panel",
+        "create_cover",
+        "review_asset",
+        "assemble_comic",
     ]
     assert sorted(schema_actions) == sorted(expected)
 
@@ -49,8 +53,8 @@ async def test_action_description_documents_per_action_params(service) -> None:
     assert "assemble_comic" in description
 
     # Key required params should be documented per-action
-    assert "visual_traits" in description       # create_character_ref specific
+    assert "visual_traits" in description  # create_character_ref specific
     assert "distinctive_features" in description  # create_character_ref specific
-    assert "character_uris" in description       # create_panel / create_cover optional
-    assert "reference_uris" in description       # review_asset optional
-    assert "output_path" in description          # assemble_comic specific
+    assert "character_uris" in description  # create_panel / create_cover optional
+    assert "reference_uris" in description  # review_asset optional
+    assert "output_path" in description  # assemble_comic specific

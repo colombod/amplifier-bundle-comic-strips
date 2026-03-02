@@ -1,4 +1,5 @@
 """Tests for comic_create(action='create_character_ref')."""
+
 from __future__ import annotations
 
 import json
@@ -35,20 +36,22 @@ async def test_create_character_ref_returns_uri(service, tmp_path) -> None:
     mock_gen = _make_mock_image_gen(tmp_path)
     tool = ComicCreateTool(service=service, image_gen=mock_gen)
 
-    result = await tool.execute({
-        "action": "create_character_ref",
-        "project": "test-proj",
-        "issue": "issue-001",
-        "name": "The Explorer",
-        "prompt": "A seasoned scout in worn leather jacket",
-        "visual_traits": "tall, blue eyes, leather jacket",
-        "distinctive_features": "compass pendant, scar on cheek",
-    })
+    result = await tool.execute(
+        {
+            "action": "create_character_ref",
+            "project": "test-proj",
+            "issue": "issue-001",
+            "name": "The Explorer",
+            "prompt": "A seasoned scout in worn leather jacket",
+            "visual_traits": "tall, blue eyes, leather jacket",
+            "distinctive_features": "compass pendant, scar on cheek",
+        }
+    )
 
     assert result.success is True
     data = json.loads(result.output)
     assert "uri" in data
-    assert data["uri"].startswith("comic://test-proj/issue-001/character/")
+    assert data["uri"].startswith("comic://test-proj/characters/")
     assert "version" in data
     assert isinstance(data["version"], int)
 
@@ -56,12 +59,14 @@ async def test_create_character_ref_returns_uri(service, tmp_path) -> None:
 @pytest.mark.asyncio(loop_scope="function")
 async def test_create_character_ref_missing_required_param(service) -> None:
     tool = ComicCreateTool(service=service)
-    result = await tool.execute({
-        "action": "create_character_ref",
-        "project": "test-proj",
-        "issue": "issue-001",
-        # missing: name, prompt, visual_traits, distinctive_features
-    })
+    result = await tool.execute(
+        {
+            "action": "create_character_ref",
+            "project": "test-proj",
+            "issue": "issue-001",
+            # missing: name, prompt, visual_traits, distinctive_features
+        }
+    )
     assert result.success is False
     assert "Missing" in result.output
 
@@ -71,15 +76,17 @@ async def test_create_character_ref_no_image_gen(service) -> None:
     await service.create_issue("test-proj", "Issue 1")
     tool = ComicCreateTool(service=service, image_gen=None)
 
-    result = await tool.execute({
-        "action": "create_character_ref",
-        "project": "test-proj",
-        "issue": "issue-001",
-        "name": "Explorer",
-        "prompt": "A scout",
-        "visual_traits": "tall",
-        "distinctive_features": "scar",
-    })
+    result = await tool.execute(
+        {
+            "action": "create_character_ref",
+            "project": "test-proj",
+            "issue": "issue-001",
+            "name": "Explorer",
+            "prompt": "A scout",
+            "visual_traits": "tall",
+            "distinctive_features": "scar",
+        }
+    )
     assert result.success is False
     assert "image generation" in result.output.lower()
 
@@ -97,15 +104,17 @@ async def test_create_character_ref_cleans_up_temp_dir(service, tmp_path) -> Non
     tmp_root = tempfile.gettempdir()
     before = {d for d in os.listdir(tmp_root) if d.startswith("comic_create_")}
 
-    result = await tool.execute({
-        "action": "create_character_ref",
-        "project": "test-proj",
-        "issue": "issue-001",
-        "name": "The Explorer",
-        "prompt": "A seasoned scout",
-        "visual_traits": "tall, blue eyes",
-        "distinctive_features": "scar",
-    })
+    result = await tool.execute(
+        {
+            "action": "create_character_ref",
+            "project": "test-proj",
+            "issue": "issue-001",
+            "name": "The Explorer",
+            "prompt": "A seasoned scout",
+            "visual_traits": "tall, blue eyes",
+            "distinctive_features": "scar",
+        }
+    )
     assert result.success is True
 
     after = {d for d in os.listdir(tmp_root) if d.startswith("comic_create_")}

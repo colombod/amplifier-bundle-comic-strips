@@ -2,11 +2,14 @@
 
 RED phase: all tests should fail until html_renderer.py is implemented.
 """
+
 from __future__ import annotations
 
-import pytest
 
-from amplifier_module_comic_create.html_renderer import render_comic_html, render_overlay_svg
+from amplifier_module_comic_create.html_renderer import (
+    render_comic_html,
+    render_overlay_svg,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -56,8 +59,9 @@ def test_rectangular_caption_has_no_tail() -> None:
     # Should have a rect
     assert "<rect" in html
     # Must NOT have a tail
-    assert "tail" not in html.lower() or ("<polygon" not in html and "<path" not in html
-                                           and "tail-path" not in html)
+    assert "tail" not in html.lower() or (
+        "<polygon" not in html and "<path" not in html and "tail-path" not in html
+    )
     assert "Meanwhile" in html
 
 
@@ -115,7 +119,7 @@ _MINIMAL_LAYOUT = {
             "layout": "1x1",
             "panels": [
                 {
-                    "uri": "comic://p/i/panel/p1",
+                    "uri": "comic://p/issues/i/panels/p1",
                     "overlays": [],
                 }
             ],
@@ -124,7 +128,7 @@ _MINIMAL_LAYOUT = {
             "layout": "1x1",
             "panels": [
                 {
-                    "uri": "comic://p/i/panel/p2",
+                    "uri": "comic://p/issues/i/panels/p2",
                     "overlays": [],
                 }
             ],
@@ -133,8 +137,8 @@ _MINIMAL_LAYOUT = {
 }
 
 _RESOLVED = {
-    "comic://p/i/panel/p1": "data:image/png;base64,abc",
-    "comic://p/i/panel/p2": "data:image/png;base64,def",
+    "comic://p/issues/i/panels/p1": "data:image/png;base64,abc",
+    "comic://p/issues/i/panels/p2": "data:image/png;base64,def",
 }
 
 
@@ -150,7 +154,11 @@ def test_navigation_page_dots_present() -> None:
     """HTML must include page indicator dots."""
     html = render_comic_html(_MINIMAL_LAYOUT, _RESOLVED)
     # Dots can be implemented as a container with class 'dots', 'page-dots', etc.
-    assert "dot" in html.lower() or "indicator" in html.lower() or "page-nav" in html.lower()
+    assert (
+        "dot" in html.lower()
+        or "indicator" in html.lower()
+        or "page-nav" in html.lower()
+    )
 
 
 def test_navigation_keyboard_js_present() -> None:
@@ -195,27 +203,27 @@ _LAYOUT_WITH_CHARS = {
     "characters": [
         {
             "name": "Alice",
-            "uri": "comic://p/i/character/alice",
+            "uri": "comic://p/characters/alice",
             "description": "The hero",
         },
         {
             "name": "Bob",
-            "uri": "comic://p/i/character/bob",
+            "uri": "comic://p/characters/bob",
             "description": "The sidekick",
         },
     ],
     "pages": [
         {
             "layout": "1x1",
-            "panels": [{"uri": "comic://p/i/panel/p1", "overlays": []}],
+            "panels": [{"uri": "comic://p/issues/i/panels/p1", "overlays": []}],
         }
     ],
 }
 
 _RESOLVED_WITH_CHARS = {
-    "comic://p/i/panel/p1": "data:image/png;base64,abc",
-    "comic://p/i/character/alice": "data:image/png;base64,alice",
-    "comic://p/i/character/bob": "data:image/png;base64,bob",
+    "comic://p/issues/i/panels/p1": "data:image/png;base64,abc",
+    "comic://p/characters/alice": "data:image/png;base64,alice",
+    "comic://p/characters/bob": "data:image/png;base64,bob",
 }
 
 
@@ -254,19 +262,19 @@ def test_grid_layout_2x2() -> None:
             {
                 "layout": "2x2",
                 "panels": [
-                    {"uri": "comic://p/i/panel/p1", "overlays": []},
-                    {"uri": "comic://p/i/panel/p2", "overlays": []},
-                    {"uri": "comic://p/i/panel/p3", "overlays": []},
-                    {"uri": "comic://p/i/panel/p4", "overlays": []},
+                    {"uri": "comic://p/issues/i/panels/p1", "overlays": []},
+                    {"uri": "comic://p/issues/i/panels/p2", "overlays": []},
+                    {"uri": "comic://p/issues/i/panels/p3", "overlays": []},
+                    {"uri": "comic://p/issues/i/panels/p4", "overlays": []},
                 ],
             }
         ],
     }
     resolved = {
-        "comic://p/i/panel/p1": "data:image/png;base64,a",
-        "comic://p/i/panel/p2": "data:image/png;base64,b",
-        "comic://p/i/panel/p3": "data:image/png;base64,c",
-        "comic://p/i/panel/p4": "data:image/png;base64,d",
+        "comic://p/issues/i/panels/p1": "data:image/png;base64,a",
+        "comic://p/issues/i/panels/p2": "data:image/png;base64,b",
+        "comic://p/issues/i/panels/p3": "data:image/png;base64,c",
+        "comic://p/issues/i/panels/p4": "data:image/png;base64,d",
     }
     html = render_comic_html(layout, resolved)
     # 2x2 means repeat(2, 1fr) or grid-template-columns with 2 columns
@@ -280,11 +288,11 @@ def test_grid_layout_full_bleed() -> None:
         "pages": [
             {
                 "layout": "full-bleed",
-                "panels": [{"uri": "comic://p/i/panel/p1", "overlays": []}],
+                "panels": [{"uri": "comic://p/issues/i/panels/p1", "overlays": []}],
             }
         ],
     }
-    resolved = {"comic://p/i/panel/p1": "data:image/png;base64,a"}
+    resolved = {"comic://p/issues/i/panels/p1": "data:image/png;base64,a"}
     html = render_comic_html(layout, resolved)
     # full-bleed: single column, 100% width
     assert "full-bleed" in html or "100%" in html
@@ -298,21 +306,25 @@ def test_grid_layout_3_row() -> None:
             {
                 "layout": "3-row",
                 "panels": [
-                    {"uri": "comic://p/i/panel/p1", "overlays": []},
-                    {"uri": "comic://p/i/panel/p2", "overlays": []},
-                    {"uri": "comic://p/i/panel/p3", "overlays": []},
+                    {"uri": "comic://p/issues/i/panels/p1", "overlays": []},
+                    {"uri": "comic://p/issues/i/panels/p2", "overlays": []},
+                    {"uri": "comic://p/issues/i/panels/p3", "overlays": []},
                 ],
             }
         ],
     }
     resolved = {
-        "comic://p/i/panel/p1": "data:image/png;base64,a",
-        "comic://p/i/panel/p2": "data:image/png;base64,b",
-        "comic://p/i/panel/p3": "data:image/png;base64,c",
+        "comic://p/issues/i/panels/p1": "data:image/png;base64,a",
+        "comic://p/issues/i/panels/p2": "data:image/png;base64,b",
+        "comic://p/issues/i/panels/p3": "data:image/png;base64,c",
     }
     html = render_comic_html(layout, resolved)
     # 3-row: single column (repeat(1,...) or explicit 1 column)
-    assert "repeat(1" in html or "grid-template-columns:1fr" in html or "grid-template-columns: 1fr" in html
+    assert (
+        "repeat(1" in html
+        or "grid-template-columns:1fr" in html
+        or "grid-template-columns: 1fr" in html
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -330,7 +342,8 @@ def test_html_is_self_contained() -> None:
     assert '<link rel="stylesheet"' not in html
     # No external script src attributes (only inline <script>)
     import re
-    external_scripts = re.findall(r'<script[^>]+src\s*=', html, re.IGNORECASE)
+
+    external_scripts = re.findall(r"<script[^>]+src\s*=", html, re.IGNORECASE)
     assert not external_scripts, f"Found external scripts: {external_scripts}"
 
 

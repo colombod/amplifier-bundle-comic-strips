@@ -21,6 +21,7 @@ meta:
     doing its own comic-specific panel translation work.
     </commentary>
     </example>
+  model_role: [creative, general]
 
 provider_preferences:
   - provider: anthropic

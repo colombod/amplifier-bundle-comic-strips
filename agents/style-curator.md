@@ -18,6 +18,7 @@ meta:
     No other agent can begin without the style guide.
     </commentary>
     </example>
+  model_role: [creative, general]
 
 provider_preferences:
   - provider: anthropic

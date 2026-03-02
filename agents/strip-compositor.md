@@ -23,6 +23,7 @@ meta:
     and character-designer. Invoking it prematurely produces an incomplete comic.
     </commentary>
     </example>
+  model_role: fast
 
 provider_preferences:
   - provider: anthropic

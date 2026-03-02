@@ -20,6 +20,7 @@ meta:
     character sheet entry. The recipe foreach loop handles all characters.
     </commentary>
     </example>
+  model_role: [creative, general]
 
 provider_preferences:
   - provider: anthropic

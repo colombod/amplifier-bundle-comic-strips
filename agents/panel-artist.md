@@ -20,6 +20,7 @@ meta:
     The recipe foreach loop handles all panels in sequence.
     </commentary>
     </example>
+  model_role: [image-gen, creative, general]
 
 provider_preferences:
   - provider: anthropic

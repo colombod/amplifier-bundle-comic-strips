@@ -21,6 +21,7 @@ meta:
     with panel-artist since both depend on the same upstream outputs.
     </commentary>
     </example>
+  model_role: [image-gen, creative, general]
 
 provider_preferences:
   - provider: anthropic

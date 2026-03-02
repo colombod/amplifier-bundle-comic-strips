@@ -34,9 +34,9 @@ from .model_map import MODEL_MAP  # noqa: E402
 from .model_selector import select_model  # noqa: E402
 from .providers import discover_image_backends  # noqa: E402
 
-# Maps MODEL_MAP provider names → backend provider_type values used for routing.
-# OpenAI models live on "openai" backends; Google/Gemini models live on "gemini" backends.
-_MODEL_PROVIDER_TO_BACKEND_TYPE: dict[str, str] = {
+# Maps user-facing provider names (from preferred_provider param and MODEL_MAP)
+# to the backend provider_type values used for direct routing.
+_PROVIDER_TO_BACKEND_TYPE: dict[str, str] = {
     "openai": "openai",
     "google": "gemini",
 }
@@ -153,16 +153,18 @@ class ComicImageGenTool:
 
         backends = list(self._backends)
 
-        # Sort backends so the preferred provider comes first
-        if preferred_provider and len(backends) > 1:
-            pref = preferred_provider.lower()
-            backends.sort(key=lambda b: pref not in b.provider.name.lower())
-
         if not backends:
             return ToolResult(
                 success=False,
                 output="No image-capable providers available. Configure an OpenAI or Google provider.",
             )
+
+        # Direct lookup map: provider_type → backend instance (O(1) routing).
+        backend_by_type: dict[str, Any] = {
+            getattr(b, "provider_type", ""): b
+            for b in backends
+            if getattr(b, "provider_type", "")
+        }
 
         gen_kwargs: dict[str, Any] = {
             "prompt": prompt,
@@ -171,16 +173,19 @@ class ComicImageGenTool:
             "style": style,
             "reference_images": reference_images,
         }
+
+        # Resolve which backend provider_type to target.
+        # Later assignments override earlier ones, so explicit_model / requirements
+        # take precedence over preferred_provider.
+        target_type: str | None = None
+        if preferred_provider:
+            target_type = _PROVIDER_TO_BACKEND_TYPE.get(preferred_provider.lower())
+
         if explicit_model is not None:
             gen_kwargs["model"] = explicit_model
-            # Re-sort backends so the provider that owns this model goes first.
             entry = MODEL_MAP.get(explicit_model)
             if entry is not None:
-                target_type = _MODEL_PROVIDER_TO_BACKEND_TYPE.get(entry.provider)
-                if target_type and len(backends) > 1:
-                    backends.sort(
-                        key=lambda b: getattr(b, "provider_type", "") != target_type
-                    )
+                target_type = _PROVIDER_TO_BACKEND_TYPE.get(entry.provider)
         elif requirements is not None:
             available_providers: list[str] = []
             for b in backends:
@@ -202,16 +207,19 @@ class ComicImageGenTool:
             )
             if selection.model_id is not None:
                 gen_kwargs["model"] = selection.model_id
-            # Re-sort backends so the provider returned by select_model goes first.
             if selection.provider is not None:
-                target_type = _MODEL_PROVIDER_TO_BACKEND_TYPE.get(selection.provider)
-                if target_type and len(backends) > 1:
-                    backends.sort(
-                        key=lambda b: getattr(b, "provider_type", "") != target_type
-                    )
+                target_type = _PROVIDER_TO_BACKEND_TYPE.get(selection.provider)
+
+        # Build ordered backend list: target provider first, others as fallback.
+        target = backend_by_type.get(target_type) if target_type is not None else None
+        ordered_backends = (
+            [target, *(b for b in backends if b is not target)]
+            if target is not None
+            else backends
+        )
 
         errors: list[str] = []
-        for backend in backends:
+        for backend in ordered_backends:
             result = await backend.generate(**gen_kwargs)
             if result["success"]:
                 return ToolResult(success=True, output=result)

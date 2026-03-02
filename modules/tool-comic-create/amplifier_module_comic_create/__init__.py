@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -32,6 +33,22 @@ from ._version import __version__  # noqa: F401, E402
 __amplifier_module_type__ = "tool"
 
 __all__ = ["mount", "ComicCreateTool"]
+
+# Vision model defaults — override via config if needed
+_VISION_MODEL_ANTHROPIC = "claude-opus-4-5"
+_VISION_MODEL_OPENAI = "gpt-4o"
+_VISION_MODEL_GOOGLE = "gemini-2.0-flash"
+
+
+def _detect_mime(image_bytes: bytes) -> str:
+    """Detect image MIME type from magic bytes."""
+    if image_bytes[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if image_bytes[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if image_bytes[:4] == b"RIFF" and image_bytes[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/png"  # fallback
 
 
 def _ok(result: Any) -> ToolResult:
@@ -60,10 +77,17 @@ class ComicCreateTool:
         service: Any,
         image_gen: Any | None = None,
         vision_provider: Any | None = None,
+        vision_models: dict[str, str] | None = None,
     ) -> None:
         self._service = service
         self._image_gen = image_gen  # ComicImageGenTool instance (internal)
         self._vision_provider = vision_provider  # For review_asset
+        # Per-provider model selection — falls back to module-level defaults
+        self._vision_models: dict[str, str] = vision_models or {
+            "anthropic": _VISION_MODEL_ANTHROPIC,
+            "openai": _VISION_MODEL_OPENAI,
+            "google": _VISION_MODEL_GOOGLE,
+        }
 
     @property
     def name(self) -> str:
@@ -427,13 +451,7 @@ class ComicCreateTool:
                 logger.warning("Vision API: could not read image %s: %s", path, exc)
                 continue
 
-            if image_bytes[:8] == b"\x89PNG\r\n\x1a\n":
-                media_type = "image/png"
-            elif image_bytes[:3] == b"\xff\xd8\xff":
-                media_type = "image/jpeg"
-            else:
-                media_type = "image/png"
-
+            media_type = _detect_mime(image_bytes)
             b64_data = base64.b64encode(image_bytes).decode("ascii")
             image_parts.append({"data": b64_data, "media_type": media_type})
 
@@ -444,8 +462,17 @@ class ComicCreateTool:
                 "feedback": "No readable images found — auto-passing.",
             }
 
+        # Ask the model for structured JSON output to avoid brittle keyword matching
+        prompt_with_structure = (
+            f"{prompt}\n\n"
+            'Respond with a JSON object: {"passed": true/false, "feedback": "your assessment"}\n'
+            "Set passed=false if ANY quality issue is found. Set passed=true only if all checks pass."
+        )
+
         try:
-            text = await self._invoke_vision_provider(image_parts, prompt)
+            text = await self._invoke_vision_provider(
+                image_parts, prompt_with_structure
+            )
         except Exception as exc:
             logger.warning(
                 "Vision API call failed: %s — auto-passing review", exc, exc_info=True
@@ -455,7 +482,21 @@ class ComicCreateTool:
                 "feedback": f"Vision API error ({exc}) — auto-passing.",
             }
 
-        # Determine pass/fail from the response text
+        # Try to extract JSON from the response first
+        json_match = re.search(
+            r'\{[^{}]*"passed"\s*:\s*(true|false)[^{}]*\}', text, re.IGNORECASE
+        )
+        if json_match:
+            try:
+                parsed = json.loads(json_match.group())
+                return {
+                    "passed": parsed.get("passed", False),
+                    "feedback": parsed.get("feedback", text),
+                }
+            except json.JSONDecodeError:
+                pass
+
+        # Fallback to keyword detection if JSON parsing fails
         text_lower = text.lower()
         failed = any(
             kw in text_lower
@@ -499,7 +540,7 @@ class ComicCreateTool:
                 )
             content.append({"type": "text", "text": prompt})
             response = await client.messages.create(
-                model="claude-opus-4-5",
+                model=self._vision_models.get("anthropic", _VISION_MODEL_ANTHROPIC),
                 max_tokens=1024,
                 messages=[{"role": "user", "content": content}],
             )
@@ -517,7 +558,7 @@ class ComicCreateTool:
                 )
             msg_content.append({"type": "text", "text": prompt})
             response = await client.chat.completions.create(
-                model="gpt-4o",
+                model=self._vision_models.get("openai", _VISION_MODEL_OPENAI),
                 max_tokens=1024,
                 messages=[{"role": "user", "content": msg_content}],
             )
@@ -536,7 +577,7 @@ class ComicCreateTool:
                 )
             parts.append(types.Part.from_text(text=prompt))
             response = await client.aio.models.generate_content(
-                model="gemini-2.0-flash",
+                model=self._vision_models.get("google", _VISION_MODEL_GOOGLE),
                 contents=parts,
             )
             return str(response.text)
@@ -684,14 +725,7 @@ class ComicCreateTool:
             return None
 
         image_bytes = await asyncio.to_thread(Path(image_path).read_bytes)
-        # Detect MIME from magic bytes
-        if image_bytes[:8] == b"\x89PNG\r\n\x1a\n":
-            mime = "image/png"
-        elif image_bytes[:3] == b"\xff\xd8\xff":
-            mime = "image/jpeg"
-        else:
-            mime = "image/png"
-
+        mime = _detect_mime(image_bytes)
         return bytes_to_data_uri(image_bytes, mime)
 
     async def _resolve_style_css(self, style_uri: str) -> str:
@@ -865,7 +899,17 @@ async def mount(coordinator: Any, config: Any = None) -> None:
             exc_info=True,
         )
 
+    vision_config = cfg.get("vision", {})
+    vision_models = {
+        "anthropic": vision_config.get("anthropic_model", _VISION_MODEL_ANTHROPIC),
+        "openai": vision_config.get("openai_model", _VISION_MODEL_OPENAI),
+        "google": vision_config.get("google_model", _VISION_MODEL_GOOGLE),
+    }
+
     tool = ComicCreateTool(
-        service=service, image_gen=image_gen, vision_provider=vision_provider
+        service=service,
+        image_gen=image_gen,
+        vision_provider=vision_provider,
+        vision_models=vision_models,
     )
     await coordinator.mount("tools", tool, name=tool.name)

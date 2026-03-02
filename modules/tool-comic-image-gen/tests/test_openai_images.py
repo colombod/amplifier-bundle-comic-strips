@@ -253,7 +253,7 @@ async def test_generate_endpoint_called_without_refs(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_edit_passes_image_file_bytes(tmp_path: Path) -> None:
-    """Reference image file bytes are passed correctly as 'image' kwarg list."""
+    """Reference images are passed as (filename, bytes, mime_type) tuples for proper MIME handling."""
     ref_image = tmp_path / "character.png"
     ref_image.write_bytes(TINY_PNG_BYTES)
 
@@ -270,7 +270,14 @@ async def test_edit_passes_image_file_bytes(tmp_path: Path) -> None:
 
     call_kwargs = provider.client.images.edit.call_args.kwargs
     assert "image" in call_kwargs
-    assert call_kwargs["image"] == [TINY_PNG_BYTES]
+    # Each image is a (filename, bytes, content_type) tuple so the API receives
+    # a proper MIME type in the multipart upload — raw bytes alone would cause
+    # the server to treat the file as application/octet-stream and reject it.
+    assert len(call_kwargs["image"]) == 1
+    filename, img_bytes, mime = call_kwargs["image"][0]
+    assert img_bytes == TINY_PNG_BYTES
+    assert mime == "image/png"
+    assert filename == "image.png"
 
 
 @pytest.mark.asyncio(loop_scope="function")

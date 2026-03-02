@@ -13,20 +13,25 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from amplifier_module_comic_create import ComicCreateTool
+from amplifier_module_comic_create import ComicCreateTool, ToolResult
 
 _PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
 
 def _make_mock_gen(tmp_path):
-    async def _generate(**kwargs):
-        out = Path(kwargs["output_path"])
+    """Create a mock matching the real ComicImageGenTool.execute() interface."""
+
+    async def _execute(params):
+        out = Path(params["output_path"])
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(_PNG)
-        return {"success": True, "path": str(out), "provider_used": "mock"}
+        return ToolResult(
+            success=True,
+            output={"path": str(out), "provider_used": "mock", "error": None},
+        )
 
     mock = MagicMock()
-    mock.generate = AsyncMock(side_effect=_generate)
+    mock.execute = AsyncMock(side_effect=_execute)
     return mock
 
 

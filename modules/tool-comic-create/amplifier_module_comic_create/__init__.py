@@ -239,18 +239,18 @@ class ComicCreateTool:
         with tempfile.TemporaryDirectory(prefix="comic_create_") as output_dir:
             output_path = os.path.join(output_dir, f"ref_{char_slug}.png")
 
-            gen_result = await self._image_gen.generate(
-                prompt=params["prompt"],
-                output_path=output_path,
-                size=params.get("size", "portrait"),
-                style=params.get("style"),
-                reference_images=None,
+            gen_result = await self._image_gen.execute(
+                {
+                    "prompt": params["prompt"],
+                    "output_path": output_path,
+                    "size": params.get("size", "portrait"),
+                    "style": params.get("style"),
+                    "reference_images": None,
+                }
             )
 
-            if not gen_result.get("success", False):
-                return _error(
-                    f"Image generation failed: {gen_result.get('error', 'unknown')}"
-                )
+            if not gen_result.success:
+                return _error(f"Image generation failed: {gen_result.output}")
 
             # Store the character via the service (copies the file before we exit the with block)
             store_result = await self._service.store_character(
@@ -328,18 +328,18 @@ class ComicCreateTool:
         with tempfile.TemporaryDirectory(prefix="comic_create_") as output_dir:
             output_path = os.path.join(output_dir, f"{name}.png")
 
-            gen_result = await self._image_gen.generate(
-                prompt=params["prompt"],
-                output_path=output_path,
-                size=params.get("size", "square"),
-                style=params.get("style"),
-                reference_images=ref_paths or None,
+            gen_result = await self._image_gen.execute(
+                {
+                    "prompt": params["prompt"],
+                    "output_path": output_path,
+                    "size": params.get("size", "square"),
+                    "style": params.get("style"),
+                    "reference_images": ref_paths or None,
+                }
             )
 
-            if not gen_result.get("success", False):
-                return _error(
-                    f"Image generation failed: {gen_result.get('error', 'unknown')}"
-                )
+            if not gen_result.success:
+                return _error(f"Image generation failed: {gen_result.output}")
 
             store_result = await self._service.store_asset(
                 project,
@@ -388,18 +388,18 @@ class ComicCreateTool:
         with tempfile.TemporaryDirectory(prefix="comic_create_") as output_dir:
             output_path = os.path.join(output_dir, "cover.png")
 
-            gen_result = await self._image_gen.generate(
-                prompt=params["prompt"],
-                output_path=output_path,
-                size=params.get("size", "landscape"),
-                style=params.get("style"),
-                reference_images=ref_paths or None,
+            gen_result = await self._image_gen.execute(
+                {
+                    "prompt": params["prompt"],
+                    "output_path": output_path,
+                    "size": params.get("size", "landscape"),
+                    "style": params.get("style"),
+                    "reference_images": ref_paths or None,
+                }
             )
 
-            if not gen_result.get("success", False):
-                return _error(
-                    f"Image generation failed: {gen_result.get('error', 'unknown')}"
-                )
+            if not gen_result.success:
+                return _error(f"Image generation failed: {gen_result.output}")
 
             store_result = await self._service.store_asset(
                 project,

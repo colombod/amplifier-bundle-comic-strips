@@ -39,6 +39,17 @@ _DALLE_RESPONSE_FORMAT_MODELS: frozenset[str] = frozenset({"dall-e-3"})
 
 _MAX_ATTEMPTS: int = 3
 
+
+def _detect_mime(image_bytes: bytes) -> str:
+    """Detect image MIME type from magic bytes."""
+    if image_bytes[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if image_bytes[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if image_bytes[:4] == b"RIFF" and image_bytes[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/png"  # fallback
+
 _RETRYABLE: tuple[type[Exception], ...] = (
     openai.RateLimitError,
     openai.APIStatusError,
@@ -209,15 +220,26 @@ class OpenAIImageBackend:
         pixel_size: str,
         reference_images: list[str],
     ) -> Any:
-        """Call ``client.images.edit`` with reference image file bytes."""
+        """Call ``client.images.edit`` with reference image file bytes.
+
+        Each image is passed as a ``(filename, bytes, content_type)`` tuple so
+        that the OpenAI API receives a proper MIME type in the multipart upload.
+        Sending raw bytes without a content-type causes the server to treat them
+        as ``application/octet-stream``, which the Images edit endpoint rejects.
+        """
         # Use asyncio.to_thread to avoid blocking the event loop during disk I/O
-        image_bytes_list = [
-            await asyncio.to_thread(Path(p).read_bytes) for p in reference_images
-        ]
+        image_files: list[tuple[str, bytes, str]] = []
+        for p in reference_images:
+            img_bytes = await asyncio.to_thread(Path(p).read_bytes)
+            mime = _detect_mime(img_bytes)
+            # Derive a safe extension from the MIME type ("image/png" → "png")
+            ext = mime.split("/")[-1]
+            image_files.append((f"image.{ext}", img_bytes, mime))
+
         kwargs: dict[str, Any] = {
             "model": model,
             "prompt": prompt,
-            "image": image_bytes_list,
+            "image": image_files,
             "size": pixel_size,
             "quality": "high",
         }

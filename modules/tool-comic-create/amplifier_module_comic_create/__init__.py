@@ -199,8 +199,78 @@ class ComicCreateTool:
 
         return _ok({"uri": str(uri), "version": version})
 
+    async def _resolve_character_image_paths(self, uris: list[str]) -> list[str]:
+        """Resolve comic:// character URIs to absolute file paths on disk."""
+        from amplifier_module_comic_assets.comic_uri import parse_comic_uri
+
+        paths: list[str] = []
+        for raw in uris:
+            parsed = parse_comic_uri(raw)
+            char_data = await self._service.get_character(
+                parsed.project,
+                parsed.name,
+                style=None,
+                version=parsed.version,
+                include="full",
+                format="path",
+            )
+            image_path = char_data.get("image")
+            if image_path:
+                paths.append(image_path)
+        return paths
+
     async def _create_panel(self, params: dict[str, Any]) -> ToolResult:
-        return _error("create_panel not yet implemented")
+        """Resolve character refs + generate + store panel. Return URI."""
+        required = ("project", "issue", "name", "prompt")
+        for key in required:
+            if key not in params:
+                return _error(f"Missing required param: {key}")
+
+        if self._image_gen is None:
+            return _error("No image generation backend available. Cannot create panel.")
+
+        import os
+        import tempfile
+
+        from amplifier_module_comic_assets.comic_uri import ComicURI
+
+        project = params["project"]
+        issue = params["issue"]
+        name = params["name"]
+
+        # Resolve character URIs to reference image paths
+        character_uris = params.get("character_uris") or []
+        ref_paths: list[str] = []
+        if character_uris:
+            try:
+                ref_paths = await self._resolve_character_image_paths(character_uris)
+            except (FileNotFoundError, ValueError) as exc:
+                return _error(f"Failed to resolve character URIs: {exc}")
+
+        output_dir = tempfile.mkdtemp(prefix="comic_create_")
+        output_path = os.path.join(output_dir, f"{name}.png")
+
+        gen_result = await self._image_gen.generate(
+            prompt=params["prompt"],
+            output_path=output_path,
+            size=params.get("size", "square"),
+            style=params.get("style"),
+            reference_images=ref_paths or None,
+        )
+
+        if not gen_result.get("success", False):
+            return _error(f"Image generation failed: {gen_result.get('error', 'unknown')}")
+
+        store_result = await self._service.store_asset(
+            project, issue, "panel", name,
+            source_path=output_path,
+            metadata={"prompt": params["prompt"], "camera_angle": params.get("camera_angle", "")},
+        )
+
+        version = store_result["version"]
+        uri = ComicURI.for_asset(project, issue, "panel", name, version=version)
+
+        return _ok({"uri": str(uri), "version": version})
 
     async def _create_cover(self, params: dict[str, Any]) -> ToolResult:
         return _error("create_cover not yet implemented")

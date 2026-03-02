@@ -263,25 +263,25 @@ class ComicCreateTool:
             except (FileNotFoundError, ValueError) as exc:
                 return _error(f"Failed to resolve character URIs: {exc}")
 
-        output_dir = tempfile.mkdtemp(prefix="comic_create_")
-        output_path = os.path.join(output_dir, f"{name}.png")
+        with tempfile.TemporaryDirectory(prefix="comic_create_") as output_dir:
+            output_path = os.path.join(output_dir, f"{name}.png")
 
-        gen_result = await self._image_gen.generate(
-            prompt=params["prompt"],
-            output_path=output_path,
-            size=params.get("size", "square"),
-            style=params.get("style"),
-            reference_images=ref_paths or None,
-        )
+            gen_result = await self._image_gen.generate(
+                prompt=params["prompt"],
+                output_path=output_path,
+                size=params.get("size", "square"),
+                style=params.get("style"),
+                reference_images=ref_paths or None,
+            )
 
-        if not gen_result.get("success", False):
-            return _error(f"Image generation failed: {gen_result.get('error', 'unknown')}")
+            if not gen_result.get("success", False):
+                return _error(f"Image generation failed: {gen_result.get('error', 'unknown')}")
 
-        store_result = await self._service.store_asset(
-            project, issue, "panel", name,
-            source_path=output_path,
-            metadata={"prompt": params["prompt"], "camera_angle": params.get("camera_angle", "")},
-        )
+            store_result = await self._service.store_asset(
+                project, issue, "panel", name,
+                source_path=output_path,
+                metadata={"prompt": params["prompt"], "camera_angle": params.get("camera_angle", "")},
+            )
 
         version = store_result["version"]
         uri = ComicURI.for_asset(project, issue, "panel", name, version=version)

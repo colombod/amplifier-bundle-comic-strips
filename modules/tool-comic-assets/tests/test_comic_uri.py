@@ -107,3 +107,15 @@ class TestComicURIBuilders:
         uri = ComicURI.for_style("proj", "issue-001", "manga")
         assert uri.asset_type == "style"
         assert str(uri) == "comic://proj/issue-001/style/manga"
+
+
+class TestComicURIRepr:
+    """S-6: ComicURI has a custom __repr__."""
+
+    def test_repr_wraps_str(self) -> None:
+        uri = ComicURI(project="my-proj", issue="issue-001", asset_type="panel", name="panel_01")
+        assert repr(uri) == "ComicURI('comic://my-proj/issue-001/panel/panel_01')"
+
+    def test_repr_includes_version(self) -> None:
+        uri = ComicURI(project="p", issue="i", asset_type="cover", name="cover", version=3)
+        assert repr(uri) == "ComicURI('comic://p/i/cover/cover?v=3')"

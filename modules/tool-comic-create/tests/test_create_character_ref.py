@@ -82,3 +82,32 @@ async def test_create_character_ref_no_image_gen(service) -> None:
     })
     assert result.success is False
     assert "image generation" in result.output.lower()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_create_character_ref_cleans_up_temp_dir(service, tmp_path) -> None:
+    """I-5: Temp directory used during create_character_ref must be removed afterward."""
+    import os
+    import tempfile
+
+    await service.create_issue("test-proj", "Issue 1")
+    mock_gen = _make_mock_image_gen(tmp_path)
+    tool = ComicCreateTool(service=service, image_gen=mock_gen)
+
+    tmp_root = tempfile.gettempdir()
+    before = {d for d in os.listdir(tmp_root) if d.startswith("comic_create_")}
+
+    result = await tool.execute({
+        "action": "create_character_ref",
+        "project": "test-proj",
+        "issue": "issue-001",
+        "name": "The Explorer",
+        "prompt": "A seasoned scout",
+        "visual_traits": "tall, blue eyes",
+        "distinctive_features": "scar",
+    })
+    assert result.success is True
+
+    after = {d for d in os.listdir(tmp_root) if d.startswith("comic_create_")}
+    leaked = after - before
+    assert leaked == set(), f"Temp dirs leaked: {leaked}"

@@ -190,3 +190,17 @@ async def test_invalid_action(service) -> None:
     result = await tool.execute({"action": "does_not_exist"})
     assert result.success is False
     assert "does_not_exist" in result.output
+
+
+# ===========================================================================
+# I-4: schema description must not mention removed `batch_encode`
+# ===========================================================================
+
+
+def test_comic_asset_schema_no_batch_encode_reference(service) -> None:
+    """I-4: The 'type' field description must not mention batch_encode."""
+    tool = ComicAssetTool(service)
+    schema_str = str(tool.input_schema)
+    assert "batch_encode" not in schema_str, (
+        "Stale 'batch_encode' reference found in ComicAssetTool.input_schema"
+    )

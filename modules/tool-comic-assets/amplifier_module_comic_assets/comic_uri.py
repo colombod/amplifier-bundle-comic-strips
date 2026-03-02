@@ -57,6 +57,9 @@ class ComicURI:
             return f"{base}?v={self.version}"
         return base
 
+    def __repr__(self) -> str:
+        return f"ComicURI('{self}')"
+
     @classmethod
     def for_asset(
         cls,

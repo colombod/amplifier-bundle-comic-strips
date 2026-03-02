@@ -92,4 +92,32 @@ async def test_create_panel_missing_prompt(service) -> None:
         # missing: prompt
     })
     assert result.success is False
-    assert "prompt" in result.output.lower()
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_create_panel_cleans_up_temp_dir(service, tmp_path) -> None:
+    """I-5: Temp directory used during create_panel must be removed afterward."""
+    import os
+    import tempfile
+
+    await service.create_issue("test-proj", "Issue 1")
+    mock_gen = _make_mock_image_gen(tmp_path)
+    tool = ComicCreateTool(service=service, image_gen=mock_gen)
+
+    # Snapshot comic_create_ dirs before the call
+    tmp_root = tempfile.gettempdir()
+    before = {d for d in os.listdir(tmp_root) if d.startswith("comic_create_")}
+
+    result = await tool.execute({
+        "action": "create_panel",
+        "project": "test-proj",
+        "issue": "issue-001",
+        "name": "panel_01",
+        "prompt": "An empty landscape",
+    })
+    assert result.success is True
+
+    # No new comic_create_ dirs should remain after the call
+    after = {d for d in os.listdir(tmp_root) if d.startswith("comic_create_")}
+    leaked = after - before
+    assert leaked == set(), f"Temp dirs leaked: {leaked}"

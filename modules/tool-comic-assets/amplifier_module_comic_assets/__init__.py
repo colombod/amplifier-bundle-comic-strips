@@ -30,7 +30,16 @@ except ImportError:  # pragma: no cover — runs without amplifier_core in tests
         output: Any = ""
 
 
-from .comic_uri import ComicURI, InvalidComicURI, parse_comic_uri  # noqa: E402
+from .comic_uri import (  # noqa: E402
+    COMIC_URI_TYPES,
+    ISSUE_SCOPED_TYPES,
+    PROJECT_SCOPED_TYPES,
+    ComicURI,
+    InvalidComicURI,
+    parse_comic_uri,
+    pluralize_type,
+    singularize_type,
+)
 from .encoding import base64_to_bytes  # noqa: E402
 from .service import ComicProjectService  # noqa: E402
 from .storage import FileSystemStorage, PathTraversalError, StorageProtocol  # noqa: E402
@@ -47,6 +56,11 @@ __all__ = [
     "ComicURI",
     "InvalidComicURI",
     "parse_comic_uri",
+    "PROJECT_SCOPED_TYPES",
+    "ISSUE_SCOPED_TYPES",
+    "COMIC_URI_TYPES",
+    "pluralize_type",
+    "singularize_type",
 ]
 
 
@@ -59,7 +73,6 @@ def _require(params: dict[str, Any], *keys: str) -> str | None:
         if k not in params:
             return k
     return None
-
 
 
 def _parse_uri_params(params: dict[str, Any]) -> "ToolResult | None":
@@ -84,6 +97,7 @@ def _parse_uri_params(params: dict[str, Any]) -> "ToolResult | None":
     except ValueError as exc:
         return ToolResult(success=False, output=f"Invalid URI: {exc}")
     return None
+
 
 def _missing_error(key: str) -> ToolResult:
     return ToolResult(success=False, output=f"Missing required param: {key}")
@@ -759,12 +773,14 @@ class ComicAssetTool:
                     format="path",
                 )
                 hint_cmd = "open" if platform.system() == "Darwin" else "xdg-open"
-                return _ok({
-                    "uri": asset.get("uri", ""),
-                    "path": asset.get("image", ""),
-                    "type": asset.get("mime_type", "application/octet-stream"),
-                    "hint": hint_cmd,
-                })
+                return _ok(
+                    {
+                        "uri": asset.get("uri", ""),
+                        "path": asset.get("image", ""),
+                        "type": asset.get("mime_type", "application/octet-stream"),
+                        "hint": hint_cmd,
+                    }
+                )
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 

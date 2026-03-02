@@ -1,27 +1,68 @@
-"""comic:// URI protocol — universal asset identifier.
+"""comic:// URI protocol — universal asset identifier (v2: scope-aware).
 
-Format: comic://project/issue/type/name[?v=N]
+Project-scoped format (characters, styles):
+    comic://project/collection/name[?v=N]
+
+Issue-scoped format (panels, covers, storyboards, etc.):
+    comic://project/issues/issue-name/collection/name[?v=N]
+
 When version is absent, resolution defaults to latest.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from urllib.parse import parse_qs, urlparse
 
-# All valid asset types in the URI namespace.
-COMIC_URI_TYPES = frozenset(
+# -- Scope-aware type constants -----------------------------------------------
+
+PROJECT_SCOPED_TYPES = frozenset({"characters", "styles"})
+
+ISSUE_SCOPED_TYPES = frozenset(
     {
-        "panel",
-        "cover",
-        "avatar",
-        "character",
-        "storyboard",
-        "style",
+        "panels",
+        "covers",
+        "storyboards",
         "research",
-        "final",
-        "qa_screenshot",
+        "finals",
+        "avatars",
+        "qa_screenshots",
     }
 )
+
+# Union of all valid URI collection names (plural forms).
+COMIC_URI_TYPES = PROJECT_SCOPED_TYPES | ISSUE_SCOPED_TYPES
+
+# Mapping from v1 singular types (used in service layer) to v2 plural URI types.
+_SINGULAR_TO_PLURAL: dict[str, str] = {
+    "character": "characters",
+    "style": "styles",
+    "panel": "panels",
+    "cover": "covers",
+    "storyboard": "storyboards",
+    "research": "research",
+    "final": "finals",
+    "avatar": "avatars",
+    "qa_screenshot": "qa_screenshots",
+}
+
+_PLURAL_TO_SINGULAR: dict[str, str] = {v: k for k, v in _SINGULAR_TO_PLURAL.items()}
+
+
+def pluralize_type(singular: str) -> str:
+    """Convert a v1 singular asset type to v2 plural collection name.
+
+    Unknown types are returned unchanged (pass-through).
+    """
+    return _SINGULAR_TO_PLURAL.get(singular, singular)
+
+
+def singularize_type(plural: str) -> str:
+    """Convert a v2 plural collection name to v1 singular asset type.
+
+    Unknown types are returned unchanged (pass-through).
+    """
+    return _PLURAL_TO_SINGULAR.get(plural, plural)
 
 
 class InvalidComicURI(ValueError):
@@ -30,21 +71,31 @@ class InvalidComicURI(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class ComicURI:
-    """Parsed comic:// URI.
+    """Parsed comic:// URI (v2: scope-aware).
 
     Attributes:
         project: Project identifier (slugified).
-        issue: Issue identifier (e.g. "issue-001").
-        asset_type: One of COMIC_URI_TYPES.
-        name: Asset name within the type namespace.
-        version: Explicit version, or None for latest.
+        asset_type: Pluralized collection name (``"characters"``, ``"panels"``, etc.).
+        name: Asset name within the collection.
+        issue: Issue identifier, or ``None`` for project-scoped resources.
+        version: Explicit version, or ``None`` for latest.
     """
 
     project: str
-    issue: str
     asset_type: str
     name: str
+    issue: str | None = None
     version: int | None = None
+
+    @property
+    def is_project_scoped(self) -> bool:
+        """True for project-level resources (characters, styles)."""
+        return self.issue is None
+
+    @property
+    def is_issue_scoped(self) -> bool:
+        """True for issue-level resources (panels, covers, etc.)."""
+        return self.issue is not None
 
     @property
     def is_latest(self) -> bool:
@@ -52,7 +103,10 @@ class ComicURI:
         return self.version is None
 
     def __str__(self) -> str:
-        base = f"comic://{self.project}/{self.issue}/{self.asset_type}/{self.name}"
+        if self.issue is None:
+            base = f"comic://{self.project}/{self.asset_type}/{self.name}"
+        else:
+            base = f"comic://{self.project}/issues/{self.issue}/{self.asset_type}/{self.name}"
         if self.version is not None:
             return f"{base}?v={self.version}"
         return base
@@ -68,27 +122,41 @@ class ComicURI:
         asset_type: str,
         name: str,
         version: int | None = None,
-    ) -> ComicURI:
-        """Build a URI for an issue-scoped asset."""
-        return cls(project=project, issue=issue, asset_type=asset_type, name=name, version=version)
+    ) -> "ComicURI":
+        """Build a URI for an issue-scoped asset.
+
+        ``asset_type`` accepts both singular (``"panel"``) and plural
+        (``"panels"``) — it is normalized to plural internally.
+        """
+        plural = pluralize_type(asset_type)
+        return cls(
+            project=project, issue=issue, asset_type=plural, name=name, version=version
+        )
 
     @classmethod
     def for_character(
-        cls, project: str, issue: str, name: str, version: int | None = None
-    ) -> ComicURI:
-        """Build a URI for a character asset."""
-        return cls(project=project, issue=issue, asset_type="character", name=name, version=version)
+        cls, project: str, name: str, *, version: int | None = None
+    ) -> "ComicURI":
+        """Build a project-scoped character URI. No issue segment."""
+        return cls(project=project, asset_type="characters", name=name, version=version)
 
     @classmethod
     def for_style(
-        cls, project: str, issue: str, name: str, version: int | None = None
-    ) -> ComicURI:
-        """Build a URI for a style guide asset."""
-        return cls(project=project, issue=issue, asset_type="style", name=name, version=version)
+        cls, project: str, name: str, *, version: int | None = None
+    ) -> "ComicURI":
+        """Build a project-scoped style URI. No issue segment."""
+        return cls(project=project, asset_type="styles", name=name, version=version)
 
 
 def parse_comic_uri(raw: str) -> ComicURI:
-    """Parse a ``comic://project/issue/type/name[?v=N]`` string.
+    """Parse a comic:// URI string into a :class:`ComicURI`.
+
+    Handles two formats:
+
+    - **Project-scoped**: ``comic://project/collection/name[?v=N]``
+      (2 path segments)
+    - **Issue-scoped**: ``comic://project/issues/issue/collection/name[?v=N]``
+      (4 path segments)
 
     Raises:
         InvalidComicURI: On any malformed input.
@@ -100,30 +168,14 @@ def parse_comic_uri(raw: str) -> ComicURI:
             f"Invalid scheme '{parsed.scheme}' — expected 'comic' in: {raw}"
         )
 
-    # urlparse puts everything after comic:// into netloc + path.
-    # comic://project/issue/type/name → netloc="project", path="/issue/type/name"
-    # We keep empty segments intact so that comic://proj//panel/name triggers the
-    # "empty segment" error rather than a segment-count mismatch.
-    path_parts = parsed.path.split("/")[1:]  # drop the leading empty string before "/"
-    parts = [parsed.netloc] + path_parts
+    project = parsed.netloc
+    if not project:
+        raise InvalidComicURI(f"Missing project in URI: {raw}")
 
-    if len(parts) != 4:
-        raise InvalidComicURI(
-            f"Invalid format — expected comic://project/issue/type/name, "
-            f"got {len(parts)} segments in: {raw}"
-        )
+    # Split path into segments, dropping the leading empty string before "/".
+    segments = parsed.path.split("/")[1:]
 
-    project, issue, asset_type, name = parts
-
-    for segment_name, segment_value in [
-        ("project", project),
-        ("issue", issue),
-        ("asset_type", asset_type),
-        ("name", name),
-    ]:
-        if not segment_value:
-            raise InvalidComicURI(f"URI has empty {segment_name} segment in: {raw}")
-
+    # Parse version from query string.
     version: int | None = None
     if parsed.query:
         qs = parse_qs(parsed.query)
@@ -136,10 +188,33 @@ def parse_comic_uri(raw: str) -> ComicURI:
                     f"Invalid version parameter — expected integer in: {raw}"
                 )
 
-    return ComicURI(
-        project=project,
-        issue=issue,
-        asset_type=asset_type,
-        name=name,
-        version=version,
-    )
+    # Route 1: Project-scoped — comic://project/collection/name
+    if len(segments) == 2 and segments[0] in PROJECT_SCOPED_TYPES:
+        asset_type, name = segments
+        if not name:
+            raise InvalidComicURI(f"URI has empty name segment in: {raw}")
+        return ComicURI(
+            project=project, asset_type=asset_type, name=name, version=version
+        )
+
+    # Route 2: Issue-scoped — comic://project/issues/issue/collection/name
+    if len(segments) == 4 and segments[0] == "issues":
+        _, issue, asset_type, name = segments
+        if not issue:
+            raise InvalidComicURI(f"URI has empty issue segment in: {raw}")
+        if not name:
+            raise InvalidComicURI(f"URI has empty name segment in: {raw}")
+        if asset_type not in ISSUE_SCOPED_TYPES:
+            raise InvalidComicURI(
+                f"Unknown issue-scoped type: '{asset_type}'. "
+                f"Valid: {sorted(ISSUE_SCOPED_TYPES)}"
+            )
+        return ComicURI(
+            project=project,
+            issue=issue,
+            asset_type=asset_type,
+            name=name,
+            version=version,
+        )
+
+    raise InvalidComicURI(f"Cannot parse URI: '{raw}'")

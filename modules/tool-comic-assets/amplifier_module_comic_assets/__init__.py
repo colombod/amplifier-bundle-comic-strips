@@ -61,6 +61,30 @@ def _require(params: dict[str, Any], *keys: str) -> str | None:
     return None
 
 
+
+def _parse_uri_params(params: dict[str, Any]) -> "ToolResult | None":
+    """Populate decomposed params from a ``uri`` entry using :func:`parse_comic_uri`.
+
+    Applies :meth:`dict.setdefault` so that any params already supplied by the
+    caller are left untouched (explicit params take priority over URI values).
+
+    Returns a ``ToolResult`` error if the URI is malformed, or ``None`` when
+    the operation succeeds (including when no ``uri`` key is present at all).
+    """
+    if "uri" not in params:
+        return None
+    try:
+        parsed = parse_comic_uri(params["uri"])
+        params.setdefault("project", parsed.project)
+        params.setdefault("issue", parsed.issue)
+        params.setdefault("type", parsed.asset_type)
+        params.setdefault("name", parsed.name)
+        if parsed.version is not None:
+            params.setdefault("version", parsed.version)
+    except ValueError as exc:
+        return ToolResult(success=False, output=f"Invalid URI: {exc}")
+    return None
+
 def _missing_error(key: str) -> ToolResult:
     return ToolResult(success=False, output=f"Missing required param: {key}")
 
@@ -363,6 +387,10 @@ class ComicCharacterTool:
                     "type": "object",
                     "description": "Arbitrary metadata dict to merge (for update_metadata).",
                 },
+                "uri": {
+                    "type": "string",
+                    "description": "comic:// URI (alternative to separate project/issue/type/name params).",
+                },
             },
             "required": ["action"],
         }
@@ -371,6 +399,8 @@ class ComicCharacterTool:
 
     async def execute(self, params: dict[str, Any]) -> ToolResult:
         """Dispatch to the appropriate character service method."""
+        if err := _parse_uri_params(params):
+            return err
         action = params.get("action")
 
         async def _store() -> ToolResult:
@@ -556,7 +586,7 @@ class ComicAssetTool:
                     "description": (
                         "Asset type. One of: panel, cover, avatar, qa_screenshot, "
                         "research, storyboard, final. Required for store, get, "
-                        "batch_encode, update_metadata; optional filter for list."
+                        "update_metadata; optional filter for list."
                     ),
                     "enum": [
                         "panel",
@@ -615,6 +645,10 @@ class ComicAssetTool:
                     "type": "string",
                     "description": "Review feedback text (for update_metadata).",
                 },
+                "uri": {
+                    "type": "string",
+                    "description": "comic:// URI (alternative to separate project/issue/type/name params).",
+                },
             },
             "required": ["action"],
         }
@@ -623,6 +657,8 @@ class ComicAssetTool:
 
     async def execute(self, params: dict[str, Any]) -> ToolResult:
         """Dispatch to the appropriate asset service method."""
+        if err := _parse_uri_params(params):
+            return err
         action = params.get("action")
 
         async def _store() -> ToolResult:
@@ -817,6 +853,10 @@ class ComicStyleTool:
                     "type": "object",
                     "description": "Optional metadata dict to attach to the style guide (for store).",
                 },
+                "uri": {
+                    "type": "string",
+                    "description": "comic:// URI (alternative to separate project/issue/type/name params).",
+                },
             },
             "required": ["action"],
         }
@@ -825,6 +865,8 @@ class ComicStyleTool:
 
     async def execute(self, params: dict[str, Any]) -> ToolResult:
         """Dispatch to the appropriate style service method."""
+        if err := _parse_uri_params(params):
+            return err
         action = params.get("action")
 
         async def _store() -> ToolResult:

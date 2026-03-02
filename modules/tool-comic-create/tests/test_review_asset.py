@@ -1,4 +1,18 @@
-"""Tests for comic_create(action='review_asset')."""
+"""Tests for comic_create(action='review_asset').
+
+Why MagicMock is appropriate here (unlike image_gen tests):
+  The vision provider mock replaces an Anthropic/OpenAI/Google API client whose
+  *only* job is to return a text string.  These tests exercise how ComicCreateTool
+  *parses and interprets* different API response shapes (JSON passed/failed flags,
+  keyword detection, error handling).  The mock controls the response text so each
+  test can target a specific parsing path.
+
+  This is fundamentally different from the image_gen case: there the mock was hiding
+  an interface contract (wrong method name, bad return shape would silently pass).
+  Here the mock IS the test point — we deliberately inject specific text to verify
+  the parsing logic, not the API call itself.  A real Anthropic client would hit the
+  network and return unpredictable text, making the parse tests non-deterministic.
+"""
 
 from __future__ import annotations
 

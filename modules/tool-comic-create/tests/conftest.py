@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -11,6 +14,58 @@ from amplifier_module_comic_assets.service import ComicProjectService
 from amplifier_module_comic_assets.storage import FileSystemStorage
 
 _MINIMAL_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+
+
+# ---------------------------------------------------------------------------
+# Real test backend — follows the exact same protocol as OpenAIImageBackend
+# and GeminiImageBackend so any interface mismatch is caught immediately.
+# ---------------------------------------------------------------------------
+
+
+class TestImageBackend:
+    """A real backend for testing — writes a minimal PNG to disk, no API calls.
+
+    Implements the full backend protocol used by ComicImageGenTool.execute():
+      - ``provider.name``  (str)  — accessed in error messages
+      - ``provider_type``  (str)  — used for preferred-provider routing
+      - ``async generate(prompt, output_path, size, style,
+                         reference_images, model)``
+          same positional-or-keyword signature as the real backends
+
+    If the backend interface ever changes (new required attribute, renamed
+    method, different return-dict keys) these tests will fail immediately
+    instead of silently passing with a MagicMock that swallows the mismatch.
+    """
+
+    def __init__(self) -> None:
+        self.provider = SimpleNamespace(name="test-provider")
+        self.provider_type = "test"
+        self.name = "test-backend"
+
+    async def generate(
+        self,
+        prompt: str,
+        output_path: str | Path,
+        size: str = "square",
+        style: str | None = None,
+        model: str | None = None,
+        reference_images: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Write a minimal valid PNG to *output_path* — no network calls."""
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(_MINIMAL_PNG)
+        return {
+            "success": True,
+            "path": str(out),
+            "provider_used": "test-provider",
+            "error": None,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Core fixtures
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture()
@@ -31,6 +86,26 @@ def sample_png(tmp_path):
     png_path = tmp_path / "test.png"
     png_path.write_bytes(_MINIMAL_PNG)
     return str(png_path)
+
+
+@pytest.fixture()
+def image_gen():
+    """Real ComicImageGenTool wired with a TestImageBackend — zero mocks.
+
+    Using the real ``ComicImageGenTool`` (not a ``MagicMock``) means that any
+    interface mismatch between ``ComicCreateTool`` and ``ComicImageGenTool``
+    (wrong method name, missing attribute, changed return shape) is caught
+    immediately rather than hidden behind a mock that accepts anything.
+    """
+    from amplifier_module_comic_image_gen import ComicImageGenTool
+
+    backend = TestImageBackend()
+    return ComicImageGenTool(backends=[backend])
+
+
+# ---------------------------------------------------------------------------
+# Event-loop hygiene
+# ---------------------------------------------------------------------------
 
 
 @pytest_asyncio.fixture(autouse=True)

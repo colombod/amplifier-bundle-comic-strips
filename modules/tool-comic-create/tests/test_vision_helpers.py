@@ -4,6 +4,22 @@ Covers:
   Fix 1: Module-level vision model constants + configurable via vision_models dict
   Fix 2: _detect_mime module-level helper
   Fix 3: Structured JSON response parsing with keyword fallback
+
+Why MagicMock is appropriate here (unlike image_gen tests):
+  The vision provider mock replaces an Anthropic/OpenAI/Google API client whose
+  *only* job is to return a text string.  The tests in Fix 3 specifically exercise
+  how ``_call_vision_api`` and ``_invoke_vision_provider`` parse different API
+  response formats: structured JSON (passed=true/false), plain keyword text, JSON
+  embedded in prose, and provider-specific model routing.
+
+  The mock *is* the test subject — we inject precise response text to verify each
+  parsing path deterministically.  A real provider client would hit the network,
+  return unpredictable text, and make these parse-behavior tests non-deterministic.
+
+  This is fundamentally different from the image_gen case: there the mock was hiding
+  an interface contract (wrong method, changed return shape would silently pass).
+  For vision providers the interface is trivial (``provider.name``, ``provider.client``,
+  one async method call); the real test value is in the *parsing logic*, not the call.
 """
 
 from __future__ import annotations

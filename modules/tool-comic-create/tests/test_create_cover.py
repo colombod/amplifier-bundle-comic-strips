@@ -3,38 +3,16 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from amplifier_module_comic_create import ComicCreateTool, ToolResult
-
-_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
-
-
-def _make_mock_image_gen(tmp_path: Path):
-    """Create a mock matching the real ComicImageGenTool.execute() interface."""
-
-    async def _execute(params):
-        out = Path(params["output_path"])
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_bytes(_PNG)
-        return ToolResult(
-            success=True,
-            output={"path": str(out), "provider_used": "mock", "error": None},
-        )
-
-    mock = MagicMock()
-    mock.execute = AsyncMock(side_effect=_execute)
-    return mock
+from amplifier_module_comic_create import ComicCreateTool
 
 
 @pytest.mark.asyncio(loop_scope="function")
-async def test_create_cover_returns_uri(service, tmp_path) -> None:
+async def test_create_cover_returns_uri(service, image_gen) -> None:
     await service.create_issue("test-proj", "Issue 1")
-    mock_gen = _make_mock_image_gen(tmp_path)
-    tool = ComicCreateTool(service=service, image_gen=mock_gen)
+    tool = ComicCreateTool(service=service, image_gen=image_gen)
 
     result = await tool.execute(
         {
@@ -68,14 +46,13 @@ async def test_create_cover_missing_prompt(service) -> None:
 
 
 @pytest.mark.asyncio(loop_scope="function")
-async def test_create_cover_cleans_up_temp_dir(service, tmp_path) -> None:
+async def test_create_cover_cleans_up_temp_dir(service, image_gen) -> None:
     """I-5: Temp directory used during create_cover must be removed afterward."""
     import os
     import tempfile
 
     await service.create_issue("test-proj", "Issue 1")
-    mock_gen = _make_mock_image_gen(tmp_path)
-    tool = ComicCreateTool(service=service, image_gen=mock_gen)
+    tool = ComicCreateTool(service=service, image_gen=image_gen)
 
     tmp_root = tempfile.gettempdir()
     before = {d for d in os.listdir(tmp_root) if d.startswith("comic_create_")}

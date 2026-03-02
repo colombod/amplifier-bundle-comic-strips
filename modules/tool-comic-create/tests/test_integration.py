@@ -1,4 +1,4 @@
-"""Integration test: full pipeline with mocked image gen.
+"""Integration test: full pipeline with real ComicImageGenTool.
 
 Proves the core design invariant:
   - base64 image data is embedded in the final HTML file on disk
@@ -9,38 +9,19 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from amplifier_module_comic_create import ComicCreateTool, ToolResult
-
-_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
-
-
-def _make_mock_gen(tmp_path):
-    """Create a mock matching the real ComicImageGenTool.execute() interface."""
-
-    async def _execute(params):
-        out = Path(params["output_path"])
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_bytes(_PNG)
-        return ToolResult(
-            success=True,
-            output={"path": str(out), "provider_used": "mock", "error": None},
-        )
-
-    mock = MagicMock()
-    mock.execute = AsyncMock(side_effect=_execute)
-    return mock
+from amplifier_module_comic_create import ComicCreateTool
 
 
 @pytest.mark.asyncio(loop_scope="function")
-async def test_full_pipeline_no_base64_in_tool_results(service, tmp_path) -> None:
+async def test_full_pipeline_no_base64_in_tool_results(
+    service, tmp_path, image_gen
+) -> None:
     """End-to-end: create characters, panels, cover, assemble — verify no base64 in any tool result."""
     await service.create_issue("e2e-proj", "E2E Issue")
-    mock_gen = _make_mock_gen(tmp_path)
-    tool = ComicCreateTool(service=service, image_gen=mock_gen)
+    tool = ComicCreateTool(service=service, image_gen=image_gen)
 
     all_outputs: list[str] = []
 

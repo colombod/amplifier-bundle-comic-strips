@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import sys
+import types
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -17,35 +19,140 @@ _MINIMAL_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
 
 # ---------------------------------------------------------------------------
-# Real vision test backend — follows the VisionBackend protocol exactly.
+# Mock vision provider — follows the REAL Amplifier Provider protocol.
 # No MagicMock: any interface mismatch (renamed method, wrong signature)
 # is caught immediately instead of silently passing.
 # ---------------------------------------------------------------------------
 
 
-class TestVisionBackend:
-    """Real class following VisionBackend protocol — no MagicMock."""
+class MockVisionProvider:
+    """Follows the real Amplifier Provider protocol for vision testing."""
 
     __test__ = False  # prevent pytest from treating this as a test class
 
     def __init__(
-        self, response: str = '{"passed": true, "feedback": "Looks good."}'
+        self, response_text: str = '{"passed": true, "feedback": "Looks good."}'
     ) -> None:
-        self.response = response
+        self.name = "mock-vision"
+        self.response_text = response_text
         self.call_count = 0
-        self.last_prompt: str | None = None
+        self.last_request: Any = None
 
-    async def review(
-        self, image_parts: list[dict[str, str]], prompt: str
-    ) -> str:
+    def get_info(self) -> Any:
+        return type("ProviderInfo", (), {
+            "capabilities": ["vision"],
+            "capability_tags": ["vision"],
+        })()
+
+    async def list_models(self) -> list[Any]:
+        return [
+            type("ModelInfo", (), {
+                "id": "mock-vision-model",
+                "capabilities": ["vision"],
+                "capability_tags": ["vision"],
+            })()
+        ]
+
+    async def complete(self, request: Any) -> Any:
         self.call_count += 1
-        self.last_prompt = prompt
-        return self.response
+        self.last_request = request
+        text_block = type("TextBlock", (), {"type": "text", "text": self.response_text})()
+        return type("ChatResponse", (), {"content": [text_block]})()
+
+
+class MockCoordinator:
+    """Simulates coordinator.get() for testing — no MagicMock."""
+
+    __test__ = False  # prevent pytest from treating this as a test class
+
+    def __init__(
+        self,
+        vision_provider: MockVisionProvider | None = None,
+        tools: dict[str, Any] | None = None,
+    ) -> None:
+        self._providers: dict[str, Any] = {}
+        self._tools: dict[str, Any] = tools or {}
+        if vision_provider is not None:
+            self._providers["mock-vision"] = vision_provider
+
+    def get(self, mount_point: str, name: str | None = None) -> Any:
+        if mount_point == "providers":
+            return self._providers
+        if mount_point == "tools":
+            return self._tools
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Stub amplifier_core.message_models for tests that exercise the full
+# provider path.  amplifier_core is not installed in the test environment
+# so we patch sys.modules with minimal stubs that satisfy _call_vision_api.
+# ---------------------------------------------------------------------------
+
+
+class _ImageBlock:
+    def __init__(self, type: str, source: dict[str, str]) -> None:
+        self.type = type
+        self.source = source
+
+
+class _TextBlock:
+    def __init__(self, type: str, text: str) -> None:
+        self.type = type
+        self.text = text
+
+
+class _Message:
+    def __init__(self, role: str, content: list[Any]) -> None:
+        self.role = role
+        self.content = content
+
+
+class _ChatRequest:
+    def __init__(
+        self,
+        messages: list[Any],
+        model: Any = None,
+        max_output_tokens: int | None = None,
+    ) -> None:
+        self.messages = messages
+        self.model = model
+        self.max_output_tokens = max_output_tokens
 
 
 @pytest.fixture()
-def vision_backend() -> TestVisionBackend:
-    return TestVisionBackend()
+def patch_message_models():
+    """Patch sys.modules to provide stub amplifier_core.message_models.
+
+    Needed for tests that exercise the full _call_vision_api → provider.complete()
+    path when amplifier_core is not installed in the test environment.
+    """
+    msg_module = types.ModuleType("amplifier_core.message_models")
+    msg_module.ImageBlock = _ImageBlock  # type: ignore[attr-defined]
+    msg_module.TextBlock = _TextBlock  # type: ignore[attr-defined]
+    msg_module.Message = _Message  # type: ignore[attr-defined]
+    msg_module.ChatRequest = _ChatRequest  # type: ignore[attr-defined]
+
+    core_module = types.ModuleType("amplifier_core")
+    core_module.message_models = msg_module  # type: ignore[attr-defined]
+
+    orig_core = sys.modules.get("amplifier_core")
+    orig_msgs = sys.modules.get("amplifier_core.message_models")
+
+    sys.modules["amplifier_core"] = core_module
+    sys.modules["amplifier_core.message_models"] = msg_module
+
+    yield
+
+    if orig_core is None:
+        sys.modules.pop("amplifier_core", None)
+    else:
+        sys.modules["amplifier_core"] = orig_core
+
+    if orig_msgs is None:
+        sys.modules.pop("amplifier_core.message_models", None)
+    else:
+        sys.modules["amplifier_core.message_models"] = orig_msgs
 
 
 # ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@ Registration entry point: :func:`mount` (called by the Amplifier module loader).
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
@@ -29,21 +30,10 @@ except ImportError:  # pragma: no cover
 
 
 from ._version import __version__  # noqa: F401, E402
-from .vision_backends import (  # noqa: F401
-    AnthropicVisionBackend,
-    GeminiVisionBackend,
-    OpenAIVisionBackend,
-    VisionBackend,
-)
 
 __amplifier_module_type__ = "tool"
 
 __all__ = ["mount", "ComicCreateTool"]
-
-# Vision model defaults — override via config if needed
-_VISION_MODEL_ANTHROPIC = "claude-opus-4-5"
-_VISION_MODEL_OPENAI = "gpt-4o"
-_VISION_MODEL_GOOGLE = "gemini-2.0-flash"
 
 
 def _detect_mime(image_bytes: bytes) -> str:
@@ -82,11 +72,11 @@ class ComicCreateTool:
         self,
         service: Any,
         image_gen: Any | None = None,
-        vision_backend: Any | None = None,
+        coordinator: Any | None = None,
     ) -> None:
         self._service = service
         self._image_gen = image_gen  # ComicImageGenTool instance (internal)
-        self._vision_backend = vision_backend  # VisionBackend for review_asset
+        self._coordinator = coordinator  # for provider access
 
     @property
     def name(self) -> str:
@@ -417,191 +407,256 @@ class ComicCreateTool:
 
         return _ok({"uri": str(uri), "version": version})
 
-    async def _call_vision_api(
-        self, image_paths: list[str], prompt: str
-    ) -> dict[str, Any]:
-        """Send images + review prompt to a vision-capable model.
+    async def _find_vision_provider(self) -> tuple[Any, Any]:
+        """Find a vision-capable provider from the coordinator.
 
-        Reads image files from disk, encodes as base64, and calls the
-        configured vision provider. Image bytes travel only on the wire;
-        they never appear in the returned dict or the tool result.
-
-        Returns {"passed": bool, "feedback": str}.
-        Falls back to auto-pass (with a warning) when no provider is
-        configured or when the provider call fails.
+        Returns (provider, model_id) or (None, None) if none found.
         """
-        if self._vision_backend is None:
-            logger.warning("No vision backend available — auto-passing review")
-            return {
-                "passed": True,
-                "feedback": "Vision review not available — auto-passing.",
-            }
+        if self._coordinator is None:
+            return None, None
 
-        import asyncio
-        import base64
-        from pathlib import Path
+        try:
+            providers = self._coordinator.get("providers") or {}
+        except Exception:
+            return None, None
 
-        # Read images and encode as base64 (stays in memory, never serialised)
-        image_parts: list[dict[str, str]] = []
-        for path in image_paths:
+        if not providers:
+            return None, None
+
+        # Try routing matrix first (optional)
+        try:
+            state = getattr(self._coordinator, "session_state", {})
+            routing_matrix = state.get("routing_matrix")
+            if routing_matrix:
+                from amplifier_module_hooks_routing.resolver import (  # type: ignore[import-untyped]
+                    find_provider_by_type,
+                    resolve_model_role,
+                )
+
+                resolved = await resolve_model_role(
+                    ["vision", "general"], routing_matrix["roles"], providers
+                )
+                if resolved:
+                    match = find_provider_by_type(providers, resolved[0]["provider"])
+                    if match:
+                        return match[1], resolved[0]["model"]
+        except (ImportError, Exception):
+            pass
+
+        # Fallback: scan for vision capability
+        for name, provider in providers.items():
             try:
-                image_bytes = await asyncio.to_thread(Path(path).read_bytes)
-            except OSError as exc:
-                logger.warning("Vision API: could not read image %s: %s", path, exc)
+                info = provider.get_info()
+                caps = (
+                    getattr(info, "capabilities", None)
+                    or getattr(info, "capability_tags", None)
+                    or []
+                )
+                if "vision" in caps:
+                    try:
+                        models = await provider.list_models()
+                        for m in models:
+                            mcaps = (
+                                getattr(m, "capabilities", None)
+                                or getattr(m, "capability_tags", None)
+                                or []
+                            )
+                            if "vision" in mcaps:
+                                return provider, m.id
+                    except Exception:
+                        pass
+                    return provider, None
+            except Exception:
                 continue
 
-            media_type = _detect_mime(image_bytes)
-            b64_data = base64.b64encode(image_bytes).decode("ascii")
-            image_parts.append({"data": b64_data, "media_type": media_type})
+        return None, None
 
-        if not image_parts:
-            logger.warning("Vision API: no readable images — auto-passing review")
-            return {
-                "passed": True,
-                "feedback": "No readable images found — auto-passing.",
-            }
+    async def _call_vision_api(
+        self, image_parts: list[dict[str, str]], prompt: str
+    ) -> dict[str, Any]:
+        """Send pre-prepared images + prompt to a vision-capable provider.
 
-        # Ask the model for structured JSON output to avoid brittle keyword matching
+        Args:
+            image_parts: List of dicts with {type: "base64", media_type: "image/png", data: "base64..."}
+                         These are passed directly as ImageBlock.source — no transformation needed.
+            prompt: The review prompt.
+
+        Returns:
+            {"passed": bool, "feedback": str}
+        """
+        provider, model = await self._find_vision_provider()
+        if provider is None:
+            logger.warning("No vision provider available — auto-passing review")
+            return {"passed": True, "feedback": "No vision provider available — auto-passing."}
+
+        try:
+            from amplifier_core.message_models import (  # type: ignore[import-untyped]
+                ChatRequest,
+                ImageBlock,
+                Message,
+                TextBlock,
+            )
+        except ImportError:
+            logger.warning("amplifier_core.message_models not available — auto-passing")
+            return {"passed": True, "feedback": "Vision not available — auto-passing."}
+
+        # Build content blocks from pre-prepared image_parts
+        content = []
+        for img in image_parts:
+            content.append(ImageBlock(type="image", source=img))
+
+        if not content:
+            return {"passed": True, "feedback": "No images to review."}
+
+        # Structured prompt requesting JSON output
         prompt_with_structure = (
             f"{prompt}\n\n"
             'Respond with a JSON object: {"passed": true/false, "feedback": "your assessment"}\n'
-            "Set passed=false if ANY quality issue is found. Set passed=true only if all checks pass."
+            "Set passed=false if ANY quality issue is found."
         )
+        content.append(TextBlock(type="text", text=prompt_with_structure))
 
         try:
-            text = await self._vision_backend.review(
-                image_parts, prompt_with_structure
+            response = await provider.complete(
+                ChatRequest(
+                    messages=[Message(role="user", content=content)],
+                    model=model,
+                    max_output_tokens=1024,
+                )
             )
+
+            # Extract text from response
+            text = ""
+            for block in response.content:
+                if hasattr(block, "type") and block.type == "text":
+                    text = block.text
+                    break
+
+            if not text:
+                return {"passed": True, "feedback": "Vision returned no text — auto-passing."}
+
+            # Parse JSON (with keyword fallback)
+            json_match = re.search(
+                r'\{[^{}]*"passed"\s*:\s*(true|false)[^{}]*\}', text, re.IGNORECASE
+            )
+            if json_match:
+                try:
+                    parsed = json.loads(json_match.group())
+                    return {
+                        "passed": parsed.get("passed", False),
+                        "feedback": parsed.get("feedback", text),
+                    }
+                except json.JSONDecodeError:
+                    pass
+
+            # Keyword fallback
+            text_lower = text.lower()
+            failed = any(
+                kw in text_lower
+                for kw in ("fail", "not pass", "does not pass", "reject", "poor quality")
+            )
+            return {"passed": not failed, "feedback": text}
+
         except Exception as exc:
-            logger.warning(
-                "Vision API call failed: %s — auto-passing review", exc, exc_info=True
-            )
-            return {
-                "passed": True,
-                "feedback": f"Vision API error ({exc}) — auto-passing.",
-            }
-
-        # Try to extract JSON from the response first
-        json_match = re.search(
-            r'\{[^{}]*"passed"\s*:\s*(true|false)[^{}]*\}', text, re.IGNORECASE
-        )
-        if json_match:
-            try:
-                parsed = json.loads(json_match.group())
-                return {
-                    "passed": parsed.get("passed", False),
-                    "feedback": parsed.get("feedback", text),
-                }
-            except json.JSONDecodeError:
-                pass
-
-        # Fallback to keyword detection if JSON parsing fails
-        text_lower = text.lower()
-        failed = any(
-            kw in text_lower
-            for kw in (
-                "fail",
-                "not pass",
-                "does not pass",
-                "incorrect",
-                "does not meet",
-            )
-        )
-        return {"passed": not failed, "feedback": text}
+            logger.warning("Vision API call failed: %s — auto-passing", exc)
+            return {"passed": True, "feedback": f"Vision failed ({exc}) — auto-passing."}
 
     async def _review_asset(self, params: dict[str, Any]) -> ToolResult:
-        """Vision-based review. Resolve URI → image path → vision API → text feedback."""
+        """Vision-based review. Resolve URI → bytes → base64 → vision API → text feedback.
+
+        This is the orchestrator: it handles all storage resolution and byte
+        reading, then passes pre-prepared image_parts to _call_vision_api which
+        has ZERO file I/O.
+        """
         required = ("uri", "prompt")
         for key in required:
             if key not in params:
                 return _error(f"Missing required param: {key}")
 
-        from amplifier_module_comic_assets.comic_uri import parse_comic_uri
+        import asyncio
+        from pathlib import Path
+
+        from amplifier_module_comic_assets.comic_uri import parse_comic_uri, singularize_type
 
         raw_uri = params["uri"]
         try:
-            parsed = parse_comic_uri(raw_uri)
+            parse_comic_uri(raw_uri)
         except ValueError as exc:
             return _error(f"Invalid URI: {exc}")
 
-        # Resolve the target asset to a file path
-        from amplifier_module_comic_assets.comic_uri import singularize_type
+        async def _resolve_to_image_part(uri: str) -> dict[str, str] | None:
+            """Resolve a comic:// URI → read bytes → base64 → image_part dict."""
+            try:
+                parsed = parse_comic_uri(uri)
+            except ValueError:
+                return None
 
-        try:
-            if parsed.asset_type == "characters":
-                # Characters are project-scoped in both the URI and service layer.
-                asset_data = await self._service.get_character(
-                    parsed.project,
-                    parsed.name,
-                    version=parsed.version,
-                    include="full",
-                    format="path",
-                )
-                image_path = asset_data.get("image")
-            else:
-                asset_data = await self._service.get_asset(
-                    parsed.project,
-                    parsed.issue,
-                    singularize_type(parsed.asset_type),
-                    parsed.name,
-                    version=parsed.version,
-                    include="full",
-                    format="path",
-                )
-                image_path = asset_data.get("image")
-        except (FileNotFoundError, ValueError) as exc:
-            return _error(f"Cannot resolve URI {raw_uri}: {exc}")
+            try:
+                if parsed.asset_type == "characters":
+                    asset = await self._service.get_character(
+                        parsed.project,
+                        parsed.name,
+                        version=parsed.version,
+                        include="full",
+                        format="path",
+                    )
+                    image_path = asset.get("image")
+                else:
+                    asset = await self._service.get_asset(
+                        parsed.project,
+                        parsed.issue,
+                        singularize_type(parsed.asset_type),
+                        parsed.name,
+                        version=parsed.version,
+                        include="full",
+                        format="path",
+                    )
+                    image_path = asset.get("image")
+            except (FileNotFoundError, ValueError):
+                return None
 
-        if not image_path:
+            if not image_path:
+                return None
+
+            try:
+                image_bytes = await asyncio.to_thread(Path(image_path).read_bytes)
+            except OSError:
+                return None
+
+            mime = _detect_mime(image_bytes)
+            b64_data = base64.b64encode(image_bytes).decode("ascii")
+            return {"type": "base64", "media_type": mime, "data": b64_data}
+
+        # Resolve target
+        target_part = await _resolve_to_image_part(raw_uri)
+        if target_part is None:
             return _error(f"No image found for URI: {raw_uri}")
 
-        # Collect all image paths for vision (target + optional references)
-        all_paths = [image_path]
+        image_parts: list[dict[str, str]] = [target_part]
+
+        # Resolve optional references
         skipped_refs: list[str] = []
-
-        reference_uris = params.get("reference_uris") or []
-        for ref_raw in reference_uris:
+        for ref_uri in (params.get("reference_uris") or []):
             try:
-                ref_parsed = parse_comic_uri(ref_raw)
-                if ref_parsed.asset_type == "characters":
-                    ref_data = await self._service.get_character(
-                        ref_parsed.project,
-                        ref_parsed.name,
-                        version=ref_parsed.version,
-                        include="full",
-                        format="path",
-                    )
-                    ref_image = ref_data.get("image")
+                ref_part = await _resolve_to_image_part(ref_uri)
+                if ref_part:
+                    image_parts.append(ref_part)
                 else:
-                    ref_data = await self._service.get_asset(
-                        ref_parsed.project,
-                        ref_parsed.issue,
-                        singularize_type(ref_parsed.asset_type),
-                        ref_parsed.name,
-                        version=ref_parsed.version,
-                        include="full",
-                        format="path",
-                    )
-                    ref_image = ref_data.get("image")
-                if ref_image:
-                    all_paths.append(ref_image)
-                else:
-                    skipped_refs.append(ref_raw)
-            except (FileNotFoundError, ValueError):
-                skipped_refs.append(ref_raw)
+                    skipped_refs.append(ref_uri)
+            except Exception:
+                skipped_refs.append(ref_uri)
 
-        # Call vision API — images sent to API wire, never to LLM context
-        vision_result = await self._call_vision_api(all_paths, params["prompt"])
+        # Call vision — pure, no file I/O
+        vision_result = await self._call_vision_api(image_parts, params["prompt"])
 
-        result_data: dict[str, Any] = {
+        result: dict[str, Any] = {
             "uri": raw_uri,
-            "passed": vision_result.get("passed", False),
-            "feedback": vision_result.get("feedback", ""),
+            "passed": vision_result["passed"],
+            "feedback": vision_result["feedback"],
         }
         if skipped_refs:
-            result_data["skipped_refs"] = skipped_refs
-
-        return _ok(result_data)
+            result["skipped_refs"] = skipped_refs
+        return _ok(result)
 
     async def _resolve_image_as_data_uri(self, raw_uri: str) -> str | None:
         """Resolve a comic:// URI to a base64 data URI string (internal only)."""
@@ -754,66 +809,6 @@ class ComicCreateTool:
         )
 
 
-def _discover_vision_provider(providers: dict[str, Any]) -> Any | None:
-    """Find the first vision-capable provider from coordinator providers.
-
-    Checks provider names for known vision-capable platforms in priority order:
-    Anthropic Claude > OpenAI > Google/Gemini.
-
-    Returns the provider object if found, or None.
-    """
-    # Priority order for vision: anthropic has best multimodal; then openai, google
-    vision_keys = ("anthropic", "openai", "google", "gemini")
-    for key in vision_keys:
-        for provider_name, provider in providers.items():
-            if key in provider_name.lower():
-                logger.info(
-                    "comic_create: discovered vision provider '%s' for review_asset",
-                    provider_name,
-                )
-                return provider
-    return None
-
-
-def _create_vision_backend(
-    provider: Any, vision_models: dict[str, str]
-) -> "VisionBackend | None":
-    """Build the appropriate VisionBackend for a coordinator provider.
-
-    Detects provider type from ``provider.name`` and instantiates the
-    matching concrete backend with the provider's client and the requested
-    model string.  Returns ``None`` when the provider is ``None`` or
-    unrecognised (review_asset will auto-pass gracefully).
-    """
-    if provider is None:
-        return None
-
-    provider_name: str = getattr(provider, "name", "").lower()
-    client = provider.client
-
-    if "anthropic" in provider_name:
-        return AnthropicVisionBackend(
-            client=client,
-            model=vision_models.get("anthropic", _VISION_MODEL_ANTHROPIC),
-        )
-    if "openai" in provider_name:
-        return OpenAIVisionBackend(
-            client=client,
-            model=vision_models.get("openai", _VISION_MODEL_OPENAI),
-        )
-    if "google" in provider_name or "gemini" in provider_name:
-        return GeminiVisionBackend(
-            client=client,
-            model=vision_models.get("google", _VISION_MODEL_GOOGLE),
-        )
-
-    logger.warning(
-        "comic_create: unrecognised vision provider '%s' — review_asset will auto-pass.",
-        provider_name,
-    )
-    return None
-
-
 async def mount(coordinator: Any, config: Any = None) -> None:
     """Amplifier module entry point — build service and register the tool."""
     from amplifier_module_comic_assets.service import ComicProjectService
@@ -840,38 +835,9 @@ async def mount(coordinator: Any, config: Any = None) -> None:
     except Exception:
         pass
 
-    # Discover a vision-capable provider and build the VisionBackend.
-    # Falls back to None gracefully — review_asset auto-passes when absent.
-    vision_backend = None
-    try:
-        providers = coordinator.get("providers") or {}
-        vision_provider = _discover_vision_provider(providers)
-        if vision_provider is None:
-            logger.warning(
-                "comic_create: no vision-capable provider found "
-                "(providers: %s). review_asset will auto-pass.",
-                list(providers.keys()) or "(none)",
-            )
-        else:
-            vision_config = cfg.get("vision", {})
-            vision_models = {
-                "anthropic": vision_config.get(
-                    "anthropic_model", _VISION_MODEL_ANTHROPIC
-                ),
-                "openai": vision_config.get("openai_model", _VISION_MODEL_OPENAI),
-                "google": vision_config.get("google_model", _VISION_MODEL_GOOGLE),
-            }
-            vision_backend = _create_vision_backend(vision_provider, vision_models)
-    except Exception:
-        logger.warning(
-            "comic_create: could not query coordinator providers — "
-            "review_asset will auto-pass.",
-            exc_info=True,
-        )
-
     tool = ComicCreateTool(
         service=service,
         image_gen=image_gen,
-        vision_backend=vision_backend,
+        coordinator=coordinator,  # pass coordinator directly for provider access
     )
     await coordinator.mount("tools", tool, name=tool.name)

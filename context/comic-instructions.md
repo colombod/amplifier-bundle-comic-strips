@@ -42,6 +42,49 @@ Characters represent agents from the actual session transcript, not inventions.
 
 Agents from the same bundle share visual team markers (color accents, insignia, uniform elements). Different bundles have distinct visual identities.
 
+## Issue Budget Standards
+
+Every comic issue has a FIXED page and panel budget. These limits are non-negotiable.
+
+| Budget Item | Default | Hard Limit | Notes |
+|---|---|---|---|
+| Cover | 1 page | 1 page | Always present, always first page |
+| Story pages | 4 | 3-5 | Adjustable within range per story needs |
+| **Total pages** | **5** | **6 max** | Cover + story pages |
+| Panels per page | 2-3 | 3 max | Never exceed 3 panels on a single page |
+| **Total panels** | **~10** | **12 max** | Budget = story pages x panels per page |
+| Characters | 4 main + 2 supporting | 6 max | Unchanged |
+
+### Why Fixed Budgets
+
+- **Predictable output**: Every issue is 4-6 pages. No 15-page monsters.
+- **Readable panels**: At max 3 panels per page, each panel image is large enough to read.
+- **Bounded cost**: Image generation is capped at 12 panels + 1 cover = 13 images max.
+- **Multi-issue by design**: When a story is too rich for one issue, split into a saga.
+
+### Page Structure
+
+A standard 5-page issue follows this structure:
+
+| Page | Content | Typical Panels |
+|---|---|---|
+| 1 | Cover | 1 (hero image) |
+| 2 | Setup / Challenge | 2-3 |
+| 3 | Rising Action / Approach | 2-3 |
+| 4 | Climax / Turning Point | 2-3 |
+| 5 | Resolution / Results | 2-3 |
+
+### Sagas (Multi-Issue Stories)
+
+When a story exceeds one issue's budget, it becomes a **saga** -- multiple issues in the same project sharing characters, style, and narrative continuity.
+
+- A saga is a project with multiple issues. No special entity needed.
+- Characters are project-scoped -- designed once, reused across issues.
+- Styles are project-scoped -- consistent visual language across issues.
+- Each issue is a standalone HTML file with its own cover.
+- The storyboard-writer decides if a saga is needed and plans the split.
+- Each issue must have its own complete mini-arc (setup, tension, resolution or cliffhanger).
+
 ## Evidence-Based Storytelling
 
 All comic narratives must follow these rules:

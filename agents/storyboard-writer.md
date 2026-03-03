@@ -132,6 +132,21 @@ Analyze the narrative's character list and the original research data to select 
 4. **Map bundle membership**: Read each agent's bundle from the research data. Agents from the same bundle share visual team markers (see comic-storytelling skill for the Bundle-as-Affiliation table).
 5. **Antagonists are ENVIRONMENTAL THREATS**, not characters. Errors, rate limits, and failures are walls, storms, and barriers — NOT characters with portraits or dialogue.
 
+### Step 4.5: Saga Assessment
+
+After selecting characters, assess whether the narrative fits in one issue:
+
+1. **Count narrative beats** from the Challenge -> Approach -> Results prose.
+2. **Estimate panels needed**: 1 beat ~ 1 panel. Some beats need 2 (action sequences).
+3. **Compare to budget**: If estimated panels <= 12, proceed as a single issue.
+4. **If panels > 12**: This is a **saga**. Plan multiple issues:
+   a. Divide the narrative into issue-sized arcs (8-12 panels each).
+   b. Each issue must have its own mini-arc (setup, tension, partial resolution or cliffhanger).
+   c. Issue #1 covers the Challenge and early Approach.
+   d. Later issues continue the Approach and deliver Results.
+   e. Add a `saga_plan` field to the storyboard JSON.
+   f. The CURRENT storyboard covers only issue #1. End with a cliffhanger or "To Be Continued."
+
 ### Step 5: Map Narrative Beats to Panels and Page Layout
 
 Take the Challenge → Approach → Results beats from the narrative and assign each to panels:
@@ -174,15 +189,26 @@ Convert the narrative prose into comic-native text elements:
 
 The key transformation: the case-study-writer's prose describes events in paragraph form. You must break those paragraphs into panel-specific dialogue lines and captions that work visually in speech bubbles and caption boxes.
 
-### Step 8: Set Page Breaks
+### Step 8: Enforce Page Budget and Set Page Breaks
 
-Mark `page_break_after: true` on panels where pages should end:
+**BUDGET (non-negotiable):**
+- **Story pages: 3-5** (default 4). Plus 1 cover page = 4-6 total pages.
+- **Panels per page: 2-3** (never exceed 3 on a single page).
+- **Total panels: 6-12** (must equal sum of panels across all story pages).
 
-- Place a page break every 3-5 panels to maintain readable page lengths
-- Place breaks after dramatic beats, cliffhangers, or scene transitions
-- Climax panels should appear just before a page break for maximum impact
-- The first break should come after the opening panels (panels 1-3) to establish the setup
-- Never place a break mid-action-sequence — finish the action before breaking
+Plan your pages BEFORE assigning panels:
+
+1. **Decide page count** (3-5 story pages) based on narrative complexity.
+2. **Allocate panels per page** (2 or 3) to total your panel count.
+3. **Map narrative beats to pages**: Setup -> Rising Action -> Climax -> Resolution.
+4. **Set `page_break_after: true`** on the last panel of each page.
+
+**Page break rules:**
+- Breaks go after dramatic beats, cliffhangers, or scene transitions.
+- Never break mid-action-sequence.
+- Climax panels appear just before a break for maximum impact.
+
+**Verification:** Before outputting, count: pages = number of `page_break_after: true` markers + 1 (for the final page). If pages > 5, cut panels. If pages < 3, the story may be too thin -- add depth, not padding.
 
 ---
 
@@ -195,6 +221,8 @@ Your output MUST be a single structured JSON block in this exact format. `parse_
   "title": "Comic strip title",
   "subtitle": "Short tagline",
   "panel_count": 8,
+  "page_count": 4,
+  "saga_plan": null,
   "panel_list": [
     {
       "index": 1,
@@ -297,7 +325,9 @@ These rules are NON-NEGOTIABLE. Every storyboard must follow them.
 
 ## Rules
 
-- NEVER exceed 12 panels (keep it focused)
+- NEVER exceed 12 panels or 5 story pages per issue
+- ALWAYS include `page_count` in the output JSON
+- ALWAYS verify: panel_count = sum of panels across all pages, page_count = count of page_break_after markers + 1
 - NEVER include raw session data in dialogue (UUIDs, file paths, token counts, error messages, JSON)
 - NEVER create character profiles for antagonists — they are environmental threats
 - Characters come from the session transcript ONLY — do not invent characters not present in the research data

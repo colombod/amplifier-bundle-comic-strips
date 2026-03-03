@@ -227,29 +227,17 @@ stages:
       - id: "init-project"
         agent: "comic-strips:style-curator"
         prompt: |
-          Initialize the comic project for asset tracking.
+          YOUR ONLY JOB: Call comic_project to create an issue, then return the result as JSON. Do NOTHING else.
 
-          comic_project(
-            action='create_issue',
-            project='{{project_name}}',
-            title='{{issue_title}}',
-            metadata={
-              "session_file": "{{session_file}}",
-              "style": "{{style}}",
-              "created_by": "session-to-comic recipe v7.4.0",
-              "saga_issue": "{{saga_issue}}",
-              "previous_issue_id": "{{previous_issue_id}}"
-            }
-          )
+          comic_project(action='create_issue', project='{{project_name}}', title='{{issue_title}}', metadata={"session_file": "{{session_file}}", "style": "{{style}}", "created_by": "session-to-comic recipe v7.4.0", "saga_issue": "{{saga_issue}}", "previous_issue_id": "{{previous_issue_id}}"})
 
-          If project_name is empty, use "comic-project" as the default.
-          If issue_title is empty, use "Comic Strip" as the default.
+          If project_name is empty, use "comic-project". If issue_title is empty, use "Comic Strip".
 
-          Return the project_id and issue_id from the response as JSON:
-          {"project_id": "<value>", "issue_id": "<value>"}
+          Return ONLY the JSON from the tool response: {"project_id": "<value>", "issue_id": "<value>"}
+          Do NOT read files, do NOT curate styles, do NOT do anything else. Just call the tool and return.
         output: "project_init"
         parse_json: true
-        timeout: 60
+        timeout: 120
 
       # ============================================
       # STEP 1: RESEARCH - Data Extraction

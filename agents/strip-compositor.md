@@ -65,24 +65,39 @@ You receive 5 inputs:
 The HTML output is organized into discrete pages, not one scrollable document:
 
 - **Page 1: Cover page** — hero image + title overlay + AmpliVerse branding
-- **Page 2: Character intro page** — each character with reference image, name, role, and visual_traits
+- **Page 2: Character intro page** — each character with portrait, name, role, and backstory (who they are as a character, NOT design notes)
 - **Pages 3+: Story pages** — 3-5 panels each, split based on the storyboard's `page_break_after` markers
 
 Each page is a full-viewport `<section class="page">` element. `assemble_comic` handles the HTML rendering.
 
-## SVG Clip-Path Panel Shapes
+## Panel Shapes — MAKE LAYOUTS EXCITING
 
-Panel shape choices inform the layout JSON you build. Choose shapes based on each panel's **emotional_beat** from the storyboard:
+**CRITICAL: Do NOT leave every panel as a plain rectangle.** Real comics use varied shapes to create visual energy. At least 40% of panels on each story page MUST use a non-rectangular shape. Use the `shape` field on each panel in the layout JSON.
 
-| Shape | Use |
-|-------|-----|
-| `rectangular` (default) | Standard dialogue, calm scenes |
-| `diagonal` | Action, movement, dynamic energy |
-| `circular` | Flashbacks, memories, focus shots |
-| `irregular` | Tension, unease, conflict |
-| `rounded` | Friendly, soft, comedic moments |
+Available shapes (applied via CSS clip-path — the renderer handles the visual):
 
-The style guide specifies which shapes are available for the current style.
+| Shape | `shape` value | Use |
+|-------|--------------|-----|
+| Rectangle (default) | omit or `""` | Standard dialogue, calm exposition |
+| Diagonal cut | `"diagonal"` | Action, movement, forward momentum |
+| Reverse diagonal | `"reverse-diag"` | Counter-action, opposing force, flashback entry |
+| Wedge | `"wedge"` | Dramatic tension, converging focus |
+| Pointed | `"pointed"` | Suspense, narrowing stakes |
+| Irregular | `"irregular"` | Unease, chaos, conflict |
+| Circle | `"circle"` | Flashbacks, memories, isolated focus |
+| Rounded | `"rounded"` | Friendly, soft, comedic moments |
+| Bleed | `"bleed"` | Panel breaks out of grid — climax, maximum impact |
+
+**Emotional beat mapping** — use these as your guide:
+- `setup` / `exposition` → rectangle or rounded
+- `dialogue` / `conversation` → rectangle
+- `action` / `confrontation` → diagonal, wedge, or irregular
+- `revelation` / `climax` → bleed or circle
+- `emotional` / `reflection` → rounded or reverse-diag
+- `tension` / `suspense` → irregular, pointed, or wedge
+- `resolution` → rectangle or rounded
+
+The style guide may specify additional shape preferences for the active style.
 
 ## Process
 
@@ -173,7 +188,8 @@ Example layout structure:
     {
       "uri": "comic://{{project_id}}/characters/the_explorer",
       "name": "The Explorer",
-      "role": "protagonist",
+      "role": "Lead Scout",
+      "backstory": "A seasoned pathfinder who maps uncharted codebases. First to enter, last to leave. Trusts her instincts over documentation.",
       "visual_traits": "seasoned scout in worn leather jacket",
       "distinctive_features": "leather field bag, binoculars, foundation blue trim"
     }

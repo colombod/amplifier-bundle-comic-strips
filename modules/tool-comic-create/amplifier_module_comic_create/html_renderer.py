@@ -434,8 +434,11 @@ def _render_panel(panel_def: dict[str, Any], resolved: dict[str, str]) -> str:
     overlays_html = "".join(
         render_overlay_svg(ov) for ov in panel_def.get("overlays", [])
     )
+    # Pass panel shape to CSS via data attribute (enables clip-path transforms)
+    shape = panel_def.get("shape", "")
+    shape_attr = f' data-shape="{_html.escape(shape)}"' if shape else ""
     return (
-        f'<div class="panel">'
+        f'<div class="panel"{shape_attr}>'
         f'<img src="{data_uri}" alt="Comic panel" />'
         f"{overlays_html}"
         f"</div>"
@@ -457,7 +460,7 @@ def _render_page(
         f'<section class="page story-page" data-page="{page_idx}" '
         f'style="display:none;">'
         f'<div class="panel-grid {layout_class}" '
-        f'style="display:grid;{grid_css};gap:8px;width:100%;">'
+        f'style="display:grid;{grid_css};">'
         f"{panels_html}"
         f"</div>"
         f"</section>"
@@ -505,25 +508,40 @@ def _render_character_intro(
     resolved: dict[str, str],
     page_idx: int,
 ) -> str:
-    """Render the character introduction page."""
+    """Render a rich character introduction page.
+
+    Shows each character with their portrait, role, and backstory — not
+    just name and design notes.  Falls back gracefully if ``role`` or
+    ``backstory`` aren't provided (uses ``description`` as fallback).
+    """
     cards = ""
     for char in characters:
         name = _html.escape(char.get("name", ""))
-        description = _html.escape(char.get("description", ""))
+        # Prefer backstory fields over raw description (which is often design notes)
+        role = _html.escape(char.get("role", ""))
+        backstory = _html.escape(
+            char.get("backstory", "")
+            or char.get("background", "")
+            or char.get("description", "")
+        )
         uri = char.get("uri", "")
         data_uri = resolved.get(uri, "")
         img_tag = f'<img src="{data_uri}" alt="{name}" />' if data_uri else ""
+        role_tag = f'<p class="char-role">{role}</p>' if role else ""
         cards += (
             f'<div class="char-card">'
-            f"{img_tag}"
+            f'<div class="char-portrait">{img_tag}</div>'
+            f'<div class="char-info">'
             f'<h3 class="char-name">{name}</h3>'
-            f'<p class="char-desc">{description}</p>'
+            f"{role_tag}"
+            f'<p class="char-desc">{backstory}</p>'
+            f"</div>"
             f"</div>"
         )
 
     return (
         f'<section class="page character-intro-page" data-page="{page_idx}" style="display:none;">'
-        f'<h2 class="intro-heading">Meet the Characters</h2>'
+        f'<h2 class="intro-heading">Cast</h2>'
         f'<div class="char-grid">{cards}</div>'
         f"</section>"
     )
@@ -534,10 +552,11 @@ def _render_character_intro(
 # ---------------------------------------------------------------------------
 
 _NAV_CSS = """\
-/* --- Comic Page System --- */
-/* All pages use a consistent comic-book portrait ratio (2:3).
-   Panels fill their grid cells via object-fit:cover.
-   Cover image fills the entire page; title/subtitle overlay on it. */
+/* === COMIC PAGE SYSTEM ===
+   All pages: consistent 2:3 portrait ratio.
+   Panels: zero-gap, edge-to-edge, overlapping via CSS grid areas.
+   Cover: full-bleed image with overlaid title.
+   Character intro: cinematic horizontal layout with backstory.         */
 
 body {
   margin: 0;
@@ -552,7 +571,7 @@ body {
   padding: 0 8px;
 }
 
-/* ---- Consistent page container ---- */
+/* ======== CONSISTENT PAGE CONTAINER ======== */
 .page {
   box-sizing: border-box;
   width: 100%;
@@ -565,13 +584,11 @@ body {
   margin-bottom: 0;
 }
 .story-page {
-  padding: 10px;
+  padding: 0;  /* panels go edge-to-edge */
 }
 
-/* ---- Cover page ---- */
-.cover-page {
-  padding: 0;
-}
+/* ======== COVER PAGE ======== */
+.cover-page { padding: 0; }
 .cover-image-wrap {
   width: 100%;
   height: 100%;
@@ -629,8 +646,7 @@ body {
   backdrop-filter: blur(4px);
 }
 .cover-branding img {
-  width: 32px;
-  height: 32px;
+  width: 32px; height: 32px;
   border-radius: 50%;
   border: 1px solid rgba(255,255,255,0.3);
 }
@@ -642,19 +658,22 @@ body {
   text-shadow: 1px 1px 2px rgba(0,0,0,0.6);
 }
 
-/* ---- Panel grid (fills page) ---- */
+/* ======== PANEL GRID — EDGE-TO-EDGE, ZERO DEAD SPACE ======== */
 .panel-grid {
   width: 100%;
   height: 100%;
+  gap: 3px;                          /* hair-thin gutter — like printed comics */
+  background: var(--panel-border, #e94560);  /* gutter color = border color */
 }
 .panel {
   position: relative;
-  border: 2px solid var(--panel-border, #e94560);
-  border-radius: var(--panel-border-radius, 4px);
   overflow: hidden;
   background: #000;
   min-height: 0;
   min-width: 0;
+  /* No border on individual panels — the grid gap IS the border */
+  border: none;
+  border-radius: 0;
 }
 .panel img {
   width: 100%;
@@ -663,24 +682,41 @@ body {
   object-fit: cover;
 }
 
-/* ---- Dramatic composition layout modifiers ---- */
+/* ======== DRAMATIC LAYOUT MODIFIERS ========
+   These use grid-column/grid-row spanning to create asymmetric,
+   overlapping, and visually dynamic page compositions.           */
+
+/* -- Establishing shot + supporting grid -- */
 .layout-wide_establishing_plus_grid .panel:first-child { grid-column: 1 / -1; }
+
+/* -- Crescendo: full-width bookends around center detail -- */
 .layout-crescendo .panel:first-child { grid-column: 1 / -1; }
 .layout-crescendo .panel:last-child { grid-column: 1 / -1; }
-.layout-spotlight .panel:first-child { grid-row: 1 / 3; }
-.layout-cliffhanger .panel:last-child { grid-column: 1 / -1; }
-.layout-dramatic_reveal .panel:last-child { grid-column: 1 / -1; }
-.layout-hero_plus_grid .panel:first-child { grid-column: 1 / -1; }
-.layout-t_shape .panel:first-child { grid-column: 1 / -1; }
-.layout-splash_plus_strip .panel:last-child { grid-column: 1 / -1; }
 
-/* ---- Manga layout modifiers ---- */
+/* -- Spotlight: hero panel dominates left column -- */
+.layout-spotlight .panel:first-child { grid-row: 1 / 3; }
+
+/* -- Cliffhanger: dramatic wide bottom panel -- */
+.layout-cliffhanger .panel:last-child { grid-column: 1 / -1; }
+
+/* -- Dramatic reveal: small top row, wide reveal below -- */
+.layout-dramatic_reveal .panel:last-child { grid-column: 1 / -1; }
+
+/* -- Hero splash then grid -- */
+.layout-hero_plus_grid .panel:first-child { grid-column: 1 / -1; }
+
+/* -- T-shape: wide top + columns below -- */
+.layout-t_shape .panel:first-child { grid-column: 1 / -1; }
+
+/* -- Splash + strip footer -- */
+.layout-splash_plus_strip .panel:first-child { grid-column: 1 / -1; }
+
+/* ======== MANGA LAYOUT MODIFIERS ======== */
 .layout-manga_action .panel:first-child { grid-row: 1 / 3; }
 .layout-manga_dramatic .panel:nth-child(2) { grid-row: 1 / 3; }
 .layout-manga_impact .panel:first-child { grid-column: 1 / -1; }
-.layout-manga_split .panel:nth-child(odd) { border-right: none; }
 
-/* ---- Professional layout modifiers ---- */
+/* ======== PROFESSIONAL LAYOUT MODIFIERS ======== */
 .layout-l_shape .panel:first-child { grid-row: 1 / 3; }
 .layout-asymmetric_3 .panel:first-child { grid-row: 1 / 3; }
 .layout-diagonal_energy .panel:last-child { grid-column: 1 / -1; }
@@ -688,57 +724,109 @@ body {
 .layout-bookend .panel:nth-child(2) { grid-row: 1 / 3; }
 .layout-widescreen_stack .panel:last-child { grid-column: 1 / -1; }
 
+/* ======== PANEL SHAPE TRANSFORMS ========
+   Applied via data-shape attribute on .panel divs.
+   These break the rectangular grid visually with CSS clip-path. */
+.panel[data-shape="diagonal"]     { clip-path: polygon(0 0, 100% 5%, 100% 95%, 0 100%); }
+.panel[data-shape="reverse-diag"] { clip-path: polygon(0 5%, 100% 0, 100% 100%, 0 95%); }
+.panel[data-shape="wedge"]        { clip-path: polygon(8% 0, 100% 0, 92% 100%, 0 100%); }
+.panel[data-shape="pointed"]      { clip-path: polygon(0 0, 100% 0, 95% 100%, 5% 100%); }
+.panel[data-shape="irregular"]    { clip-path: polygon(3% 0, 100% 2%, 97% 100%, 0 98%); }
+.panel[data-shape="circle"]       { clip-path: circle(45% at 50% 50%); }
+.panel[data-shape="rounded"]      { clip-path: inset(0 round 12px); border-radius: 12px; }
+
+/* Bleed: panel extends beyond its grid cell for dramatic overflow */
+.panel[data-shape="bleed"] {
+  margin: -6px;
+  z-index: 2;
+  box-shadow: 0 0 20px rgba(0,0,0,0.7);
+}
+
 .bubble-overlay {
   position: absolute;
 }
 
-/* ---- Character intro ---- */
+/* ======== CHARACTER INTRO — CINEMATIC CAST PAGE ======== */
 .character-intro-page {
   color: #fff;
-  padding: 24px 16px;
+  padding: 20px 16px;
   display: flex;
   flex-direction: column;
 }
 .intro-heading {
   text-align: center;
   font-family: var(--bubble-font, 'Bangers', cursive);
-  font-size: 2.2em;
-  margin: 0 0 16px 0;
-  letter-spacing: 0.03em;
+  font-size: 2.4em;
+  margin: 0 0 12px 0;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   flex-shrink: 0;
 }
 .char-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   flex: 1;
-  align-content: center;
+  justify-content: center;
+  overflow: hidden;
 }
 .char-card {
-  text-align: center;
-  background: rgba(255,255,255,0.06);
-  border-radius: 8px;
-  padding: 10px;
-  border: 1px solid rgba(255,255,255,0.1);
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  background: rgba(255,255,255,0.04);
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  min-height: 0;
+  flex: 1;
 }
-.char-card img {
+.char-portrait {
+  flex: 0 0 90px;
+  overflow: hidden;
+}
+.char-portrait img {
   width: 100%;
-  border-radius: 4px;
-  aspect-ratio: 3 / 4;
+  height: 100%;
   object-fit: cover;
+  display: block;
+}
+.char-info {
+  flex: 1;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
 }
 .char-name {
-  margin: 8px 0 4px;
+  margin: 0 0 2px 0;
   font-family: var(--bubble-font, 'Bangers', cursive);
-  font-size: 1.1em;
+  font-size: 1.15em;
+  letter-spacing: 0.04em;
+  color: var(--panel-border, #e94560);
+}
+.char-role {
+  margin: 0 0 3px 0;
+  font-size: 0.75em;
+  color: rgba(255,255,255,0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 600;
 }
 .char-desc {
-  font-size: 0.8em;
+  font-size: 0.72em;
   color: #bbb;
-  line-height: 1.3;
+  line-height: 1.35;
+  margin: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
 }
 
-/* ---- Navigation bar ---- */
+/* ======== NAVIGATION BAR ======== */
 .nav-bar {
   display: flex;
   align-items: center;
@@ -769,8 +857,7 @@ body {
   align-items: center;
 }
 .page-dot {
-  width: 10px;
-  height: 10px;
+  width: 10px; height: 10px;
   border-radius: 50%;
   background: rgba(255,255,255,0.3);
   cursor: pointer;

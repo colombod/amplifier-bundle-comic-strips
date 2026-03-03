@@ -263,6 +263,7 @@ Your output MUST be a single structured JSON block in this exact format. `parse_
       "bundle": "foundation",
       "existing_uri": "comic://my-project/characters/the_explorer",
       "needs_redesign": false,
+      "backstory": "A seasoned pathfinder who maps uncharted codebases. First to enter unknown territory, last to leave. Trusts her instincts over documentation — and she's usually right.",
       "description": "A seasoned scout in a worn leather jacket with a compass pendant. Alert eyes constantly scanning the environment. Foundation team blue accent on jacket shoulder."
     },
     {
@@ -272,6 +273,7 @@ Your output MUST be a single structured JSON block in this exact format. `parse_
       "bundle": "foundation",
       "existing_uri": null,
       "needs_redesign": false,
+      "backstory": "Obsessive tracker who sees patterns where others see noise. Once followed a null pointer through twelve modules. Doesn't rest until the root cause surrenders.",
       "description": "A sharp-eyed tracker with a magnifying glass holstered at the hip. Wears a detective-style coat with foundation team blue accent on the lapel."
     }
   ]
@@ -287,6 +289,7 @@ Use `panel_list` and `character_list` as the only canonical arrays — do NOT al
 - `bundle`: **Required.** The Amplifier bundle the agent belongs to (e.g., "foundation", "stories", "comic-strips")
 - `existing_uri`: **Required.** The `comic://` URI of an existing character to reuse, or `null` if this is a new character. When set, character-designer will skip generation and reuse the existing reference sheet.
 - `needs_redesign`: **Required.** `false` by default. Set to `true` only when an existing character needs a style update for this issue. When `true`, also include `redesign_reason` explaining why (e.g., "style update from superhero to manga").
+- `backstory`: **Required.** 1-2 sentence character biography for the reader — who they are, what drives them, their personality. This is displayed on the character intro page. Write as narrative prose, NOT as design notes. Example: "A seasoned pathfinder who maps uncharted codebases. Trusts her instincts over documentation — and she's usually right."
 - `description`: Visual description for the character-designer — appearance, clothing, team markers, distinguishing features
 
 **Panel fields (`panel_list` entries):**

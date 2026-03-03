@@ -24,20 +24,6 @@ meta:
     </example>
   model_role: [creative, general]
 
-provider_preferences:
-  - provider: anthropic
-    model: claude-sonnet-*
-  - provider: openai
-    model: gpt-5.[0-9]
-  - provider: google
-    model: gemini-*-pro-preview
-  - provider: google
-    model: gemini-*-pro
-  - provider: github-copilot
-    model: claude-sonnet-*
-  - provider: github-copilot
-    model: gpt-5.[0-9]
-
 tools:
   - module: tool-comic-assets
     source: git+https://github.com/colombod/amplifier-bundle-comic-strips@main#subdirectory=modules/tool-comic-assets
@@ -122,15 +108,30 @@ Also load the layout patterns reference:
 read_file("@comic-strips:context/layout-patterns.md")
 ```
 
-### Step 4: Character Selection
+### Step 4: Character Selection (with Reuse)
 
-Analyze the narrative's character list and the original research data to select the cast:
+**Before selecting characters, check for existing ones in the project:**
+
+```
+comic_character(action='list', project='{{project_id}}')
+```
+
+This returns all previously designed characters with their metadata (name, visual_traits, distinctive_features, team_markers, style, version, uri).
+
+**Reuse rules:**
+1. **Exact match**: If a session agent maps to an existing character (same role/function), REUSE that character. Include their existing `uri` in the character_list — do NOT request a redesign.
+2. **Style mismatch**: If a character exists but in a different style (e.g., character was designed for superhero style but this issue uses manga), mark them for **style refinement** — set `needs_redesign: true` and `redesign_reason: "style update"` in the character_list entry.
+3. **New character**: If no existing character matches a session agent, include them as a new character with `existing_uri: null` and `needs_redesign: false` (default).
+4. **Retired characters**: If existing characters don't appear in this issue's story, simply omit them from the character_list. They remain in the project for future issues.
+
+**After the reuse check, select the cast from the narrative:**
 
 1. **Select 3-4 main characters**: The agents who drove the narrative arc — those involved in the Challenge, Approach, and Results. They appear in most panels.
 2. **Select 1-2 supporting characters**: Agents with one meaningful moment (a breakthrough or failure) who appear in 1-2 panels only.
 3. **Cut everyone else**: Agents mentioned in passing or who did routine work. No padding the cast.
 4. **Map bundle membership**: Read each agent's bundle from the research data. Agents from the same bundle share visual team markers (see comic-storytelling skill for the Bundle-as-Affiliation table).
 5. **Antagonists are ENVIRONMENTAL THREATS**, not characters. Errors, rate limits, and failures are walls, storms, and barriers — NOT characters with portraits or dialogue.
+6. **For each selected character**, check the existing roster from the reuse check above and set the appropriate fields (`existing_uri`, `needs_redesign`).
 
 ### Step 4.5: Saga Assessment
 
@@ -260,6 +261,8 @@ Your output MUST be a single structured JSON block in this exact format. `parse_
       "role": "protagonist",
       "type": "main",
       "bundle": "foundation",
+      "existing_uri": "comic://my-project/characters/the_explorer",
+      "needs_redesign": false,
       "description": "A seasoned scout in a worn leather jacket with a compass pendant. Alert eyes constantly scanning the environment. Foundation team blue accent on jacket shoulder."
     },
     {
@@ -267,6 +270,8 @@ Your output MUST be a single structured JSON block in this exact format. `parse_
       "role": "specialist",
       "type": "supporting",
       "bundle": "foundation",
+      "existing_uri": null,
+      "needs_redesign": false,
       "description": "A sharp-eyed tracker with a magnifying glass holstered at the hip. Wears a detective-style coat with foundation team blue accent on the lapel."
     }
   ]
@@ -280,6 +285,8 @@ Use `panel_list` and `character_list` as the only canonical arrays — do NOT al
 - `role`: Story role (protagonist, specialist, mentor, supporting)
 - `type`: **Required.** `"main"` (3-4 max, appear in most panels) or `"supporting"` (1-2, appear in 1-2 panels)
 - `bundle`: **Required.** The Amplifier bundle the agent belongs to (e.g., "foundation", "stories", "comic-strips")
+- `existing_uri`: **Required.** The `comic://` URI of an existing character to reuse, or `null` if this is a new character. When set, character-designer will skip generation and reuse the existing reference sheet.
+- `needs_redesign`: **Required.** `false` by default. Set to `true` only when an existing character needs a style update for this issue. When `true`, also include `redesign_reason` explaining why (e.g., "style update from superhero to manga").
 - `description`: Visual description for the character-designer — appearance, clothing, team markers, distinguishing features
 
 **Panel fields (`panel_list` entries):**

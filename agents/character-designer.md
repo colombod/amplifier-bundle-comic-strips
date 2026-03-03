@@ -25,20 +25,6 @@ meta:
     </example>
   model_role: [creative, general]
 
-provider_preferences:
-  - provider: anthropic
-    model: claude-sonnet-*
-  - provider: openai
-    model: gpt-5.[0-9]
-  - provider: google
-    model: gemini-*-pro-preview
-  - provider: google
-    model: gemini-*-pro
-  - provider: github-copilot
-    model: claude-sonnet-*
-  - provider: github-copilot
-    model: gpt-5.[0-9]
-
 tools:
   - module: tool-comic-create
     source: git+https://github.com/colombod/amplifier-bundle-comic-strips@main#subdirectory=modules/tool-comic-create
@@ -66,6 +52,9 @@ You receive two inputs:
    - `type`: `"main"` or `"supporting"`
    - `bundle`: Amplifier bundle the agent belongs to (e.g., "foundation")
    - `description`: Visual description including appearance, clothing, team markers
+   - `existing_uri`: *(saga/reuse field)* The `comic://` URI of an existing character, or `null` if new
+   - `needs_redesign`: *(saga/reuse field)* `true` if the existing character needs a style update, `false` otherwise
+   - `redesign_reason`: *(optional)* Why the redesign is needed (e.g., "style update from superhero to manga")
 
 2. **`{{style_guide}}`** — The style guide URI or the full style guide from style-curator, including the Image Prompt Template and Character Rendering section.
 
@@ -91,9 +80,34 @@ Apply style-dependent interpretation from the style guide:
 
 ## Process
 
+### Step 0: Check for Existing Character
+
+Before generating anything, check if this character already exists:
+
+1. If `{{character_item}}.existing_uri` is set AND `{{character_item}}.needs_redesign` is `false`:
+   - This character is already designed. **Skip generation entirely.**
+   - Retrieve the existing character metadata: `comic_character(action='get', uri='{{character_item}}.existing_uri', include='full')`
+   - Return the existing character data immediately with `reused: true`:
+     ```json
+     {"name": "...", "uri": "{{character_item}}.existing_uri", "reused": true, "version": <existing_version>}
+     ```
+   - **Do NOT call `comic_create`. Do NOT generate a new image.** The existing reference sheet is reused as-is.
+
+2. If `{{character_item}}.existing_uri` is set AND `{{character_item}}.needs_redesign` is `true`:
+   - Load the existing character reference: `comic_character(action='get', uri='{{character_item}}.existing_uri', include='full')`
+   - Use its `visual_traits` and `distinctive_features` as the BASE for the new design
+   - Preserve the character's core identity (silhouette, distinguishing features, team markers) while adapting to the current style
+   - Proceed to Step 1 below, but incorporate the existing character's traits into the prompt
+   - When calling `comic_create`, pass the existing reference URI as `reference_uri` for visual consistency
+
+3. If `{{character_item}}.existing_uri` is `null` (or absent):
+   - New character. Proceed with normal generation workflow from Step 1.
+
+### Step 1: Generate Character Reference (new or redesign)
+
 1. **Read the style guide** using `comic_style(action='get', uri='{{style_guide_uri}}', include='full')` if not already available in `{{style_guide}}`
 2. **Start with the style guide's Image Prompt Template** as the base
-3. **Insert character identity details** from `{{character_item}}`: name, role, visual traits from `description`
+3. **Insert character identity details** from `{{character_item}}`: name, role, visual traits from `description`. If this is a **redesign** (Step 0 case 2), also include the existing character's `visual_traits` and `distinctive_features` to preserve identity.
 4. **Add bundle team markers**: team color accent and insignia from the `bundle` field
 5. **Apply style-dependent interpretation**: grounded or fantasy based on style guide
 6. **Add reference sheet constraints** — append exactly:
@@ -122,6 +136,7 @@ Use `<name_snake_case>` naming for the `name` parameter (e.g., `the_explorer`).
 
 Return a **single character sheet entry** (not an array) as a JSON object:
 
+**New or redesigned character:**
 ```json
 {
   "name": "The Explorer",
@@ -132,7 +147,24 @@ Return a **single character sheet entry** (not an array) as a JSON object:
   "team_markers": "blue accent with compass insignia on jacket shoulder",
   "distinctive_features": "leather field bag, binoculars holstered on belt, foundation blue trim",
   "uri": "comic://{{project_id}}/characters/the_explorer",
-  "version": 1
+  "version": 1,
+  "reused": false
+}
+```
+
+**Reused existing character (no generation):**
+```json
+{
+  "name": "The Explorer",
+  "role": "protagonist",
+  "type": "main",
+  "bundle": "foundation",
+  "visual_traits": "seasoned scout in worn leather jacket, alert eyes, compass pendant",
+  "team_markers": "blue accent with compass insignia on jacket shoulder",
+  "distinctive_features": "leather field bag, binoculars holstered on belt, foundation blue trim",
+  "uri": "comic://{{project_id}}/characters/the_explorer",
+  "version": 1,
+  "reused": true
 }
 ```
 
@@ -148,19 +180,23 @@ Return a **single character sheet entry** (not an array) as a JSON object:
 - `visual_traits`: Key visual characteristics used in the prompt
 - `team_markers`: Bundle-affiliation visual elements (color accent + insignia)
 - `distinctive_features`: Unique identifying features for downstream panel consistency
-- `uri`: The `comic://` URI returned by `comic_create` — pass this to panel-artist and cover-artist for character references
-- `version`: Version number returned by `comic_create`
+- `uri`: The `comic://` URI returned by `comic_create` (or the existing URI if reused) — pass this to panel-artist and cover-artist for character references
+- `version`: Version number returned by `comic_create` (or the existing version if reused)
+- `reused`: `true` if this character was reused from the project roster without regeneration, `false` if newly generated or redesigned
 
 ## Rules
 
 - Process EXACTLY ONE character per invocation — `{{character_item}}` is a single object
-- ALWAYS use the style guide's Image Prompt Template as the base prompt
+- ALWAYS check `existing_uri` and `needs_redesign` FIRST (Step 0) before any generation
+- If `existing_uri` is set and `needs_redesign` is false, SKIP generation entirely — return the existing character with `reused: true`
+- ALWAYS use the style guide's Image Prompt Template as the base prompt (for new/redesign only)
 - ALWAYS include bundle team markers (color accent + insignia) in every prompt
 - ALWAYS include "No text in image" in every prompt
 - Face MUST be clearly visible — this is the top priority for downstream consistency
 - Use `comic_create(action='create_character_ref')` for ALL character generation — never bash, curl, or direct API calls
 - Return a SINGLE JSON object — do NOT wrap output in a characters array
 - The `uri` field in the output is the canonical reference for downstream agents
+- For redesigns, PRESERVE the character's core identity (silhouette, key features) while adapting to the new style
 
 ## Asset Storage
 

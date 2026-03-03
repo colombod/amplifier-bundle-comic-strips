@@ -69,6 +69,13 @@ _DEFAULT_STYLE_CSS = """\
 """
 
 # ---------------------------------------------------------------------------
+# AmpliVerse branding
+# ---------------------------------------------------------------------------
+
+_AMPLIVERSE_LOGO_URL = "https://github.com/microsoft-amplifier.png"
+_AMPLIVERSE_PUBLISHER = "AmpliVerse"
+
+# ---------------------------------------------------------------------------
 # SVG bubble helpers
 # ---------------------------------------------------------------------------
 
@@ -439,9 +446,21 @@ def _render_cover(
     title_block = f'<h1 class="cover-title">{title}</h1>' if title else ""
     subtitle_block = f'<p class="cover-subtitle">{subtitle}</p>' if subtitle else ""
 
+    # Branding
+    branding = cover_info.get("branding", "")
+    branding_html = ""
+    if branding:
+        branding_html = (
+            f'<div class="cover-branding">'
+            f'<img src="{_AMPLIVERSE_LOGO_URL}" alt="{_html.escape(branding)} logo" />'
+            f"<span>{_html.escape(branding)}</span>"
+            f"</div>"
+        )
+
     return (
         f'<section class="page cover-page" data-page="{page_idx}" style="display:none;">'
         f'<div class="cover-image-wrap">'
+        f"{branding_html}"
         f'<img src="{data_uri}" alt="Cover" />'
         f"{title_block}{subtitle_block}"
         f"</div>"
@@ -528,6 +547,31 @@ body {
   color: #ddd;
   text-align: center;
   margin-top: 8px;
+}
+.cover-branding {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0,0,0,0.5);
+  padding: 6px 12px 6px 6px;
+  border-radius: 6px;
+  z-index: 10;
+}
+.cover-branding img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.3);
+}
+.cover-branding span {
+  color: #fff;
+  font-family: var(--bubble-font, 'Bangers', cursive);
+  font-size: 0.9em;
+  letter-spacing: 0.05em;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.6);
 }
 .panel-grid {
   width: 100%;

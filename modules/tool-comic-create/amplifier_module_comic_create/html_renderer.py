@@ -658,12 +658,14 @@ body {
   text-shadow: 1px 1px 2px rgba(0,0,0,0.6);
 }
 
-/* ======== PANEL GRID — EDGE-TO-EDGE, ZERO DEAD SPACE ======== */
+/* ======== PANEL GRID — 100% PAGE COVERAGE ======== */
 .panel-grid {
   width: 100%;
   height: 100%;
   gap: 3px;                          /* hair-thin gutter — like printed comics */
   background: var(--panel-border, #e94560);  /* gutter color = border color */
+  grid-auto-rows: 1fr;               /* overflow rows MUST stretch to fill page */
+  grid-auto-columns: 1fr;            /* overflow cols MUST stretch to fill page */
 }
 .panel {
   position: relative;

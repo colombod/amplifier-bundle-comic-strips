@@ -237,7 +237,7 @@ stages:
           Do NOT read files, do NOT curate styles, do NOT do anything else. Just call the tool and return.
         output: "project_init"
         parse_json: true
-        timeout: 120
+        timeout: 120  # init-project: single tool call + return
 
       # ============================================
       # STEP 1: RESEARCH - Data Extraction
@@ -288,7 +288,7 @@ stages:
           Your entire output should be just the URI string, e.g.:
           comic://e2e-real-test/issues/issue-001/research/session-analysis?v=1
         output: "research_data"
-        timeout: 600
+        timeout: 900  # research: session analysis + store asset (~8-12 min for large sessions)
 
       # ============================================
       # STEP 2: STYLE CURATION
@@ -312,7 +312,7 @@ stages:
           Do NOT return the full style guide text — just the URI string.
           Downstream agents will load the style guide content via comic_style(action='get', uri=<uri>) when needed.
         output: "style_guide"
-        timeout: 300
+        timeout: 300  # style-curation: load style pack + store (~2-3 min)
 
       # ============================================
       # STEP 3: STORYBOARD
@@ -375,7 +375,7 @@ stages:
           comic_asset(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', type='storyboard', name='storyboard', content=<your storyboard output>)
         output: "storyboard"
         parse_json: true
-        timeout: 1200
+        timeout: 1800  # storyboard: delegates to 2 stories agents + JSON production (~12-20 min)
 
     # ------------------------------------------------------------------
     # APPROVAL GATE: Storyboard Review
@@ -453,7 +453,7 @@ stages:
           (e.g., "comic://proj/characters/the-explorer").
           Do NOT return JSON objects, image paths, or base64 data.
         collect: "character_uris"
-        timeout: 900
+        timeout: 600  # per character: generate + store (~3-5 min each)
 
       # ============================================
       # STEP 5a: ART GENERATION - Panel Art (foreach per panel)
@@ -504,7 +504,7 @@ stages:
           (e.g., "comic://proj/issues/issue-001/panels/panel_03").
           Do NOT return JSON objects, image paths, or base64 data.
         collect: "panel_results"
-        timeout: 1200
+        timeout: 600  # per panel: generate + self-review + possible retry (~3-5 min each)
 
       # ============================================
       # STEP 5b: ART GENERATION - Cover Art
@@ -550,7 +550,7 @@ stages:
           (e.g., "comic://proj/issues/issue-001/covers/cover").
           Do NOT return HTML, base64 data, or image paths.
         output: "cover_results"
-        timeout: 900
+        timeout: 600  # cover: generate + self-review + possible retry (~3-5 min)
 
       # ============================================
       # STEP 6: COMPOSITION + QA + CLEANUP
@@ -604,4 +604,4 @@ stages:
 
           Do NOT delete intermediate files. All assets are managed by the asset manager.
         output: "final_output"
-        timeout: 1200
+        timeout: 2400  # composition: review all panels via vision + build layout + assemble HTML + visual QA (~20-35 min)

@@ -178,6 +178,10 @@ class ComicImageGenTool:
         # Later assignments override earlier ones, so explicit_model / requirements
         # take precedence over preferred_provider.
         target_type: str | None = None
+        # hard_target=True when the target came from a *known* model's provider entry.
+        # In that case the model is only valid on that specific backend — we must NOT
+        # fall back to a different provider (e.g. Imagen → OpenAI).
+        hard_target: bool = False
         if preferred_provider:
             target_type = _PROVIDER_TO_BACKEND_TYPE.get(preferred_provider.lower())
 
@@ -186,6 +190,9 @@ class ComicImageGenTool:
             entry = MODEL_MAP.get(explicit_model)
             if entry is not None:
                 target_type = _PROVIDER_TO_BACKEND_TYPE.get(entry.provider)
+                hard_target = (
+                    True  # known model → hard constraint, no cross-provider fallback
+                )
         elif requirements is not None:
             available_providers: list[str] = []
             for b in backends:
@@ -210,13 +217,28 @@ class ComicImageGenTool:
             if selection.provider is not None:
                 target_type = _PROVIDER_TO_BACKEND_TYPE.get(selection.provider)
 
-        # Build ordered backend list: target provider first, others as fallback.
+        # Build ordered backend list.
         target = backend_by_type.get(target_type) if target_type is not None else None
-        ordered_backends = (
-            [target, *(b for b in backends if b is not target)]
-            if target is not None
-            else backends
-        )
+
+        # Hard-target: explicit model maps to a known provider → restrict to that
+        # backend only.  Never fall back across provider families; an Imagen model
+        # on the OpenAI backend (or vice-versa) is always an error.
+        if hard_target:
+            if target is not None:
+                ordered_backends: list[Any] = [target]
+            else:
+                return ToolResult(
+                    success=False,
+                    output=(
+                        f"Model '{explicit_model}' requires a '{target_type}' backend "
+                        f"but none is available "
+                        f"(registered backends: {sorted(backend_by_type) or 'none'})."
+                    ),
+                )
+        elif target is not None:
+            ordered_backends = [target, *(b for b in backends if b is not target)]
+        else:
+            ordered_backends = backends
 
         errors: list[str] = []
         for backend in ordered_backends:

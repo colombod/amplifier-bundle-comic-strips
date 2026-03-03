@@ -50,6 +50,7 @@ def _detect_mime(image_bytes: bytes) -> str:
         return "image/webp"
     return "image/png"  # fallback
 
+
 _RETRYABLE: tuple[type[Exception], ...] = (
     openai.RateLimitError,
     openai.APIStatusError,
@@ -246,6 +247,9 @@ class OpenAIImageBackend:
         # gpt-image-1 always returns base64; doesn't accept response_format.
         # Defensive: _call_edit is only invoked when model is in _EDIT_CAPABLE_MODELS,
         # so this branch is currently unreachable — kept for future call-site safety.
-        if model not in _EDIT_CAPABLE_MODELS:
+        # Uses _DALLE_RESPONSE_FORMAT_MODELS (not a broad "not-edit-capable" check)
+        # so that response_format is ONLY ever sent for DALL-E 3, never for unknown
+        # or Google Imagen models that may reach this path in future refactors.
+        if model in _DALLE_RESPONSE_FORMAT_MODELS:
             kwargs["response_format"] = "b64_json"
         return await self.client.images.edit(**kwargs)

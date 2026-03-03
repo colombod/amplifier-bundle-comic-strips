@@ -1,12 +1,35 @@
 name: "session-to-comic"
 description: "Transform an Amplifier session into an illustrated comic strip with quality review, character consistency, dramatized storytelling, and AmpliVerse publisher branding"
-version: "7.2.0"
+version: "7.3.0"
 author: "amplifier-comic-strips"
 tags: ["comic", "visual-storytelling", "session-analysis", "uri-protocol"]
 
 # =============================================================================
 # CHANGELOG
 # =============================================================================
+#
+# v7.3.0 (2026-03-02):
+#   - FIX: Store research as asset, flow only the URI through recipe context.
+#     ROOT CAUSE: {{research_data}} carried the full session analysis (~500K+
+#     tokens) through every downstream step. By panel iteration 4, context
+#     reached 1.9M tokens.
+#   - CHANGE: research step now stores research JSON via comic_asset and
+#     returns ONLY the URI string (e.g. comic://proj/issues/i/research/session-analysis).
+#     {{research_data}} in all downstream steps is now a ~70-byte URI, not a
+#     full JSON blob.
+#   - CHANGE: storyboard step retrieves research on demand:
+#     comic_asset(action='get', uri='{{research_data}}', include='full')
+#   - CHANGE: style-curation step no longer receives {{research_data}} — style
+#     selection is driven by the {{style}} parameter, not raw research content.
+#   - CHANGE: generate-cover step no longer receives {{research_data}} — cover
+#     title and theme come from {{storyboard.title}} / {{storyboard.subtitle}}.
+#   - CHANGE: storyboard-writer agent updated: retrieves research via URI in
+#     Step 0 before delegating to stories agents; scene descriptions capped at
+#     2-3 sentences; camera angles must be a single term; dialogue is exact
+#     spoken lines only (no stage directions).
+#   - NOTE: {{storyboard}} remains a parsed JSON object (parse_json: true) for
+#     foreach loop access. Storyboard JSON is a compact spec (~5-15 KB for
+#     8 panels) — no URI indirection needed.
 #
 # v7.2.0 (2026-03-02):
 #   - FIX: Remove rate_limit step-level field (not in schema) from design-characters
@@ -228,11 +251,16 @@ stages:
           - Quantified achievements (files created, tests passed, etc.)
           - Session duration and effort indicators
 
-          Output as structured JSON with: title, subtitle, timeline, key_moments, characters, metrics, outcome.
+          Produce structured JSON with: title, subtitle, timeline, key_moments, characters, metrics, outcome.
 
           Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}
-          If the comic_asset tool is available, store it using:
-          comic_asset(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', type='research', name='research', content=<your research output>)
+
+          Store the research JSON using:
+          comic_asset(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', type='research', name='session-analysis', content=<your structured research JSON>)
+
+          Then return ONLY the URI string from the store response. Do not return the full research content.
+          Your entire output should be just the URI string, e.g.:
+          comic://e2e-real-test/issues/issue-001/research/session-analysis?v=1
         output: "research_data"
         timeout: 600
 
@@ -245,9 +273,6 @@ stages:
           Define the visual style for this comic strip.
 
           Style requested: {{style}}
-
-          Research data (for context about the story):
-          {{research_data}}
 
           If "{{style}}" matches a predefined style name (manga, superhero, indie, newspaper, ligne-claire, retro-americana), load the corresponding style pack and adapt it for this specific story.
 
@@ -271,8 +296,9 @@ stages:
         prompt: |
           Create a panel-by-panel storyboard for this comic strip.
 
-          Research Data:
-          {{research_data}}
+          Research Data URI: {{research_data}}
+          Load the research data:
+          comic_asset(action='get', uri='{{research_data}}', include='full')
 
           Style Guide URI: {{style_guide}}
           Load the style guide content using: comic_style(action='get', uri='{{style_guide}}')
@@ -467,9 +493,6 @@ stages:
 
           Character URIs (pass featured characters directly to comic_create):
           {{character_uris}}
-
-          Research Data (for title and story tone):
-          {{research_data}}
 
           Call:
           comic_create(action='create_cover',

@@ -52,7 +52,7 @@ You produce panel-by-panel comic storyboards by working in two distinct phases: 
 ## Prerequisites
 
 - **Pipeline position**: Runs AFTER style-curator. Runs BEFORE character-designer, panel-artist, cover-artist, and strip-compositor.
-- **Required inputs**: (1) Structured research JSON from story-researcher with key moments, metrics, timeline, quotes, and characters. (2) Style guide from style-curator with visual conventions and panel layout rules.
+- **Required inputs**: (1) Research data URI from the recipe context (`research_data` variable). Retrieve the full content before use: `comic_asset(action='get', uri='<research_data_uri>', include='full')`. (2) Style guide URI from style-curator — retrieve via `comic_style(action='get', uri='<style_guide_uri>', include='full')`.
 - **Produces**: Storyboard JSON with panel sequence, scene descriptions, dialogue, captions, camera angles, page breaks, page layout structure (panel shapes and spatial arrangement informed by style guide conventions), and a curated character list (max 4 main + 2 supporting) that character-designer and panel-artist consume. The stored storyboard has a `comic://` URI in the response.
 
 ---
@@ -60,6 +60,16 @@ You produce panel-by-panel comic storyboards by working in two distinct phases: 
 ## Phase 1 — Delegate Narrative Creation
 
 In Phase 1 you hand the research data to stories bundle agents who are experts at narrative structure. You do NOT write the narrative yourself — you delegate.
+
+### Step 0: Retrieve Research Data (before delegating)
+
+The recipe provides a `research_data` URI, not the full JSON. Retrieve the content first:
+
+```
+comic_asset(action='get', uri='<research_data_uri>', include='full')
+```
+
+Use the returned `content` field as the research data for all delegation steps below.
 
 ### Step 1: Narrative Arc Selection (stories:content-strategist)
 
@@ -140,17 +150,18 @@ Record the chosen layout identifier in the panel sequence so strip-compositor ca
 
 Describe what you SEE, not what you know. Scene descriptions are for the image generator:
 
+- **2-3 sentences maximum** — enough for the panel-artist to generate the image, no more
 - Vivid, visual descriptions of the setting, characters, and action
 - Antagonists as environmental threats (walls of errors, storms of failures), NOT characters
 - Include character poses, expressions, and spatial relationships
 - Describe lighting, atmosphere, and mood
-- Reference the camera_angle for each panel (wide overhead, close-up, medium shot, low angle, etc.)
+- Reference the camera_angle for each panel using a **single term**: `wide-overhead`, `close-up`, `medium-shot`, `low-angle`, `bird-eye`
 
 ### Step 7: Transform Prose to Comic Dialogue
 
 Convert the narrative prose into comic-native text elements:
 
-- **Speech bubbles**: Natural character voice. Emotional reactions. Metaphorical language. NEVER raw data.
+- **Speech bubbles**: Natural character voice. Emotional reactions. Metaphorical language. NEVER raw data. **Exact dialogue lines only — no stage directions, no action descriptions inside bubbles.**
 - **Caption boxes**: Narrator voice providing factual anchors, time jumps, and context. This is where metrics and specifics go.
 - **Sound effects**: Action moments ("DEPLOY!", "CRASH!", "EUREKA!")
 - **Silent panels**: For emotional beats and dramatic pauses (no text needed)
@@ -284,13 +295,20 @@ These rules are NON-NEGOTIABLE. Every storyboard must follow them.
 - NEVER include raw session data in dialogue (UUIDs, file paths, token counts, error messages, JSON)
 - NEVER create character profiles for antagonists — they are environmental threats
 - Characters come from the session transcript ONLY — do not invent characters not present in the research data
-- Scene descriptions should be vivid and visual — describe what you SEE, not what you know
+- Scene descriptions MUST be 2-3 sentences maximum — longer descriptions bloat context for downstream agents
+- Camera angles MUST be a single term (`wide-overhead`, `close-up`, `medium-shot`, `low-angle`, `bird-eye`)
+- Dialogue entries are exact spoken lines only — no stage directions, no action beats, no parenthetical notes
 - Every character MUST have `type` ("main" or "supporting") and `bundle` fields
 - The final panel should have a satisfying conclusion or punchline
 - Maximum 4 main + 2 supporting characters (6 total)
 - All dialogue must sound natural — no character would say a UUID or file path out loud
 
 ## Asset Integration
+
+Retrieve the research data from the asset manager using the URI passed in recipe context:
+```
+comic_asset(action='get', uri='<research_data_uri>', include='full')
+```
 
 Read the style guide from the asset manager instead of relying on recipe context:
 ```

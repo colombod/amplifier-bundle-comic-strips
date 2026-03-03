@@ -130,13 +130,16 @@ Use `comic_create(action='review_asset')` to inspect the generated cover. Evalua
 3. **Are all character faces visible and unobstructed?** (Every face clearly rendered)
 4. **Is there space in the top third for title treatment?** (Clear sky, open space, or less-detailed area)
 5. **Is the composition compelling enough to make someone want to read the comic?** (Would this work as a movie poster?)
+6. **Do the cover characters match their reference sheets?** (Compare each character against the reference images — correct colors, outfit, features, and distinctive markers. Flag any character that looks different from their reference.)
+
+**CRITICAL: You MUST pass ALL character URIs from `{{character_sheet}}` as `reference_uris`.** The review model uses these reference images to verify visual consistency — without them, it cannot check whether the cover characters actually match the designed characters.
 
 ```
 comic_create(
   action='review_asset',
   uri='<cover uri from step 2>',
-  reference_uris=['<character uri 1>', '<character uri 2>', ...],
-  prompt='Evaluate: (1) Does this look like an actual comic book cover with dramatic energy? (2) Are main characters in dynamic, compelling poses? (3) Are all faces visible and unobstructed? (4) Is there open space in the top third for title overlay? (5) Is the composition compelling as a movie poster?'
+  reference_uris=['<ALL character URIs from {{character_sheet}}>'],
+  prompt='Evaluate: (1) Does this look like an actual comic book cover with dramatic energy? (2) Are main characters in dynamic, compelling poses? (3) Are all faces visible and unobstructed? (4) Is there open space in the top third for title overlay? (5) Is the composition compelling as a movie poster? (6) CRITICAL: Compare the cover characters to the reference images provided. Do the characters in the cover match the visual traits and distinctive features from the character reference sheets? Flag any character that looks different from their reference (wrong colors, wrong outfit, wrong features).'
 )
 ```
 
@@ -147,6 +150,7 @@ If the self-review fails on any criteria, adjust the prompt and call `comic_crea
 - **Not dramatic enough**: "The previous generation looked like a generic group illustration, not a comic book cover. Regenerate with more dynamic poses, dramatic lighting, and action energy. Characters should look heroic and engaged, not passive."
 - **Faces not visible**: "The previous generation had character faces obscured/cut off. Regenerate with all character faces clearly visible and facing the viewer."
 - **No space for title**: "The previous generation filled the top portion with detail. Regenerate with clear open space in the upper third for title text overlay."
+- **Characters don't match references**: "The previous generation has characters that don't match the reference sheets. Regenerate with characters matching EXACTLY the visual traits and distinctive features from the character reference images: [list specific mismatches]."
 
 Maximum 3 attempts total. Use the best result if all 3 fail.
 

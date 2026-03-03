@@ -118,7 +118,17 @@ async def test_assemble_comic_does_not_auto_store(service, tmp_path) -> None:
     layout = {
         "title": "Test Comic",
         "cover": {"uri": f"comic://{pid}/issues/{iid}/covers/cover"},
-        "pages": [],
+        "pages": [
+            {
+                "layout": "1x1",
+                "panels": [
+                    {
+                        "uri": f"comic://{pid}/issues/{iid}/panels/panel_01",
+                        "overlays": [],
+                    },
+                ],
+            },
+        ],
     }
 
     with patch.object(service, "store_asset", new_callable=AsyncMock) as mock_store:

@@ -258,6 +258,21 @@ comic_create(
 
 Returns: `{"output_path": "/path/to/final-comic.html", "pages": 4, "images_embedded": 12}`
 
+### Step 6b: Structural Verification
+
+After `assemble_comic` returns, verify the response **before** proceeding to visual QA:
+
+1. **Check for `warnings` field** — if present, review each warning. Warnings about missing images, unresolved URIs, or JS errors indicate the HTML may be broken.
+2. **Verify `images_embedded`** matches the expected count (panels + cover + character references). If the count is lower than expected, some `comic://` URIs failed to resolve — identify which ones and fix the layout JSON.
+3. **Verify `pages`** matches the expected page count (cover + character intro + story pages from your page structure in Step 3).
+
+If `assemble_comic` returned `success=false`, read the `errors` list carefully. Fix the layout JSON to address each error and retry `assemble_comic`. Common errors:
+- Unresolved `comic://` URIs — verify the URI format matches the asset manager entries
+- Missing required fields in layout JSON — check the schema
+- Image resolution failures — the source asset may not have been stored correctly
+
+**Do NOT proceed to visual QA (Step 7) if structural validation failed.** Fix all structural issues first.
+
 ### Step 7: Quality Review (Assembly Review)
 
 Delegate to `browser-tester:visual-documenter` with SPECIFIC quality criteria:
@@ -290,6 +305,9 @@ For each screenshot, evaluate against these SPECIFIC criteria:
 - Does navigation work (arrow keys, click zones, nav dots)?
 - Is the page count correct?
 - Rate the overall quality 1-10.
+
+**Navigation verification (REQUIRED):**
+After taking all screenshots, navigate to the LAST page using arrow keys or the Next button. Confirm ALL pages are reachable and the page counter updates correctly (e.g., "3/5", "4/5", "5/5"). If navigation is broken (stuck on page 1, pages unreachable, or JS console errors), this is a **CRITICAL FAILURE** — report it immediately. Check the browser console for JavaScript errors on every page.
 
 Report each finding with: page number, check, PASS/FAIL, details.
 """

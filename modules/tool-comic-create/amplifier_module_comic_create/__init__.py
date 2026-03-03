@@ -794,7 +794,7 @@ class ComicCreateTool:
         import asyncio
         from pathlib import Path
 
-        from .html_renderer import render_comic_html
+        from .html_renderer import render_comic_html, validate_rendered_html
 
         required = ("project", "issue", "output_path", "layout")
         for key in required:
@@ -834,17 +834,38 @@ class ComicCreateTool:
         # --- Render full HTML ---
         html = render_comic_html(layout, resolved_images, style_css)
 
+        # Validate HTML before writing
+        errors, warnings = validate_rendered_html(
+            html,
+            expected_pages=len(layout.get("pages", []))
+            + 1,  # +1 for character intro if applicable
+            expected_panels=sum(
+                len(page.get("panels", [])) for page in layout.get("pages", [])
+            ),
+        )
+        if errors:
+            return _error(
+                json.dumps(
+                    {
+                        "validation_failed": True,
+                        "errors": errors,
+                        "warnings": warnings,
+                    }
+                )
+            )
+
         await asyncio.to_thread(
             lambda: Path(output_path).write_text(html, encoding="utf-8")
         )
 
-        return _ok(
-            {
-                "output_path": output_path,
-                "pages": page_count,
-                "images_embedded": images_embedded,
-            }
-        )
+        result = {
+            "output_path": output_path,
+            "pages": page_count,
+            "images_embedded": images_embedded,
+        }
+        if warnings:
+            result["warnings"] = warnings
+        return _ok(result)
 
 
 async def mount(coordinator: Any, config: Any = None) -> None:

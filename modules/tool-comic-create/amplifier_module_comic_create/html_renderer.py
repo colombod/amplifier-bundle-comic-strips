@@ -11,10 +11,12 @@ Public API:
     render_comic_html(layout, resolved_images, style_css) -> str
     render_overlay_svg(overlay) -> str
 """
+
 from __future__ import annotations
 
 import html as _html
 import math
+import re
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -62,8 +64,12 @@ _DEFAULT_STYLE_CSS = """\
 
 
 def _tail_triangle(
-    bx: float, by: float, bw: float, bh: float,
-    tx: float, ty: float,
+    bx: float,
+    by: float,
+    bw: float,
+    bh: float,
+    tx: float,
+    ty: float,
 ) -> str:
     """Return a tiny SVG <polygon> tail triangle.
 
@@ -108,7 +114,7 @@ def _oval_svg(text: str, tail_tx: float, tail_ty: float) -> str:
     return (
         f'<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" '
         f'width="100%" height="100%" overflow="visible">'
-        f'<ellipse cx="50" cy="{by + bh/2:.1f}" rx="{bw/2:.1f}" ry="{bh/2:.1f}" '
+        f'<ellipse cx="50" cy="{by + bh / 2:.1f}" rx="{bw / 2:.1f}" ry="{bh / 2:.1f}" '
         f'fill="var(--bubble-fill)" stroke="var(--bubble-stroke)" '
         f'stroke-width="var(--bubble-stroke-width)"/>'
         f'<polygon points="{points}" '
@@ -117,10 +123,10 @@ def _oval_svg(text: str, tail_tx: float, tail_ty: float) -> str:
         f'<foreignObject x="5" y="5" width="90" height="65">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
         f'style="font-family:var(--bubble-font);font-size:var(--bubble-font-size);'
-        f'text-align:center;display:flex;align-items:center;justify-content:center;'
+        f"text-align:center;display:flex;align-items:center;justify-content:center;"
         f'height:100%;width:100%;">{safe}</div>'
-        f'</foreignObject>'
-        f'</svg>'
+        f"</foreignObject>"
+        f"</svg>"
     )
 
 
@@ -131,9 +137,16 @@ def _cloud_svg(text: str, tail_tx: float, tail_ty: float) -> str:
     circles = ""
     # Main cloud circles (perimeter)
     perimeter = [
-        (30, 20, 20), (55, 15, 22), (75, 22, 18), (85, 38, 16),
-        (78, 55, 17), (60, 62, 15), (40, 62, 15), (22, 52, 16),
-        (14, 35, 17), (22, 20, 16),
+        (30, 20, 20),
+        (55, 15, 22),
+        (75, 22, 18),
+        (85, 38, 16),
+        (78, 55, 17),
+        (60, 62, 15),
+        (40, 62, 15),
+        (22, 52, 16),
+        (14, 35, 17),
+        (22, 20, 16),
     ]
     for cx, cy, r in perimeter:
         circles += (
@@ -155,14 +168,14 @@ def _cloud_svg(text: str, tail_tx: float, tail_ty: float) -> str:
         f'<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" '
         f'width="100%" height="100%" overflow="visible">'
         f'<rect x="18" y="14" width="72" height="52" fill="var(--bubble-fill)" stroke="none"/>'
-        f'{circles}'
+        f"{circles}"
         f'<foreignObject x="20" y="18" width="62" height="44">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
         f'style="font-family:var(--bubble-font);font-size:var(--bubble-font-size);'
-        f'text-align:center;display:flex;align-items:center;justify-content:center;'
+        f"text-align:center;display:flex;align-items:center;justify-content:center;"
         f'height:100%;width:100%;">{safe}</div>'
-        f'</foreignObject>'
-        f'</svg>'
+        f"</foreignObject>"
+        f"</svg>"
     )
 
 
@@ -193,10 +206,10 @@ def _jagged_svg(text: str, tail_tx: float, tail_ty: float) -> str:
         f'<foreignObject x="15" y="15" width="70" height="70">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
         f'style="font-family:var(--bubble-font);font-size:var(--bubble-font-size);'
-        f'font-weight:bold;text-align:center;display:flex;align-items:center;'
+        f"font-weight:bold;text-align:center;display:flex;align-items:center;"
         f'justify-content:center;height:100%;width:100%;">{safe}</div>'
-        f'</foreignObject>'
-        f'</svg>'
+        f"</foreignObject>"
+        f"</svg>"
     )
 
 
@@ -208,7 +221,7 @@ def _whisper_svg(text: str, tail_tx: float, tail_ty: float) -> str:
     return (
         f'<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" '
         f'width="100%" height="100%" overflow="visible">'
-        f'<ellipse cx="50" cy="{by + bh/2:.1f}" rx="{bw/2:.1f}" ry="{bh/2:.1f}" '
+        f'<ellipse cx="50" cy="{by + bh / 2:.1f}" rx="{bw / 2:.1f}" ry="{bh / 2:.1f}" '
         f'fill="var(--bubble-fill)" stroke="var(--bubble-stroke)" '
         f'stroke-width="var(--bubble-stroke-width)" stroke-dasharray="5,3"/>'
         f'<polygon points="{tail_pts}" '
@@ -217,10 +230,10 @@ def _whisper_svg(text: str, tail_tx: float, tail_ty: float) -> str:
         f'<foreignObject x="5" y="5" width="90" height="65">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
         f'style="font-family:var(--bubble-font);font-size:var(--bubble-font-size);'
-        f'font-style:italic;text-align:center;display:flex;align-items:center;'
+        f"font-style:italic;text-align:center;display:flex;align-items:center;"
         f'justify-content:center;height:100%;width:100%;">{safe}</div>'
-        f'</foreignObject>'
-        f'</svg>'
+        f"</foreignObject>"
+        f"</svg>"
     )
 
 
@@ -237,8 +250,8 @@ def _rectangular_svg(text: str) -> str:
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
         f'style="font-family:var(--bubble-font);font-size:var(--bubble-font-size);'
         f'text-align:left;padding:4px;height:100%;width:100%;">{safe}</div>'
-        f'</foreignObject>'
-        f'</svg>'
+        f"</foreignObject>"
+        f"</svg>"
     )
 
 
@@ -331,12 +344,14 @@ def _render_panel(panel_def: dict[str, Any], resolved: dict[str, str]) -> str:
     return (
         f'<div class="panel">'
         f'<img src="{data_uri}" alt="Comic panel" />'
-        f'{overlays_html}'
+        f"{overlays_html}"
         f"</div>"
     )
 
 
-def _render_page(page_def: dict[str, Any], resolved: dict[str, str], page_idx: int) -> str:
+def _render_page(
+    page_def: dict[str, Any], resolved: dict[str, str], page_idx: int
+) -> str:
     layout_id = page_def.get("layout", "1x1")
     grid_css = _grid_css(layout_id)
 
@@ -356,7 +371,9 @@ def _render_page(page_def: dict[str, Any], resolved: dict[str, str], page_idx: i
     )
 
 
-def _render_cover(cover_info: dict[str, Any], resolved: dict[str, str], page_idx: int) -> str:
+def _render_cover(
+    cover_info: dict[str, Any], resolved: dict[str, str], page_idx: int
+) -> str:
     uri = cover_info.get("uri", "")
     data_uri = resolved.get(uri, "")
     if not data_uri:
@@ -552,7 +569,7 @@ body {
 """
 
 _NAV_JS_TEMPLATE = """\
-(function() {{
+(function() {
   var pages = document.querySelectorAll('.page');
   var dots = document.querySelectorAll('.page-dot');
   var prevBtn = document.getElementById('nav-prev');
@@ -560,7 +577,7 @@ _NAV_JS_TEMPLATE = """\
   var current = 0;
   var total = pages.length;
 
-  function show(idx) {{
+  function show(idx) {
     if (idx < 0 || idx >= total) return;
     pages[current].style.display = 'none';
     dots[current].classList.remove('active');
@@ -569,42 +586,42 @@ _NAV_JS_TEMPLATE = """\
     dots[current].classList.add('active');
     prevBtn.disabled = current === 0;
     nextBtn.disabled = current === total - 1;
-  }}
+  }
 
   // Initialise
   show(0);
 
   // Button handlers
-  prevBtn.addEventListener('click', function() {{ show(current - 1); }});
-  nextBtn.addEventListener('click', function() {{ show(current + 1); }});
+  prevBtn.addEventListener('click', function() { show(current - 1); });
+  nextBtn.addEventListener('click', function() { show(current + 1); });
 
   // Dot handlers
-  dots.forEach(function(dot, i) {{
-    dot.addEventListener('click', function() {{ show(i); }});
-  }});
+  dots.forEach(function(dot, i) {
+    dot.addEventListener('click', function() { show(i); });
+  });
 
   // Keyboard: ArrowLeft / ArrowRight
-  document.addEventListener('keydown', function(e) {{
-    if (e.key === 'ArrowLeft')  {{ show(current - 1); }}
-    if (e.key === 'ArrowRight') {{ show(current + 1); }}
-  }});
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowLeft')  { show(current - 1); }
+    if (e.key === 'ArrowRight') { show(current + 1); }
+  });
 
   // Touch swipe support
   var touchStartX = 0;
   var touchStartY = 0;
-  document.addEventListener('touchstart', function(e) {{
+  document.addEventListener('touchstart', function(e) {
     touchStartX = e.changedTouches[0].screenX;
     touchStartY = e.changedTouches[0].screenY;
-  }}, {{ passive: true }});
-  document.addEventListener('touchend', function(e) {{
+  }, { passive: true });
+  document.addEventListener('touchend', function(e) {
     var dx = e.changedTouches[0].screenX - touchStartX;
     var dy = e.changedTouches[0].screenY - touchStartY;
-    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {{
-      if (dx < 0) {{ show(current + 1); }}
-      else         {{ show(current - 1); }}
-    }}
-  }}, {{ passive: true }});
-}})();
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
+      if (dx < 0) { show(current + 1); }
+      else         { show(current - 1); }
+    }
+  }, { passive: true });
+})();
 """
 
 
@@ -699,3 +716,79 @@ def render_comic_html(
         f"</body>\n"
         f"</html>"
     )
+
+
+# ---------------------------------------------------------------------------
+# HTML validation
+# ---------------------------------------------------------------------------
+
+
+def validate_rendered_html(
+    html: str,
+    expected_pages: int = 2,
+    expected_panels: int = 0,
+) -> tuple[list[str], list[str]]:
+    """Validate rendered HTML structural integrity.
+
+    Returns:
+        (errors, warnings) where errors are hard failures and warnings are soft issues.
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    # 1. DOCTYPE
+    if "<!DOCTYPE html>" not in html and "<!doctype html>" not in html:
+        errors.append("Missing <!DOCTYPE html> declaration")
+
+    # 2. Script block exists
+    script_match = re.search(r"<script>(.*?)</script>", html, re.DOTALL)
+    if not script_match:
+        errors.append("No <script> block found in HTML")
+    else:
+        js = script_match.group(1)
+        # 3. JS balanced braces
+        open_braces = js.count("{")
+        close_braces = js.count("}")
+        if open_braces != close_braces:
+            errors.append(
+                f"JS brace imbalance: {open_braces} opening vs {close_braces} closing"
+            )
+        # 4. No double-brace escaping artifacts
+        if "{{" in js or "}}" in js:
+            errors.append(
+                "JS contains double-brace '{{' or '}}' — likely Python template escaping leak"
+            )
+
+    # 5. No unresolved comic:// URIs
+    comic_uri_count = html.count("comic://")
+    if comic_uri_count > 0:
+        errors.append(f"HTML contains {comic_uri_count} unresolved comic:// URI(s)")
+
+    # 6. Images embedded
+    image_count = html.count("data:image/")
+    if image_count == 0:
+        errors.append("No embedded images (data:image/) found in HTML")
+
+    # 7. Page sections
+    page_count = len(re.findall(r'class="page[\s"]', html))
+    if page_count < 2:
+        errors.append(
+            f"Only {page_count} page section(s) found — need at least 2 (cover + story)"
+        )
+    if expected_pages > 0 and page_count != expected_pages:
+        warnings.append(
+            f"Page count mismatch: found {page_count}, expected {expected_pages}"
+        )
+
+    # 8. Panel count
+    panel_count = len(re.findall(r'class="panel[\s"]', html))
+    if expected_panels > 0 and panel_count != expected_panels:
+        warnings.append(
+            f"Panel count mismatch: found {panel_count}, expected {expected_panels}"
+        )
+
+    # 9. Navigation elements
+    if "nav-prev" not in html or "nav-next" not in html:
+        warnings.append("Navigation buttons (nav-prev/nav-next) missing from HTML")
+
+    return errors, warnings

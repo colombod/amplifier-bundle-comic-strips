@@ -205,7 +205,7 @@ tags: ["comic", "visual-storytelling", "session-analysis", "uri-protocol"]
 
 context:
   session_file: ""        # Required: path to events.jsonl session file or session ID
-  style: "superhero"      # Style name (manga, superhero, indie, newspaper, ligne-claire, retro-americana) or custom description
+  style: "superhero"      # Style name (manga, superhero, indie, newspaper, ligne-claire, retro-americana, watchmen, berserk, cuphead, ghibli, attack-on-titan) or custom description
   output_name: ""         # Optional: custom output filename (defaults to comic-{timestamp})
   project_name: ""     # Optional: project name (defaults to "comic-project")
   issue_title: ""      # Optional: issue title (defaults to comic title from research)

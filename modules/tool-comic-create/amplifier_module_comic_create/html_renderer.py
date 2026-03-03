@@ -24,6 +24,7 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 _GRID_TEMPLATES: dict[str, str] = {
+    # Simple grids
     "1x1": "grid-template-columns:1fr",
     "2x1": "grid-template-columns:repeat(2,1fr)",
     "1x2": "grid-template-columns:1fr",
@@ -32,9 +33,18 @@ _GRID_TEMPLATES: dict[str, str] = {
     "3-row": "grid-template-columns:1fr",
     "2-row": "grid-template-columns:1fr",
     "full-bleed": "grid-template-columns:1fr",
+    # Named comic layouts
+    "wide-establishing-plus-grid": "grid-template-columns:1fr 1fr;"
+    "grid-template-rows:auto auto",
+    "crescendo": "grid-template-columns:1fr 1fr;grid-template-rows:auto auto",
+    "spotlight": "grid-template-columns:2fr 1fr;grid-template-rows:auto auto",
+    "action-sequence": "grid-template-columns:repeat(3,1fr)",
+    "dialogue-focus": "grid-template-columns:1fr 1fr",
+    "montage": "grid-template-columns:repeat(3,1fr);grid-template-rows:auto auto",
+    "cliffhanger": "grid-template-columns:1fr 1fr;grid-template-rows:auto auto",
 }
 
-_DEFAULT_GRID = "grid-template-columns:1fr"
+_DEFAULT_GRID = "grid-template-columns:1fr 1fr"
 
 # ---------------------------------------------------------------------------
 # Default CSS custom properties (theming)
@@ -92,10 +102,18 @@ def _tail_triangle(
     px = -ndy
     py = ndx
 
-    half_base = min(bw, bh) * 0.12
-    # Base of the tail on the bubble edge (approximate)
-    edge_x = cx + ndx * (min(bw, bh) / 2 * 0.85)
-    edge_y = cy + ndy * (min(bw, bh) / 2 * 0.85)
+    half_base = min(bw, bh) * 0.10
+    # Use actual ellipse radius in the tail direction for edge placement
+    rx = bw / 2
+    ry = bh / 2
+    # Parametric ellipse: distance from center at angle (ndx, ndy)
+    if abs(ndx) < 0.001 and abs(ndy) < 0.001:
+        edge_dist = min(rx, ry)
+    else:
+        # Distance to ellipse boundary along (ndx, ndy) direction
+        edge_dist = (rx * ry) / math.hypot(rx * ndy, ry * ndx)
+    edge_x = cx + ndx * edge_dist * 0.92
+    edge_y = cy + ndy * edge_dist * 0.92
 
     p1x = edge_x + px * half_base
     p1y = edge_y + py * half_base
@@ -111,6 +129,13 @@ def _oval_svg(text: str, tail_tx: float, tail_ty: float) -> str:
     bx, by, bw, bh = 2, 2, 96, 70
     points = _tail_triangle(bx, by, bw, bh, tail_tx, tail_ty)
     safe = _html.escape(text)
+    font_size = "var(--bubble-font-size)"
+    if len(text) > 100:
+        font_size = "10px"
+    elif len(text) > 60:
+        font_size = "11px"
+    elif len(text) > 40:
+        font_size = "12px"
     return (
         f'<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" '
         f'width="100%" height="100%" overflow="visible">'
@@ -122,9 +147,9 @@ def _oval_svg(text: str, tail_tx: float, tail_ty: float) -> str:
         f'stroke-width="var(--bubble-stroke-width)"/>'
         f'<foreignObject x="5" y="5" width="90" height="65">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
-        f'style="font-family:var(--bubble-font);font-size:var(--bubble-font-size);'
+        f'style="font-family:var(--bubble-font);font-size:{font_size};'
         f"text-align:center;display:flex;align-items:center;justify-content:center;"
-        f'height:100%;width:100%;">{safe}</div>'
+        f'overflow:hidden;word-break:break-word;height:100%;width:100%;">{safe}</div>'
         f"</foreignObject>"
         f"</svg>"
     )
@@ -164,6 +189,13 @@ def _cloud_svg(text: str, tail_tx: float, tail_ty: float) -> str:
             f'fill="var(--bubble-fill)" stroke="var(--bubble-stroke)" '
             f'stroke-width="var(--bubble-stroke-width)"/>'
         )
+    font_size = "var(--bubble-font-size)"
+    if len(text) > 100:
+        font_size = "10px"
+    elif len(text) > 60:
+        font_size = "11px"
+    elif len(text) > 40:
+        font_size = "12px"
     return (
         f'<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" '
         f'width="100%" height="100%" overflow="visible">'
@@ -171,9 +203,9 @@ def _cloud_svg(text: str, tail_tx: float, tail_ty: float) -> str:
         f"{circles}"
         f'<foreignObject x="20" y="18" width="62" height="44">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
-        f'style="font-family:var(--bubble-font);font-size:var(--bubble-font-size);'
+        f'style="font-family:var(--bubble-font);font-size:{font_size};'
         f"text-align:center;display:flex;align-items:center;justify-content:center;"
-        f'height:100%;width:100%;">{safe}</div>'
+        f'overflow:hidden;word-break:break-word;height:100%;width:100%;">{safe}</div>'
         f"</foreignObject>"
         f"</svg>"
     )
@@ -194,6 +226,13 @@ def _jagged_svg(text: str, tail_tx: float, tail_ty: float) -> str:
     pts = " ".join(points_list)
     # Tail
     tail_pts = _tail_triangle(10, 10, 80, 80, tail_tx, tail_ty)
+    font_size = "var(--bubble-font-size)"
+    if len(text) > 100:
+        font_size = "10px"
+    elif len(text) > 60:
+        font_size = "11px"
+    elif len(text) > 40:
+        font_size = "12px"
     return (
         f'<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" '
         f'width="100%" height="100%" overflow="visible">'
@@ -205,9 +244,9 @@ def _jagged_svg(text: str, tail_tx: float, tail_ty: float) -> str:
         f'stroke-width="var(--bubble-stroke-width)"/>'
         f'<foreignObject x="15" y="15" width="70" height="70">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
-        f'style="font-family:var(--bubble-font);font-size:var(--bubble-font-size);'
+        f'style="font-family:var(--bubble-font);font-size:{font_size};'
         f"font-weight:bold;text-align:center;display:flex;align-items:center;"
-        f'justify-content:center;height:100%;width:100%;">{safe}</div>'
+        f'justify-content:center;overflow:hidden;word-break:break-word;height:100%;width:100%;">{safe}</div>'
         f"</foreignObject>"
         f"</svg>"
     )
@@ -218,6 +257,13 @@ def _whisper_svg(text: str, tail_tx: float, tail_ty: float) -> str:
     safe = _html.escape(text)
     bx, by, bw, bh = 2, 2, 96, 70
     tail_pts = _tail_triangle(bx, by, bw, bh, tail_tx, tail_ty)
+    font_size = "var(--bubble-font-size)"
+    if len(text) > 100:
+        font_size = "10px"
+    elif len(text) > 60:
+        font_size = "11px"
+    elif len(text) > 40:
+        font_size = "12px"
     return (
         f'<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" '
         f'width="100%" height="100%" overflow="visible">'
@@ -229,9 +275,9 @@ def _whisper_svg(text: str, tail_tx: float, tail_ty: float) -> str:
         f'stroke-width="var(--bubble-stroke-width)" stroke-dasharray="3,2"/>'
         f'<foreignObject x="5" y="5" width="90" height="65">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
-        f'style="font-family:var(--bubble-font);font-size:var(--bubble-font-size);'
+        f'style="font-family:var(--bubble-font);font-size:{font_size};'
         f"font-style:italic;text-align:center;display:flex;align-items:center;"
-        f'justify-content:center;height:100%;width:100%;">{safe}</div>'
+        f'justify-content:center;overflow:hidden;word-break:break-word;height:100%;width:100%;">{safe}</div>'
         f"</foreignObject>"
         f"</svg>"
     )
@@ -240,6 +286,13 @@ def _whisper_svg(text: str, tail_tx: float, tail_ty: float) -> str:
 def _rectangular_svg(text: str) -> str:
     """Return inline SVG for a rectangular caption box (no tail)."""
     safe = _html.escape(text)
+    font_size = "var(--bubble-font-size)"
+    if len(text) > 100:
+        font_size = "10px"
+    elif len(text) > 60:
+        font_size = "11px"
+    elif len(text) > 40:
+        font_size = "12px"
     return (
         f'<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" '
         f'width="100%" height="100%" overflow="visible">'
@@ -248,8 +301,8 @@ def _rectangular_svg(text: str) -> str:
         f'stroke-width="var(--bubble-stroke-width)"/>'
         f'<foreignObject x="6" y="6" width="88" height="88">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
-        f'style="font-family:var(--bubble-font);font-size:var(--bubble-font-size);'
-        f'text-align:left;padding:4px;height:100%;width:100%;">{safe}</div>'
+        f'style="font-family:var(--bubble-font);font-size:{font_size};'
+        f'text-align:left;padding:4px;overflow:hidden;word-break:break-word;height:100%;width:100%;">{safe}</div>'
         f"</foreignObject>"
         f"</svg>"
     )
@@ -288,11 +341,12 @@ def render_overlay_svg(overlay: dict[str, Any]) -> str:
     bubble_cy_panel = y + h / 2
     rel_x = tip_panel_x - bubble_cx_panel
     rel_y = tip_panel_y - bubble_cy_panel
-    # Scale to SVG viewBox space: bubble occupies roughly 0–100
-    # Assume panel aspect ~square; scale so the tail reaches outside the bubble
-    scale = 1.5  # tip lands outside the bubble in viewBox coords
-    vb_tip_x = 50 + rel_x * scale
-    vb_tip_y = 50 + rel_y * scale
+    # Scale to viewBox: map panel-% offsets to 0-100 SVG space
+    # Use bubble dimensions to account for non-square panels
+    scale_x = 100.0 / max(w, 1)
+    scale_y = 100.0 / max(h, 1)
+    vb_tip_x = 50 + rel_x * scale_x * 0.8
+    vb_tip_y = 50 + rel_y * scale_y * 0.8
 
     style = (
         f"position:absolute;"
@@ -463,10 +517,12 @@ body {
   left: 50%;
   transform: translateX(-50%);
   color: #fff;
-  text-shadow: 2px 2px 4px #000;
+  text-shadow: 2px 2px 6px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.4);
   font-family: var(--bubble-font, 'Bangers', cursive);
-  font-size: 2.5em;
-  white-space: nowrap;
+  font-size: clamp(1.4em, 5vw, 3em);
+  max-width: 90%;
+  text-align: center;
+  line-height: 1.1;
 }
 .cover-subtitle {
   color: #ddd;
@@ -486,6 +542,25 @@ body {
 .panel img {
   width: 100%;
   display: block;
+  max-height: 70vh;
+  object-fit: contain;
+}
+/* Named comic layouts */
+.layout-wide_establishing_plus_grid .panel:first-child {
+  grid-column: 1 / -1;
+}
+.layout-crescendo .panel:first-child {
+  grid-column: 1 / -1;
+}
+.layout-crescendo .panel:last-child {
+  grid-column: 1 / -1;
+}
+.layout-spotlight .panel:first-child {
+  grid-row: 1 / 3;
+}
+.layout-action_sequence .panel { min-height: 200px; }
+.layout-cliffhanger .panel:last-child {
+  grid-column: 1 / -1;
 }
 .bubble-overlay {
   position: absolute;
@@ -692,11 +767,7 @@ def render_comic_html(
     pages_html = "\n".join(pages_html_parts)
     nav_bar = _build_nav_bar(total_pages)
 
-    combined_css = _DEFAULT_STYLE_CSS
-    if style_css:
-        combined_css = style_css + "\n" + _NAV_CSS
-    else:
-        combined_css = _DEFAULT_STYLE_CSS + "\n" + _NAV_CSS
+    combined_css = _DEFAULT_STYLE_CSS + "\n" + (style_css or "") + "\n" + _NAV_CSS
 
     return (
         f"<!DOCTYPE html>\n"
@@ -704,6 +775,7 @@ def render_comic_html(
         f"<head>\n"
         f'  <meta charset="UTF-8" />\n'
         f'  <meta name="viewport" content="width=device-width, initial-scale=1" />\n'
+        f'  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bangers&display=swap" />\n'
         f"  <title>{title}</title>\n"
         f"  <style>\n{combined_css}\n  </style>\n"
         f"</head>\n"

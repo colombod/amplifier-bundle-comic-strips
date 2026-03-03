@@ -333,16 +333,20 @@ def test_grid_layout_3_row() -> None:
 
 
 def test_html_is_self_contained() -> None:
-    """Output must be a valid standalone HTML document — no external refs."""
+    """Output must be a valid standalone HTML document — no unexpected external refs."""
     html = render_comic_html(_MINIMAL_LAYOUT, _RESOLVED)
     assert "<!DOCTYPE html>" in html
     assert "<html" in html
     assert "</html>" in html
-    # No external stylesheet links
-    assert '<link rel="stylesheet"' not in html
-    # No external script src attributes (only inline <script>)
+    # Only the Google Fonts web-font link is permitted as an external stylesheet
     import re
 
+    external_links = re.findall(r'<link[^>]+rel=["\']stylesheet["\'][^>]*>', html, re.IGNORECASE)
+    for link in external_links:
+        assert "fonts.googleapis.com" in link, (
+            f"Unexpected external stylesheet link (only Google Fonts allowed): {link}"
+        )
+    # No external script src attributes (only inline <script>)
     external_scripts = re.findall(r"<script[^>]+src\s*=", html, re.IGNORECASE)
     assert not external_scripts, f"Found external scripts: {external_scripts}"
 

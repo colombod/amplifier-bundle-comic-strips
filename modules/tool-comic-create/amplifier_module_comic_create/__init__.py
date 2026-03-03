@@ -838,7 +838,8 @@ class ComicCreateTool:
         errors, warnings = validate_rendered_html(
             html,
             expected_pages=len(layout.get("pages", []))
-            + 1,  # +1 for character intro if applicable
+            + (1 if layout.get("characters") else 0)
+            + (1 if layout.get("cover", {}).get("uri") else 0),
             expected_panels=sum(
                 len(page.get("panels", [])) for page in layout.get("pages", [])
             ),

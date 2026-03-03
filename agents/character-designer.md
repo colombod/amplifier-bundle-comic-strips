@@ -39,8 +39,14 @@ provider_preferences:
 
 tools:
   - module: tool-comic-create
+    source: git+https://github.com/colombod/amplifier-bundle-comic-strips@main#subdirectory=modules/tool-comic-create
   - module: tool-comic-assets
+    source: git+https://github.com/colombod/amplifier-bundle-comic-strips@main#subdirectory=modules/tool-comic-assets
   - module: tool-skills
+    source: git+https://github.com/microsoft/amplifier-module-tool-skills@main
+    config:
+      skills:
+        - "git+https://github.com/colombod/amplifier-bundle-comic-strips@main#subdirectory=skills"
 
 ---
 

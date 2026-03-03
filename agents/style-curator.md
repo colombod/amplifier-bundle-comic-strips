@@ -36,7 +36,9 @@ provider_preferences:
 
 tools:
   - module: tool-comic-assets
+    source: git+https://github.com/colombod/amplifier-bundle-comic-strips@main#subdirectory=modules/tool-comic-assets
   - module: tool-filesystem
+    source: git+https://github.com/microsoft/amplifier-module-tool-filesystem@main
 
 ---
 

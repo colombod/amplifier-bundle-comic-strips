@@ -24,27 +24,59 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 _GRID_TEMPLATES: dict[str, str] = {
-    # Simple grids
-    "1x1": "grid-template-columns:1fr",
-    "2x1": "grid-template-columns:repeat(2,1fr)",
-    "1x2": "grid-template-columns:1fr",
-    "2x2": "grid-template-columns:repeat(2,1fr)",
-    "3x1": "grid-template-columns:repeat(3,1fr)",
-    "3-row": "grid-template-columns:1fr",
-    "2-row": "grid-template-columns:1fr",
-    "full-bleed": "grid-template-columns:1fr",
-    # Named comic layouts
+    # ---- Simple grids (rows use 1fr so panels fill page height) ----
+    "1x1": "grid-template-columns:1fr;grid-template-rows:1fr",
+    "2x1": "grid-template-columns:repeat(2,1fr);grid-template-rows:1fr",
+    "1x2": "grid-template-columns:1fr;grid-template-rows:1fr 1fr",
+    "2x2": "grid-template-columns:repeat(2,1fr);grid-template-rows:1fr 1fr",
+    "3x1": "grid-template-columns:repeat(3,1fr);grid-template-rows:1fr",
+    "3x2": "grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr",
+    "2x3": "grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(3,1fr)",
+    "3-row": "grid-template-columns:1fr;grid-template-rows:repeat(3,1fr)",
+    "2-row": "grid-template-columns:1fr;grid-template-rows:1fr 1fr",
+    "full-bleed": "grid-template-columns:1fr;grid-template-rows:1fr",
+    # ---- Dramatic compositions ----
     "wide-establishing-plus-grid": "grid-template-columns:1fr 1fr;"
-    "grid-template-rows:auto auto",
-    "crescendo": "grid-template-columns:1fr 1fr;grid-template-rows:auto auto",
-    "spotlight": "grid-template-columns:2fr 1fr;grid-template-rows:auto auto",
-    "action-sequence": "grid-template-columns:repeat(3,1fr)",
-    "dialogue-focus": "grid-template-columns:1fr 1fr",
-    "montage": "grid-template-columns:repeat(3,1fr);grid-template-rows:auto auto",
-    "cliffhanger": "grid-template-columns:1fr 1fr;grid-template-rows:auto auto",
+    "grid-template-rows:2fr 1fr",
+    "crescendo": "grid-template-columns:1fr 1fr;grid-template-rows:1fr 2fr",
+    "spotlight": "grid-template-columns:2fr 1fr;grid-template-rows:1fr 1fr",
+    "action-sequence": "grid-template-columns:repeat(3,1fr);grid-template-rows:1fr",
+    "dialogue-focus": "grid-template-columns:1fr 1fr;grid-template-rows:1fr",
+    "montage": "grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr",
+    "cliffhanger": "grid-template-columns:1fr 1fr;grid-template-rows:2fr 1fr",
+    # ---- Manga layouts (used by manga/anime style guides) ----
+    "manga_3_panel": "grid-template-columns:1fr;grid-template-rows:repeat(3,1fr)",
+    "manga_dynamic_2": "grid-template-columns:1fr;grid-template-rows:2fr 1fr",
+    "manga_action": "grid-template-columns:2fr 1fr;grid-template-rows:1fr 2fr",
+    "manga_widescreen": "grid-template-columns:1fr;grid-template-rows:1fr 2fr 1fr",
+    "manga_split": "grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr 1fr",
+    "manga_dramatic": "grid-template-columns:1fr 2fr;grid-template-rows:1fr 1fr",
+    "manga_vertical_triptych": "grid-template-columns:1fr;grid-template-rows:1fr 2fr 1fr",
+    "manga_impact": "grid-template-columns:1fr 1fr;grid-template-rows:3fr 1fr",
+    # ---- Professional comic layouts ----
+    "cinematic_widescreen": "grid-template-columns:1fr;grid-template-rows:1fr 3fr 1fr",
+    "dramatic_reveal": "grid-template-columns:1fr 1fr;grid-template-rows:1fr 3fr",
+    "conversation": "grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,1fr)",
+    "split_action": "grid-template-columns:1fr 1fr;grid-template-rows:2fr 1fr",
+    "panoramic": "grid-template-columns:1fr;grid-template-rows:2fr 1fr 1fr",
+    "grid_9": "grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr)",
+    "l_shape": "grid-template-columns:2fr 1fr;grid-template-rows:1fr 1fr 1fr",
+    "t_shape": "grid-template-columns:repeat(3,1fr);grid-template-rows:2fr 1fr",
+    "asymmetric_3": "grid-template-columns:2fr 1fr;grid-template-rows:1fr 2fr",
+    "stacked_wides": "grid-template-columns:1fr;grid-template-rows:repeat(4,1fr)",
+    "hero_plus_grid": "grid-template-columns:repeat(2,1fr);grid-template-rows:2fr 1fr 1fr",
+    "diagonal_energy": "grid-template-columns:3fr 2fr;grid-template-rows:1fr 1fr 2fr",
+    "splash_plus_strip": "grid-template-columns:1fr;grid-template-rows:3fr 1fr",
+    "corner_focus": "grid-template-columns:3fr 1fr;grid-template-rows:3fr 1fr",
+    # ---- Superhero / western comic layouts ----
+    "hero_splash": "grid-template-columns:1fr;grid-template-rows:1fr",
+    "classic_6": "grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(3,1fr)",
+    "classic_9": "grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr)",
+    "widescreen_stack": "grid-template-columns:1fr;grid-template-rows:1fr 1fr 2fr",
+    "bookend": "grid-template-columns:1fr 2fr 1fr;grid-template-rows:1fr 1fr",
 }
 
-_DEFAULT_GRID = "grid-template-columns:1fr 1fr"
+_DEFAULT_GRID = "grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr)"
 
 # ---------------------------------------------------------------------------
 # Default CSS custom properties (theming)
@@ -502,7 +534,11 @@ def _render_character_intro(
 # ---------------------------------------------------------------------------
 
 _NAV_CSS = """\
-/* --- Comic Navigation --- */
+/* --- Comic Page System --- */
+/* All pages use a consistent comic-book portrait ratio (2:3).
+   Panels fill their grid cells via object-fit:cover.
+   Cover image fills the entire page; title/subtitle overlay on it. */
+
 body {
   margin: 0;
   background: var(--comic-bg, #1a1a2e);
@@ -513,40 +549,71 @@ body {
   max-width: var(--page-max-width, 900px);
   margin: 0 auto;
   position: relative;
+  padding: 0 8px;
 }
+
+/* ---- Consistent page container ---- */
 .page {
   box-sizing: border-box;
   width: 100%;
-  padding: 16px;
-}
-.cover-image-wrap {
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
   position: relative;
-  text-align: center;
-}
-.cover-image-wrap img {
-  max-width: 100%;
-  max-height: 85vh;
-  display: inline-block;
+  background: #000;
   border: 3px solid var(--panel-border, #e94560);
   border-radius: var(--panel-border-radius, 4px);
+  margin-bottom: 0;
+}
+.story-page {
+  padding: 10px;
+}
+
+/* ---- Cover page ---- */
+.cover-page {
+  padding: 0;
+}
+.cover-image-wrap {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+.cover-image-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 .cover-title {
   position: absolute;
-  top: 5%;
+  top: 6%;
   left: 50%;
   transform: translateX(-50%);
+  width: 85%;
   color: #fff;
-  text-shadow: 2px 2px 6px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.4);
+  text-shadow: 3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000,
+               -1px 1px 0 #000, 0 0 20px rgba(0,0,0,0.6);
   font-family: var(--bubble-font, 'Bangers', cursive);
-  font-size: clamp(1.4em, 5vw, 3em);
-  max-width: 90%;
+  font-size: clamp(2em, 6vw, 4.5em);
   text-align: center;
-  line-height: 1.1;
+  line-height: 1.05;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  z-index: 5;
 }
 .cover-subtitle {
-  color: #ddd;
+  position: absolute;
+  bottom: 10%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 75%;
+  color: #eee;
+  text-shadow: 2px 2px 0 #000, 0 0 12px rgba(0,0,0,0.7);
+  font-family: var(--bubble-font, 'Bangers', cursive);
+  font-size: clamp(1em, 3vw, 1.8em);
   text-align: center;
-  margin-top: 8px;
+  z-index: 5;
+  margin: 0;
 }
 .cover-branding {
   position: absolute;
@@ -555,10 +622,11 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0,0,0,0.6);
   padding: 6px 12px 6px 6px;
   border-radius: 6px;
   z-index: 10;
+  backdrop-filter: blur(4px);
 }
 .cover-branding img {
   width: 32px;
@@ -573,78 +641,104 @@ body {
   letter-spacing: 0.05em;
   text-shadow: 1px 1px 2px rgba(0,0,0,0.6);
 }
+
+/* ---- Panel grid (fills page) ---- */
 .panel-grid {
   width: 100%;
+  height: 100%;
 }
 .panel {
   position: relative;
   border: 2px solid var(--panel-border, #e94560);
   border-radius: var(--panel-border-radius, 4px);
-  overflow: visible;
+  overflow: hidden;
   background: #000;
+  min-height: 0;
+  min-width: 0;
 }
 .panel img {
   width: 100%;
+  height: 100%;
   display: block;
-  max-height: 70vh;
-  object-fit: contain;
+  object-fit: cover;
 }
-/* Named comic layouts */
-.layout-wide_establishing_plus_grid .panel:first-child {
-  grid-column: 1 / -1;
-}
-.layout-crescendo .panel:first-child {
-  grid-column: 1 / -1;
-}
-.layout-crescendo .panel:last-child {
-  grid-column: 1 / -1;
-}
-.layout-spotlight .panel:first-child {
-  grid-row: 1 / 3;
-}
-.layout-action_sequence .panel { min-height: 200px; }
-.layout-cliffhanger .panel:last-child {
-  grid-column: 1 / -1;
-}
+
+/* ---- Dramatic composition layout modifiers ---- */
+.layout-wide_establishing_plus_grid .panel:first-child { grid-column: 1 / -1; }
+.layout-crescendo .panel:first-child { grid-column: 1 / -1; }
+.layout-crescendo .panel:last-child { grid-column: 1 / -1; }
+.layout-spotlight .panel:first-child { grid-row: 1 / 3; }
+.layout-cliffhanger .panel:last-child { grid-column: 1 / -1; }
+.layout-dramatic_reveal .panel:last-child { grid-column: 1 / -1; }
+.layout-hero_plus_grid .panel:first-child { grid-column: 1 / -1; }
+.layout-t_shape .panel:first-child { grid-column: 1 / -1; }
+.layout-splash_plus_strip .panel:last-child { grid-column: 1 / -1; }
+
+/* ---- Manga layout modifiers ---- */
+.layout-manga_action .panel:first-child { grid-row: 1 / 3; }
+.layout-manga_dramatic .panel:nth-child(2) { grid-row: 1 / 3; }
+.layout-manga_impact .panel:first-child { grid-column: 1 / -1; }
+.layout-manga_split .panel:nth-child(odd) { border-right: none; }
+
+/* ---- Professional layout modifiers ---- */
+.layout-l_shape .panel:first-child { grid-row: 1 / 3; }
+.layout-asymmetric_3 .panel:first-child { grid-row: 1 / 3; }
+.layout-diagonal_energy .panel:last-child { grid-column: 1 / -1; }
+.layout-corner_focus .panel:first-child { grid-row: 1 / 3; grid-column: 1 / 2; }
+.layout-bookend .panel:nth-child(2) { grid-row: 1 / 3; }
+.layout-widescreen_stack .panel:last-child { grid-column: 1 / -1; }
+
 .bubble-overlay {
   position: absolute;
 }
-/* Character intro */
+
+/* ---- Character intro ---- */
 .character-intro-page {
   color: #fff;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
 }
 .intro-heading {
   text-align: center;
   font-family: var(--bubble-font, 'Bangers', cursive);
-  font-size: 2em;
-  margin-bottom: 16px;
+  font-size: 2.2em;
+  margin: 0 0 16px 0;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
 }
 .char-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  flex: 1;
+  align-content: center;
 }
 .char-card {
   text-align: center;
-  background: rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.06);
   border-radius: 8px;
-  padding: 12px;
+  padding: 10px;
+  border: 1px solid rgba(255,255,255,0.1);
 }
 .char-card img {
   width: 100%;
   border-radius: 4px;
-  max-height: 200px;
+  aspect-ratio: 3 / 4;
   object-fit: cover;
 }
 .char-name {
   margin: 8px 0 4px;
   font-family: var(--bubble-font, 'Bangers', cursive);
+  font-size: 1.1em;
 }
 .char-desc {
-  font-size: 0.85em;
+  font-size: 0.8em;
   color: #bbb;
+  line-height: 1.3;
 }
-/* Navigation bar */
+
+/* ---- Navigation bar ---- */
 .nav-bar {
   display: flex;
   align-items: center;

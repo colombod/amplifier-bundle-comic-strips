@@ -1,12 +1,37 @@
 name: "session-to-comic"
 description: "Transform an Amplifier session into an illustrated comic strip with quality review, character consistency, dramatized storytelling, and AmpliVerse publisher branding"
-version: "7.3.0"
+version: "7.4.0"
 author: "amplifier-comic-strips"
 tags: ["comic", "visual-storytelling", "session-analysis", "uri-protocol"]
 
 # =============================================================================
 # CHANGELOG
 # =============================================================================
+#
+# v7.4.0 (2026-03-03):
+#   - FIX: Enforce no-speech-bubbles at code level — _create_panel and
+#     _create_cover now append "Do not include any text, speech bubbles..."
+#     to every image generation prompt as a safety net (agents should also
+#     include this, but code-level enforcement guarantees it).
+#   - FIX: Cover now uses portrait ratio (1024x1536) instead of landscape
+#     (1536x1024) — matches comic book cover proportions.
+#   - FIX: All pages now use consistent 2:3 aspect-ratio container sizing.
+#     Cover image fills page with object-fit:cover. Panels fill grid cells.
+#     No more inconsistent page heights.
+#   - FIX: Expanded _GRID_TEMPLATES from 15 to 47 layouts including manga
+#     styles (manga_3_panel, manga_dynamic_2, etc.), professional comic
+#     layouts (cinematic_widescreen, dramatic_reveal, hero_plus_grid, etc.),
+#     and superhero/western layouts. Unknown layout IDs no longer silently
+#     fall back to a boring 1fr 1fr grid.
+#   - FEAT: Issue creation now accepts optional metadata dict for storing
+#     generation trigger info (session_file, style, saga context). Enables
+#     auditing, re-running, and benchmarking of comic generation runs.
+#   - FEAT: Image resize/compression utility — images exceeding 4MB are
+#     automatically resized before being sent to vision LLM APIs. Uses
+#     progressive strategy: JPEG re-encode → scale down → quality reduction.
+#     Requires Pillow (best-effort: original bytes used if unavailable).
+#   - CHANGE: init-project step now passes generation trigger metadata
+#     (session_file, style, saga context) to create_issue.
 #
 # v7.3.0 (2026-03-02):
 #   - FIX: Store research as asset, flow only the URI through recipe context.
@@ -204,7 +229,18 @@ stages:
         prompt: |
           Initialize the comic project for asset tracking.
 
-          comic_project(action='create_issue', project='{{project_name}}', title='{{issue_title}}')
+          comic_project(
+            action='create_issue',
+            project='{{project_name}}',
+            title='{{issue_title}}',
+            metadata={
+              "session_file": "{{session_file}}",
+              "style": "{{style}}",
+              "created_by": "session-to-comic recipe v7.4.0",
+              "saga_issue": "{{saga_issue}}",
+              "previous_issue_id": "{{previous_issue_id}}"
+            }
+          )
 
           If project_name is empty, use "comic-project" as the default.
           If issue_title is empty, use "Comic Strip" as the default.

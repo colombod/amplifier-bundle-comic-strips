@@ -47,6 +47,79 @@ def _detect_mime(image_bytes: bytes) -> str:
     return "image/png"  # fallback
 
 
+# ---------------------------------------------------------------------------
+# Image size guard — shrink images that exceed LLM API size limits
+# ---------------------------------------------------------------------------
+
+_IMAGE_MAX_BYTES: int = 4 * 1024 * 1024  # 4 MB (safe margin below 5 MB limit)
+
+
+def _shrink_image_bytes(
+    image_bytes: bytes,
+    *,
+    max_bytes: int = _IMAGE_MAX_BYTES,
+    max_dimension: int = 2048,
+) -> bytes:
+    """Return *image_bytes* resized/compressed if they exceed *max_bytes*.
+
+    Strategy (progressive):
+      1. If already under limit, return as-is.
+      2. Re-encode as JPEG at quality=85 (often halves PNG size).
+      3. If still over, scale down to fit *max_dimension* on longest side.
+      4. If still over, reduce JPEG quality to 60.
+
+    Requires Pillow; returns the original bytes unchanged if Pillow is
+    unavailable (best-effort degradation).
+    """
+    if len(image_bytes) <= max_bytes:
+        return image_bytes
+
+    try:
+        from io import BytesIO
+
+        from PIL import Image  # type: ignore[import-untyped]
+    except ImportError:
+        logger.warning(
+            "Image is %d bytes (> %d limit) but Pillow is not installed "
+            "— cannot resize. Install with: pip install Pillow",
+            len(image_bytes),
+            max_bytes,
+        )
+        return image_bytes
+
+    img = Image.open(BytesIO(image_bytes))
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+
+    # Pass 1: re-encode as JPEG quality 85
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=85, optimize=True)
+    if buf.tell() <= max_bytes:
+        return buf.getvalue()
+
+    # Pass 2: scale down if needed
+    w, h = img.size
+    if max(w, h) > max_dimension:
+        scale = max_dimension / max(w, h)
+        img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=85, optimize=True)
+        if buf.tell() <= max_bytes:
+            return buf.getvalue()
+
+    # Pass 3: aggressive quality reduction
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=60, optimize=True)
+    result = buf.getvalue()
+    if len(result) > max_bytes:
+        logger.warning(
+            "Image still %d bytes after aggressive compression (limit %d)",
+            len(result),
+            max_bytes,
+        )
+    return result
+
+
 def _ok(result: Any) -> ToolResult:
     return ToolResult(success=True, output=json.dumps(result))
 
@@ -336,9 +409,22 @@ class ComicCreateTool:
         with tempfile.TemporaryDirectory(prefix="comic_create_") as output_dir:
             output_path = os.path.join(output_dir, f"{name}.png")
 
+            # Enforce no-text constraint at code level (agents should also
+            # include this, but we guarantee it here as a safety net).
+            _NO_TEXT_SUFFIX = (
+                " Do not include any text, speech bubbles, captions, dialogue,"
+                " labels, letters, words, or lettering in the image."
+            )
+            raw_prompt = params["prompt"]
+            safe_prompt = (
+                raw_prompt
+                if "no text" in raw_prompt.lower()
+                else raw_prompt.rstrip(". ") + "." + _NO_TEXT_SUFFIX
+            )
+
             gen_result = await self._image_gen.execute(
                 {
-                    "prompt": params["prompt"],
+                    "prompt": safe_prompt,
                     "output_path": output_path,
                     "size": params.get("size", "square"),
                     "style": params.get("style"),
@@ -356,7 +442,8 @@ class ComicCreateTool:
                 name,
                 source_path=output_path,
                 metadata={
-                    "prompt": params["prompt"],
+                    "prompt": raw_prompt,
+                    "safe_prompt": safe_prompt,
                     "camera_angle": params.get("camera_angle", ""),
                 },
             )
@@ -396,11 +483,23 @@ class ComicCreateTool:
         with tempfile.TemporaryDirectory(prefix="comic_create_") as output_dir:
             output_path = os.path.join(output_dir, "cover.png")
 
+            # Cover uses portrait ratio (comic book cover) and enforces no-text.
+            _NO_TEXT_SUFFIX = (
+                " Do not include any text, speech bubbles, captions, dialogue,"
+                " labels, letters, words, or lettering in the image."
+            )
+            raw_prompt = params["prompt"]
+            safe_prompt = (
+                raw_prompt
+                if "no text" in raw_prompt.lower()
+                else raw_prompt.rstrip(". ") + "." + _NO_TEXT_SUFFIX
+            )
+
             gen_result = await self._image_gen.execute(
                 {
-                    "prompt": params["prompt"],
+                    "prompt": safe_prompt,
                     "output_path": output_path,
-                    "size": params.get("size", "landscape"),
+                    "size": params.get("size", "portrait"),
                     "style": params.get("style"),
                     "reference_images": ref_paths or None,
                 }
@@ -418,6 +517,8 @@ class ComicCreateTool:
                 metadata={
                     "title": params["title"],
                     "subtitle": params.get("subtitle", ""),
+                    "prompt": raw_prompt,
+                    "safe_prompt": safe_prompt,
                 },
             )
 
@@ -659,6 +760,9 @@ class ComicCreateTool:
                 image_bytes = await asyncio.to_thread(Path(image_path).read_bytes)
             except OSError:
                 return None
+
+            # Shrink if over LLM API size limit (typically 5 MB)
+            image_bytes = _shrink_image_bytes(image_bytes)
 
             mime = _detect_mime(image_bytes)
             b64_data = base64.b64encode(image_bytes).decode("ascii")

@@ -186,6 +186,14 @@ class ComicProjectTool:
                     "type": "string",
                     "description": "Optional issue description. Used by create_issue.",
                 },
+                "metadata": {
+                    "type": "object",
+                    "description": (
+                        "Optional metadata dict stored with the issue (e.g. "
+                        "generation trigger, session_file, style, original prompt). "
+                        "Useful for auditing, re-running, and benchmarking."
+                    ),
+                },
             },
             "required": ["action"],
         }
@@ -206,6 +214,7 @@ class ComicProjectTool:
                     params["project"],
                     params["title"],
                     params.get("description", ""),
+                    metadata=params.get("metadata"),
                 )
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:

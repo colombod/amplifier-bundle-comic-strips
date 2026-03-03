@@ -189,10 +189,15 @@ class ComicProjectService:
         project_name: str,
         title: str,
         description: str = "",
+        metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Create a new issue, auto-creating the project if needed.
 
         Generates issue_id as "issue-NNN" (zero-padded, sequential).
+
+        *metadata* is an optional dict of arbitrary key/value pairs stored
+        alongside the issue manifest (e.g. generation trigger, style, session
+        file).  Useful for auditing, re-running, and benchmarking.
 
         Returns:
             {"project_id", "issue_id", "created"} where *created* indicates
@@ -240,6 +245,8 @@ class ComicProjectService:
                 "created_at": now,
                 "assets": {},
             }
+            if metadata:
+                issue_manifest["metadata"] = metadata
             await self._write_issue_manifest(project_id, issue_id, issue_manifest)
 
             project_manifest["issues"] = existing_issues + [issue_id]

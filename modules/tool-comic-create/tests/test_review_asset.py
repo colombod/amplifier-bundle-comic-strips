@@ -1,13 +1,12 @@
 """Tests for comic_create(action='review_asset').
 
-Uses MockVisionProvider — a real class following the Amplifier Provider protocol
+Uses FakeVisionProvider — a strict test double built on real amplifier_core types
 — instead of MagicMock chains or custom backend shims.  This catches interface
 mismatches immediately (wrong method name, bad signature) rather than hiding
 them behind a mock that accepts anything.
 
-The patch_message_models fixture injects stub amplifier_core.message_models
-so the full _call_vision_api → provider.complete() path can be exercised in
-environments where amplifier_core is not installed.
+amplifier_core is installed as a dev dependency so the full
+_call_vision_api → provider.complete() path is exercised with the real types.
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ import json
 import pytest
 
 from amplifier_module_comic_create import ComicCreateTool
-from tests.conftest import MockCoordinator, MockVisionProvider
+from tests.conftest import FakeCoordinator, FakeVisionProvider
 
 _PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
@@ -69,7 +68,7 @@ async def test_review_asset_auto_passes_no_coordinator(service, tmp_path) -> Non
 async def test_review_asset_auto_passes_no_vision_provider(service, tmp_path) -> None:
     """review_asset auto-passes when coordinator has no vision-capable provider."""
     pid, iid = await _setup_with_panel(service, tmp_path)
-    coordinator = MockCoordinator()  # no vision provider
+    coordinator = FakeCoordinator()  # no vision provider
     tool = ComicCreateTool(service=service, coordinator=coordinator)
 
     result = await tool.execute(
@@ -106,15 +105,15 @@ async def test_review_asset_missing_uri(service) -> None:
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_review_asset_calls_provider_with_image_parts(
-    service, tmp_path, patch_message_models
+    service, tmp_path
 ) -> None:
     """review_asset reads image, base64-encodes, passes prepared parts to provider."""
     pid, iid = await _setup_with_panel(service, tmp_path)
 
-    provider = MockVisionProvider(
+    provider = FakeVisionProvider(
         response_text='{"passed": true, "feedback": "Looks great."}'
     )
-    coordinator = MockCoordinator(vision_provider=provider)
+    coordinator = FakeCoordinator(vision_provider=provider)
     tool = ComicCreateTool(service=service, coordinator=coordinator)
 
     result = await tool.execute(
@@ -134,15 +133,15 @@ async def test_review_asset_calls_provider_with_image_parts(
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_review_asset_request_has_image_and_text_blocks(
-    service, tmp_path, patch_message_models
+    service, tmp_path
 ) -> None:
     """The request passed to provider.complete() has image blocks + a text block."""
     pid, iid = await _setup_with_panel(service, tmp_path)
 
-    provider = MockVisionProvider(
+    provider = FakeVisionProvider(
         response_text='{"passed": true, "feedback": "Good framing."}'
     )
-    coordinator = MockCoordinator(vision_provider=provider)
+    coordinator = FakeCoordinator(vision_provider=provider)
     tool = ComicCreateTool(service=service, coordinator=coordinator)
 
     await tool.execute(
@@ -164,15 +163,15 @@ async def test_review_asset_request_has_image_and_text_blocks(
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_review_asset_image_parts_contain_base64_data(
-    service, tmp_path, patch_message_models
+    service, tmp_path
 ) -> None:
     """The image block source contains base64-encoded data (not file path)."""
     pid, iid = await _setup_with_panel(service, tmp_path)
 
-    provider = MockVisionProvider(
+    provider = FakeVisionProvider(
         response_text='{"passed": true, "feedback": "Good."}'
     )
-    coordinator = MockCoordinator(vision_provider=provider)
+    coordinator = FakeCoordinator(vision_provider=provider)
     tool = ComicCreateTool(service=service, coordinator=coordinator)
 
     await tool.execute(
@@ -198,15 +197,15 @@ async def test_review_asset_image_parts_contain_base64_data(
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_review_asset_returns_text_feedback(
-    service, tmp_path, patch_message_models
+    service, tmp_path
 ) -> None:
     """Full review_asset flow returns structured feedback from provider."""
     pid, iid = await _setup_with_panel(service, tmp_path)
     feedback_text = "Character proportions are consistent. Framing is correct."
-    provider = MockVisionProvider(
+    provider = FakeVisionProvider(
         response_text=f'{{"passed": true, "feedback": "{feedback_text}"}}'
     )
-    coordinator = MockCoordinator(vision_provider=provider)
+    coordinator = FakeCoordinator(vision_provider=provider)
     tool = ComicCreateTool(service=service, coordinator=coordinator)
 
     result = await tool.execute(
@@ -245,12 +244,12 @@ async def test_call_vision_api_no_coordinator_auto_passes(service) -> None:
 
 
 @pytest.mark.asyncio(loop_scope="function")
-async def test_call_vision_api_with_provider(service, patch_message_models) -> None:
+async def test_call_vision_api_with_provider(service) -> None:
     """_call_vision_api delegates to provider.complete() and parses response."""
-    provider = MockVisionProvider(
+    provider = FakeVisionProvider(
         response_text='{"passed": true, "feedback": "PASS: The image quality is good."}'
     )
-    coordinator = MockCoordinator(vision_provider=provider)
+    coordinator = FakeCoordinator(vision_provider=provider)
     tool = ComicCreateTool(service=service, coordinator=coordinator)
 
     b64 = base64.b64encode(_PNG).decode("ascii")
@@ -266,7 +265,7 @@ async def test_call_vision_api_with_provider(service, patch_message_models) -> N
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_call_vision_api_provider_failure_auto_passes(
-    service, patch_message_models
+    service,
 ) -> None:
     """If provider.complete() raises, _call_vision_api auto-passes gracefully."""
 
@@ -282,7 +281,7 @@ async def test_call_vision_api_provider_failure_auto_passes(
         async def complete(self, request):
             raise RuntimeError("API down")
 
-    coordinator = MockCoordinator(vision_provider=_FailingProvider())
+    coordinator = FakeCoordinator(vision_provider=_FailingProvider())
     tool = ComicCreateTool(service=service, coordinator=coordinator)
 
     b64 = base64.b64encode(_PNG).decode("ascii")
@@ -302,7 +301,7 @@ async def test_call_vision_api_provider_failure_auto_passes(
 
 def test_coordinator_stored_on_instance(service) -> None:
     """ComicCreateTool accepts and stores a coordinator kwarg."""
-    coordinator = MockCoordinator()
+    coordinator = FakeCoordinator()
     tool = ComicCreateTool(service=service, coordinator=coordinator)
     assert tool._coordinator is coordinator
 
@@ -324,7 +323,7 @@ async def test_review_asset_reports_skipped_refs(service, tmp_path) -> None:
     await _setup_with_panel(service, tmp_path)
 
     bad_uri = "comic://nonexistent-proj/issues/issue-001/panels/ghost_panel"
-    coordinator = MockCoordinator()  # no vision — auto-pass is fine for skipped_refs test
+    coordinator = FakeCoordinator()  # no vision — auto-pass is fine for skipped_refs test
     tool = ComicCreateTool(service=service, coordinator=coordinator)
 
     result = await tool.execute(

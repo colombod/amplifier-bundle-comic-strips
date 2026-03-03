@@ -3,14 +3,22 @@
 from __future__ import annotations
 
 import asyncio
-import sys
-import types
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 import pytest_asyncio
+
+from amplifier_core import (
+    ChatRequest,
+    ChatResponse,
+    ModelInfo,
+    Provider,
+    ProviderInfo,
+    TextBlock,
+    ToolCall,
+)
 
 from amplifier_module_comic_assets.service import ComicProjectService
 from amplifier_module_comic_assets.storage import FileSystemStorage
@@ -19,61 +27,79 @@ _MINIMAL_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
 
 # ---------------------------------------------------------------------------
-# Mock vision provider — follows the REAL Amplifier Provider protocol.
-# No MagicMock: any interface mismatch (renamed method, wrong signature)
-# is caught immediately instead of silently passing.
+# FakeVisionProvider — strict test double following the real Provider protocol.
+# Uses actual amplifier_core types — if the protocol changes, this breaks.
+# isinstance(FakeVisionProvider(), Provider) is verified at module level below.
 # ---------------------------------------------------------------------------
 
 
-class MockVisionProvider:
-    """Follows the real Amplifier Provider protocol for vision testing."""
+class FakeVisionProvider:
+    """Strict test double following the real Provider protocol.
+
+    Uses actual amplifier_core types — if the protocol changes, this breaks.
+    isinstance(FakeVisionProvider(), Provider) is verified at test time.
+    """
 
     __test__ = False  # prevent pytest from treating this as a test class
 
     def __init__(
         self, response_text: str = '{"passed": true, "feedback": "Looks good."}'
     ) -> None:
-        self.name = "mock-vision"
-        self.response_text = response_text
+        self._response_text = response_text
         self.call_count = 0
-        self.last_request: Any = None
+        self.last_request: ChatRequest | None = None
 
-    def get_info(self) -> Any:
-        return type("ProviderInfo", (), {
-            "capabilities": ["vision"],
-            "capability_tags": ["vision"],
-        })()
+    @property
+    def name(self) -> str:
+        return "fake-vision"
 
-    async def list_models(self) -> list[Any]:
+    def get_info(self) -> ProviderInfo:
+        return ProviderInfo(
+            id="fake-vision",
+            display_name="Fake Vision Provider",
+            capabilities=["vision"],
+        )
+
+    async def list_models(self) -> list[ModelInfo]:
         return [
-            type("ModelInfo", (), {
-                "id": "mock-vision-model",
-                "capabilities": ["vision"],
-                "capability_tags": ["vision"],
-            })()
+            ModelInfo(
+                id="fake-vision-model",
+                display_name="Fake Vision Model",
+                context_window=128000,
+                max_output_tokens=4096,
+                capabilities=["vision"],
+            )
         ]
 
-    async def complete(self, request: Any) -> Any:
+    async def complete(self, request: ChatRequest, **kwargs: Any) -> ChatResponse:
         self.call_count += 1
         self.last_request = request
-        text_block = type("TextBlock", (), {"type": "text", "text": self.response_text})()
-        return type("ChatResponse", (), {"content": [text_block]})()
+        return ChatResponse(content=[TextBlock(text=self._response_text)])
+
+    def parse_tool_calls(self, response: ChatResponse) -> list[ToolCall]:
+        return []
 
 
-class MockCoordinator:
-    """Simulates coordinator.get() for testing — no MagicMock."""
+# Verify at import time that our fake matches the real protocol
+assert isinstance(
+    FakeVisionProvider(), Provider
+), "FakeVisionProvider does not match Provider protocol!"
+
+
+class FakeCoordinator:
+    """Minimal coordinator test double — provides get() for providers and tools."""
 
     __test__ = False  # prevent pytest from treating this as a test class
 
     def __init__(
         self,
-        vision_provider: MockVisionProvider | None = None,
+        vision_provider: FakeVisionProvider | None = None,
         tools: dict[str, Any] | None = None,
     ) -> None:
         self._providers: dict[str, Any] = {}
         self._tools: dict[str, Any] = tools or {}
         if vision_provider is not None:
-            self._providers["mock-vision"] = vision_provider
+            self._providers["fake-vision"] = vision_provider
 
     def get(self, mount_point: str, name: str | None = None) -> Any:
         if mount_point == "providers":
@@ -81,78 +107,6 @@ class MockCoordinator:
         if mount_point == "tools":
             return self._tools
         return None
-
-
-# ---------------------------------------------------------------------------
-# Stub amplifier_core.message_models for tests that exercise the full
-# provider path.  amplifier_core is not installed in the test environment
-# so we patch sys.modules with minimal stubs that satisfy _call_vision_api.
-# ---------------------------------------------------------------------------
-
-
-class _ImageBlock:
-    def __init__(self, type: str, source: dict[str, str]) -> None:
-        self.type = type
-        self.source = source
-
-
-class _TextBlock:
-    def __init__(self, type: str, text: str) -> None:
-        self.type = type
-        self.text = text
-
-
-class _Message:
-    def __init__(self, role: str, content: list[Any]) -> None:
-        self.role = role
-        self.content = content
-
-
-class _ChatRequest:
-    def __init__(
-        self,
-        messages: list[Any],
-        model: Any = None,
-        max_output_tokens: int | None = None,
-    ) -> None:
-        self.messages = messages
-        self.model = model
-        self.max_output_tokens = max_output_tokens
-
-
-@pytest.fixture()
-def patch_message_models():
-    """Patch sys.modules to provide stub amplifier_core.message_models.
-
-    Needed for tests that exercise the full _call_vision_api → provider.complete()
-    path when amplifier_core is not installed in the test environment.
-    """
-    msg_module = types.ModuleType("amplifier_core.message_models")
-    msg_module.ImageBlock = _ImageBlock  # type: ignore[attr-defined]
-    msg_module.TextBlock = _TextBlock  # type: ignore[attr-defined]
-    msg_module.Message = _Message  # type: ignore[attr-defined]
-    msg_module.ChatRequest = _ChatRequest  # type: ignore[attr-defined]
-
-    core_module = types.ModuleType("amplifier_core")
-    core_module.message_models = msg_module  # type: ignore[attr-defined]
-
-    orig_core = sys.modules.get("amplifier_core")
-    orig_msgs = sys.modules.get("amplifier_core.message_models")
-
-    sys.modules["amplifier_core"] = core_module
-    sys.modules["amplifier_core.message_models"] = msg_module
-
-    yield
-
-    if orig_core is None:
-        sys.modules.pop("amplifier_core", None)
-    else:
-        sys.modules["amplifier_core"] = orig_core
-
-    if orig_msgs is None:
-        sys.modules.pop("amplifier_core.message_models", None)
-    else:
-        sys.modules["amplifier_core.message_models"] = orig_msgs
 
 
 # ---------------------------------------------------------------------------
@@ -208,19 +162,37 @@ class TestImageBackend:
 
 
 @pytest.fixture()
-def tmp_storage(tmp_path):
+def fake_vision_provider() -> FakeVisionProvider:
+    """FakeVisionProvider with default passing response."""
+    return FakeVisionProvider()
+
+
+@pytest.fixture()
+def fake_coordinator(fake_vision_provider: FakeVisionProvider) -> FakeCoordinator:
+    """FakeCoordinator wired with a FakeVisionProvider."""
+    return FakeCoordinator(vision_provider=fake_vision_provider)
+
+
+@pytest.fixture()
+def fake_coordinator_no_vision() -> FakeCoordinator:
+    """FakeCoordinator with no vision provider (triggers auto-pass)."""
+    return FakeCoordinator()
+
+
+@pytest.fixture()
+def tmp_storage(tmp_path: Path) -> FileSystemStorage:
     """FileSystemStorage rooted at tmp_path / '.comic-assets'."""
     return FileSystemStorage(str(tmp_path / ".comic-assets"))
 
 
 @pytest.fixture()
-def service(tmp_storage):
+def service(tmp_storage: FileSystemStorage) -> ComicProjectService:
     """ComicProjectService backed by a fresh temporary storage."""
     return ComicProjectService(tmp_storage)
 
 
 @pytest.fixture()
-def sample_png(tmp_path):
+def sample_png(tmp_path: Path) -> str:
     """Write a minimal PNG file and return its path as a string."""
     png_path = tmp_path / "test.png"
     png_path.write_bytes(_MINIMAL_PNG)
@@ -228,7 +200,7 @@ def sample_png(tmp_path):
 
 
 @pytest.fixture()
-def image_gen():
+def image_gen() -> Any:
     """Real ComicImageGenTool wired with a TestImageBackend — zero mocks.
 
     Using the real ``ComicImageGenTool`` (not a ``MagicMock``) means that any

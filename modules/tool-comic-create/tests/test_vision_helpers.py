@@ -5,16 +5,15 @@ Covers:
   - Structured JSON response parsing with keyword fallback via _call_vision_api
   - _call_vision_api passes pre-prepared image_parts (ZERO file I/O)
 
-Why MockVisionProvider (not a custom backend shim) for the parsing tests:
+Why FakeVisionProvider (not a custom backend shim) for the parsing tests:
   _call_vision_api's job is (1) find a vision provider via coordinator,
   (2) build a request with pre-prepared image_parts, (3) call provider.complete(),
   (4) parse the text response.  By injecting specific response strings via
-  MockVisionProvider we test step (4) deterministically without any real API
-  calls and without hiding the provider interface behind a MagicMock.
+  FakeVisionProvider we test step (4) deterministically without any real API
+  calls and with real amplifier_core types catching protocol mismatches.
 
-  The patch_message_models fixture is required for all tests that exercise the
-  full _call_vision_api → provider.complete() path, because amplifier_core
-  is not installed in the test environment.
+  amplifier_core is installed as a dev dependency so the full
+  _call_vision_api → provider.complete() path uses the real types directly.
 """
 
 from __future__ import annotations
@@ -23,7 +22,7 @@ import base64
 
 import pytest
 
-from tests.conftest import MockCoordinator, MockVisionProvider
+from tests.conftest import FakeCoordinator, FakeVisionProvider
 
 _PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
@@ -82,17 +81,17 @@ def _prepared_parts() -> list[dict[str, str]]:
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_call_vision_api_parses_json_passed_true(
-    service, patch_message_models
+    service
 ) -> None:
     """JSON response with passed=true is parsed and returned as passed=True."""
     from amplifier_module_comic_create import ComicCreateTool
 
-    provider = MockVisionProvider(
+    provider = FakeVisionProvider(
         response_text='{"passed": true, "feedback": "All checks passed successfully."}'
     )
     tool = ComicCreateTool(
         service=service,
-        coordinator=MockCoordinator(vision_provider=provider),
+        coordinator=FakeCoordinator(vision_provider=provider),
     )
     result = await tool._call_vision_api(_prepared_parts(), "Check quality")
 
@@ -102,17 +101,17 @@ async def test_call_vision_api_parses_json_passed_true(
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_call_vision_api_parses_json_passed_false(
-    service, patch_message_models
+    service
 ) -> None:
     """JSON response with passed=false is parsed and returned as passed=False."""
     from amplifier_module_comic_create import ComicCreateTool
 
-    provider = MockVisionProvider(
+    provider = FakeVisionProvider(
         response_text='{"passed": false, "feedback": "Character proportions are off."}'
     )
     tool = ComicCreateTool(
         service=service,
-        coordinator=MockCoordinator(vision_provider=provider),
+        coordinator=FakeCoordinator(vision_provider=provider),
     )
     result = await tool._call_vision_api(_prepared_parts(), "Check quality")
 
@@ -122,18 +121,18 @@ async def test_call_vision_api_parses_json_passed_false(
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_call_vision_api_json_avoids_false_positive(
-    service, patch_message_models
+    service
 ) -> None:
     """JSON parsing avoids false-positive: 'do not fail' with passed=true stays True."""
     from amplifier_module_comic_create import ComicCreateTool
 
     # This text WOULD trigger keyword detection ("fail") but JSON explicitly says passed=true
-    provider = MockVisionProvider(
+    provider = FakeVisionProvider(
         response_text='{"passed": true, "feedback": "The characters do not fail to match the style."}'
     )
     tool = ComicCreateTool(
         service=service,
-        coordinator=MockCoordinator(vision_provider=provider),
+        coordinator=FakeCoordinator(vision_provider=provider),
     )
     result = await tool._call_vision_api(_prepared_parts(), "Check quality")
 
@@ -143,17 +142,17 @@ async def test_call_vision_api_json_avoids_false_positive(
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_call_vision_api_falls_back_to_keyword_when_no_json(
-    service, patch_message_models
+    service
 ) -> None:
     """When response has no JSON, keyword detection is used as fallback."""
     from amplifier_module_comic_create import ComicCreateTool
 
-    provider = MockVisionProvider(
+    provider = FakeVisionProvider(
         response_text="This image does not pass quality review."
     )
     tool = ComicCreateTool(
         service=service,
-        coordinator=MockCoordinator(vision_provider=provider),
+        coordinator=FakeCoordinator(vision_provider=provider),
     )
     result = await tool._call_vision_api(_prepared_parts(), "Check quality")
 
@@ -163,18 +162,18 @@ async def test_call_vision_api_falls_back_to_keyword_when_no_json(
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_call_vision_api_json_in_prose_wrapper(
-    service, patch_message_models
+    service
 ) -> None:
     """JSON embedded in prose (before/after text) is extracted and parsed."""
     from amplifier_module_comic_create import ComicCreateTool
 
     # Model may wrap JSON in prose — we should still extract it
-    provider = MockVisionProvider(
+    provider = FakeVisionProvider(
         response_text='Here is my assessment: {"passed": false, "feedback": "Too dark overall."} End of review.'
     )
     tool = ComicCreateTool(
         service=service,
-        coordinator=MockCoordinator(vision_provider=provider),
+        coordinator=FakeCoordinator(vision_provider=provider),
     )
     result = await tool._call_vision_api(_prepared_parts(), "Check quality")
 
@@ -184,17 +183,17 @@ async def test_call_vision_api_json_in_prose_wrapper(
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_call_vision_api_takes_pre_prepared_parts_no_file_io(
-    service, patch_message_models
+    service
 ) -> None:
     """_call_vision_api accepts pre-prepared image_parts dicts — ZERO file I/O."""
     from amplifier_module_comic_create import ComicCreateTool
 
-    provider = MockVisionProvider(
+    provider = FakeVisionProvider(
         response_text='{"passed": true, "feedback": "Clean."}'
     )
     tool = ComicCreateTool(
         service=service,
-        coordinator=MockCoordinator(vision_provider=provider),
+        coordinator=FakeCoordinator(vision_provider=provider),
     )
 
     # Pass pre-prepared dicts directly — no file path involved

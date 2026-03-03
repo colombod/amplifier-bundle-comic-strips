@@ -70,13 +70,32 @@ class ComicCreateTool:
 
     def __init__(
         self,
-        service: Any,
+        service: Any | None = None,
         image_gen: Any | None = None,
         coordinator: Any | None = None,
     ) -> None:
         self._service = service
         self._image_gen = image_gen  # ComicImageGenTool instance (internal)
         self._coordinator = coordinator  # for provider access
+
+    def _resolve_service(self) -> Any:
+        """Lazily resolve the ComicProjectService from the coordinator capability registry.
+
+        During validation dry-runs, ``tool-comic-assets`` may not have mounted yet,
+        so the capability is unavailable.  We defer the lookup to first ``execute()``
+        call, when all modules are guaranteed to be mounted.
+        """
+        if self._service is not None:
+            return self._service
+        if self._coordinator is not None:
+            self._service = self._coordinator.get_capability("comic.project-service")
+        if self._service is None:
+            raise RuntimeError(
+                "comic.project-service capability not found. "
+                "Ensure tool-comic-assets is included before tool-comic-create "
+                "in the behavior YAML."
+            )
+        return self._service
 
     @property
     def name(self) -> str:
@@ -242,7 +261,7 @@ class ComicCreateTool:
                 return _error(f"Image generation failed: {gen_result.output}")
 
             # Store the character via the service (copies the file before we exit the with block)
-            store_result = await self._service.store_character(
+            store_result = await self._resolve_service().store_character(
                 project,
                 issue,
                 name,
@@ -273,7 +292,7 @@ class ComicCreateTool:
             parsed = parse_comic_uri(raw)
             # Characters are project-scoped in both the URI (v2: comic://project/characters/name)
             # and the service layer — no issue segment needed for retrieval.
-            char_data = await self._service.get_character(
+            char_data = await self._resolve_service().get_character(
                 parsed.project,
                 parsed.name,
                 style=None,
@@ -330,7 +349,7 @@ class ComicCreateTool:
             if not gen_result.success:
                 return _error(f"Image generation failed: {gen_result.output}")
 
-            store_result = await self._service.store_asset(
+            store_result = await self._resolve_service().store_asset(
                 project,
                 issue,
                 "panel",
@@ -390,7 +409,7 @@ class ComicCreateTool:
             if not gen_result.success:
                 return _error(f"Image generation failed: {gen_result.output}")
 
-            store_result = await self._service.store_asset(
+            store_result = await self._resolve_service().store_asset(
                 project,
                 issue,
                 "cover",
@@ -611,7 +630,7 @@ class ComicCreateTool:
 
             try:
                 if parsed.asset_type == "characters":
-                    asset = await self._service.get_character(
+                    asset = await self._resolve_service().get_character(
                         parsed.project,
                         parsed.name,
                         version=parsed.version,
@@ -620,7 +639,7 @@ class ComicCreateTool:
                     )
                     image_path = asset.get("image")
                 else:
-                    asset = await self._service.get_asset(
+                    asset = await self._resolve_service().get_asset(
                         parsed.project,
                         parsed.issue,
                         singularize_type(parsed.asset_type),
@@ -692,8 +711,9 @@ class ComicCreateTool:
         from amplifier_module_comic_assets.comic_uri import singularize_type
 
         try:
+            svc = self._resolve_service()
             if parsed.asset_type == "characters":
-                asset = await self._service.get_character(
+                asset = await svc.get_character(
                     parsed.project,
                     parsed.name,
                     version=parsed.version,
@@ -702,7 +722,7 @@ class ComicCreateTool:
                 )
                 image_path = asset.get("image")
             else:
-                asset = await self._service.get_asset(
+                asset = await svc.get_asset(
                     parsed.project,
                     parsed.issue,
                     singularize_type(parsed.asset_type),
@@ -736,7 +756,7 @@ class ComicCreateTool:
             return ""
 
         try:
-            asset = await self._service.get_asset(
+            asset = await self._resolve_service().get_asset(
                 parsed.project,
                 parsed.issue,
                 parsed.asset_type,
@@ -835,12 +855,10 @@ async def mount(coordinator: Any, config: Any = None) -> None:
     before ``tool-comic-create`` in the behavior YAML so the capability is available
     at mount time.
     """
+    # Attempt eager lookup. During validation dry-runs the capability may not
+    # exist yet — that's OK, ComicCreateTool._resolve_service() will retry
+    # lazily on first execute() call when all modules are guaranteed mounted.
     service = coordinator.get_capability("comic.project-service")
-    if service is None:
-        raise RuntimeError(
-            "comic.project-service capability not found. "
-            "Ensure tool-comic-assets is included before tool-comic-create in the behavior YAML."
-        )
 
     # Attempt to get the generate_image tool's internal backend.
     # It may not be available (validation dry-run, or image-gen not loaded).

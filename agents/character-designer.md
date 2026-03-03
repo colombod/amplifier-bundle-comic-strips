@@ -36,6 +36,8 @@ provider_preferences:
     model: gemini-*-pro
   - provider: github-copilot
     model: claude-sonnet-*
+  - provider: github-copilot
+    model: gpt-5.[0-9]
 
 tools:
   - module: tool-comic-create
@@ -89,7 +91,7 @@ Apply style-dependent interpretation from the style guide:
 
 ## Process
 
-1. **Read the style guide** using `comic_style(action='get', project='{{project_id}}', name='{{style}}', include='full')` if not already available in `{{style_guide}}`
+1. **Read the style guide** using `comic_style(action='get', uri='{{style_guide_uri}}', include='full')` if not already available in `{{style_guide}}`
 2. **Start with the style guide's Image Prompt Template** as the base
 3. **Insert character identity details** from `{{character_item}}`: name, role, visual traits from `description`
 4. **Add bundle team markers**: team color accent and insignia from the `bundle` field
@@ -166,7 +168,7 @@ Return a **single character sheet entry** (not an array) as a JSON object:
 
 To retrieve the style guide for prompt crafting:
 ```
-comic_style(action='get', project='{{project_id}}', name='{{style}}', include='full')
+comic_style(action='get', uri='{{style_guide_uri}}', include='full')
 ```
 
 Output the character entry JSON with the `uri` and `version` returned by `comic_create`.

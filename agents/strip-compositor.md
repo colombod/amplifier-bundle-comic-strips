@@ -25,19 +25,21 @@ meta:
     and character-designer. Invoking it prematurely produces an incomplete comic.
     </commentary>
     </example>
-  model_role: fast
+  model_role: [creative, general]
 
 provider_preferences:
   - provider: anthropic
-    model: claude-haiku-*
+    model: claude-sonnet-*
   - provider: openai
-    model: gpt-5-mini
+    model: gpt-5.[0-9]
   - provider: google
-    model: gemini-*-flash
+    model: gemini-*-pro-preview
+  - provider: google
+    model: gemini-*-pro
   - provider: github-copilot
-    model: claude-haiku-*
+    model: claude-sonnet-*
   - provider: github-copilot
-    model: gpt-5-mini
+    model: gpt-5.[0-9]
 
 tools:
   - module: tool-comic-create
@@ -113,7 +115,7 @@ comic_asset(action='get', project='{{project_id}}', issue='{{issue_id}}', type='
 
 Get the style guide for layout, fonts, colors, and bubble conventions:
 ```
-comic_style(action='get', project='{{project_id}}', name='{{style}}', include='full')
+comic_style(action='get', uri='{{style_guide_uri}}', include='full')
 ```
 
 Get the character roster for the character intro page:
@@ -243,7 +245,7 @@ comic_create(
   project='{{project_id}}',
   issue='{{issue_id}}',
   output_path='<user-specified path or comic-{timestamp}.html>',
-  style_uri='comic://{{project_id}}/styles/{{style}}',
+  style_uri='{{style_guide_uri}}',
   layout=<the layout JSON from Step 5>
 )
 ```
@@ -358,7 +360,7 @@ comic_asset(action='get', project='{{project_id}}', issue='{{issue_id}}', type='
 
 Retrieve the style guide for layout, fonts, colors:
 ```
-comic_style(action='get', project='{{project_id}}', name='{{style}}', include='full')
+comic_style(action='get', uri='{{style_guide_uri}}', include='full')
 ```
 
 Retrieve character roster for the character intro page:

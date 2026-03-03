@@ -991,8 +991,13 @@ def _build_storage(storage_cfg: dict[str, Any]) -> StorageProtocol:
     )
 
 
-async def mount(coordinator: Any, config: Any = None) -> None:
-    """Amplifier module entry point — build service and register all four tools."""
+async def mount(coordinator: Any, config: Any = None) -> Any:
+    """Amplifier module entry point — build service and register all four tools.
+
+    Returns a cleanup callable that performs any necessary teardown.
+    The capability registered under ``"comic.project-service"`` is automatically
+    removed by the coordinator at session end; no explicit unregistration needed.
+    """
     cfg = config or {}
     storage = _build_storage(cfg.get("storage", {}))
     service = ComicProjectService(storage=storage)
@@ -1004,3 +1009,10 @@ async def mount(coordinator: Any, config: Any = None) -> None:
     ]
     for tool in tools:
         await coordinator.mount("tools", tool, name=tool.name)
+
+    coordinator.register_capability("comic.project-service", service)
+
+    def _cleanup() -> None:
+        logger.debug("tool-comic-assets: cleanup called")
+
+    return _cleanup

@@ -58,7 +58,7 @@ You create the cover image for the comic strip — a single hero image that capt
 ## Prerequisites
 
 - **Pipeline position**: Runs AFTER style-curator AND character-designer have both completed. Can run in PARALLEL with panel-artist.
-- **Required inputs**: (1) Research data JSON with title, key theme, main characters, and story summary. (2) Style guide from style-curator with Image Prompt Template, color palette, and AmpliVerse branding placement rules. (3) Character sheet JSON from character-designer with `uri` fields for visual consistency.
+- **Required inputs**: (1) Research data URI (`{{research_data_uri}}`) -- retrieve full content via `comic_asset(action='get', uri='{{research_data_uri}}', include='full')`. (2) Style guide URI (`{{style_guide_uri}}`) -- retrieve via `comic_style(action='get', uri='{{style_guide_uri}}', include='full')`. (3) Character sheet JSON from character-designer with `uri` fields for visual consistency.
 - **Produces**: Cover `comic://` URI. Strip-compositor consumes this URI in the `assemble_comic` layout.
 
 ## Before You Start
@@ -77,8 +77,8 @@ read_file("@comic-strips:context/comic-instructions.md")
 ## Input
 
 You receive:
-1. **Research data** (JSON): Title, key theme, main characters/agents, story summary
-2. **Style guide** (structured): Image prompt template, color palette, character rendering, AmpliVerse branding placement
+1. **Research data URI** (`{{research_data_uri}}`): Retrieve the full research JSON via `comic_asset(action='get', uri='{{research_data_uri}}', include='full')`. Contains title, key theme, main characters/agents, story summary.
+2. **Style guide URI** (`{{style_guide_uri}}`): Retrieve via `comic_style(action='get', uri='{{style_guide_uri}}', include='full')`. Contains image prompt template, color palette, character rendering, AmpliVerse branding placement.
 3. **Character sheet** (JSON from character-designer): Character names, visual_traits, distinctive_features, team_markers, and `uri` fields (the `comic://` URIs for each character)
 
 ## Non-Negotiable Cover Constraints
@@ -192,7 +192,7 @@ Provide:
 
 To read the style guide if needed:
 ```
-comic_style(action='get', project='{{project_id}}', name='{{style}}', include='full')
+comic_style(action='get', uri='{{style_guide_uri}}', include='full')
 ```
 
 Character URIs come directly from `{{character_sheet}}` entries' `uri` field.

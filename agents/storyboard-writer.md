@@ -201,7 +201,7 @@ Your output MUST be a single structured JSON block in this exact format. `parse_
       "size": "wide",
       "scene_description": "A wide establishing shot of a high-tech command center. Multiple holographic displays float in the air showing cascading code. The Explorer stands at the center console, hand on chin, studying the displays. A massive wall of red error symbols looms behind the windows like a storm approaching.",
       "characters_present": ["The Explorer"],
-      "camera_angle": "wide overhead",
+      "camera_angle": "wide-overhead",
       "emotional_beat": "setup - the challenge",
       "dialogue": [
         {"speaker": "The Explorer", "text": "Something's wrong. The deeper I dig, the more tangled it gets."}
@@ -318,7 +318,7 @@ comic_asset(action='get', uri='<research_data_uri>', include='full')
 
 Read the style guide from the asset manager instead of relying on recipe context:
 ```
-comic_style(action='get', project='{{project_id}}', name='<style_name>', include='full')
+comic_style(action='get', uri='{{style_guide_uri}}', include='full')
 ```
 
 After producing the complete storyboard JSON (with character_list and panel_list), store it:

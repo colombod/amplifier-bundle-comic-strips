@@ -64,7 +64,7 @@ You receive three inputs:
    - `characters_present`: List of character names appearing in this panel
    - `dialogue`: Array of `{speaker, text}` objects
    - `emotional_beat`: The narrative moment (e.g., "rising tension")
-   - `camera_angle`: Framing guidance (e.g., "wide overhead", "close-up")
+   - `camera_angle`: Framing guidance (e.g., "wide-overhead", "close-up")
    - `caption`: Narrator caption text
    - `sound_effects`: List of sound effect strings
    - `page_break_after`: Boolean

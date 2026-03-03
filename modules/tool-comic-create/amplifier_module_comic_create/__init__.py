@@ -487,7 +487,10 @@ class ComicCreateTool:
         provider, model = await self._find_vision_provider()
         if provider is None:
             logger.warning("No vision provider available — auto-passing review")
-            return {"passed": True, "feedback": "No vision provider available — auto-passing."}
+            return {
+                "passed": True,
+                "feedback": "No vision provider available — auto-passing.",
+            }
 
         try:
             from amplifier_core.message_models import (  # type: ignore[import-untyped]
@@ -533,7 +536,10 @@ class ComicCreateTool:
                     break
 
             if not text:
-                return {"passed": True, "feedback": "Vision returned no text — auto-passing."}
+                return {
+                    "passed": True,
+                    "feedback": "Vision returned no text — auto-passing.",
+                }
 
             # Parse JSON (with keyword fallback)
             json_match = re.search(
@@ -553,13 +559,22 @@ class ComicCreateTool:
             text_lower = text.lower()
             failed = any(
                 kw in text_lower
-                for kw in ("fail", "not pass", "does not pass", "reject", "poor quality")
+                for kw in (
+                    "fail",
+                    "not pass",
+                    "does not pass",
+                    "reject",
+                    "poor quality",
+                )
             )
             return {"passed": not failed, "feedback": text}
 
         except Exception as exc:
             logger.warning("Vision API call failed: %s — auto-passing", exc)
-            return {"passed": True, "feedback": f"Vision failed ({exc}) — auto-passing."}
+            return {
+                "passed": True,
+                "feedback": f"Vision failed ({exc}) — auto-passing.",
+            }
 
     async def _review_asset(self, params: dict[str, Any]) -> ToolResult:
         """Vision-based review. Resolve URI → bytes → base64 → vision API → text feedback.
@@ -576,7 +591,10 @@ class ComicCreateTool:
         import asyncio
         from pathlib import Path
 
-        from amplifier_module_comic_assets.comic_uri import parse_comic_uri, singularize_type
+        from amplifier_module_comic_assets.comic_uri import (
+            parse_comic_uri,
+            singularize_type,
+        )
 
         raw_uri = params["uri"]
         try:
@@ -636,7 +654,7 @@ class ComicCreateTool:
 
         # Resolve optional references
         skipped_refs: list[str] = []
-        for ref_uri in (params.get("reference_uris") or []):
+        for ref_uri in params.get("reference_uris") or []:
             try:
                 ref_part = await _resolve_to_image_part(ref_uri)
                 if ref_part:
@@ -810,21 +828,19 @@ class ComicCreateTool:
 
 
 async def mount(coordinator: Any, config: Any = None) -> None:
-    """Amplifier module entry point — build service and register the tool."""
-    from amplifier_module_comic_assets.service import ComicProjectService
-    from amplifier_module_comic_assets.storage import FileSystemStorage
+    """Amplifier module entry point — retrieve shared service and register the tool.
 
-    cfg = config or {}
-    storage_cfg = cfg.get("storage", {})
-    backend = storage_cfg.get("backend", "filesystem")
-    if backend == "filesystem":
-        fs_cfg = storage_cfg.get("filesystem", {})
-        root = fs_cfg.get("root", ".comic-assets")
-        storage = FileSystemStorage(root=root)
-    else:
-        raise ValueError(f"Unknown storage backend '{backend}'")
-
-    service = ComicProjectService(storage=storage)
+    Retrieves the ``ComicProjectService`` singleton registered by ``tool-comic-assets``
+    via the coordinator capability registry.  ``tool-comic-assets`` **must** be listed
+    before ``tool-comic-create`` in the behavior YAML so the capability is available
+    at mount time.
+    """
+    service = coordinator.get_capability("comic.project-service")
+    if service is None:
+        raise RuntimeError(
+            "comic.project-service capability not found. "
+            "Ensure tool-comic-assets is included before tool-comic-create in the behavior YAML."
+        )
 
     # Attempt to get the generate_image tool's internal backend.
     # It may not be available (validation dry-run, or image-gen not loaded).

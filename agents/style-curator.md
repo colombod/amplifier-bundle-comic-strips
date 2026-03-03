@@ -127,10 +127,25 @@ Your output MUST be a structured style guide with these exact sections:
 
 ## Asset Storage
 
-After producing the complete style guide, store it using the comic_style tool:
+After producing the complete style guide, store it using the comic_style tool. The `definition` parameter is a **JSON string** containing the structured style guide:
 
 ```
-comic_style(action='store', project='{{project_id}}', issue='{{issue_id}}', name='<style_name>', definition=<the complete style guide as structured data>)
+comic_style(
+  action='store',
+  project='{{project_id}}',
+  name='<style_name>',
+  definition='{"image_prompt_template": "...", "color_palette": {...}, "panel_conventions": {...}, "text_treatment": {...}}'
+)
+```
+
+Example with concrete values:
+```
+comic_style(
+  action='store',
+  project='my-comic',
+  name='manga',
+  definition='{"image_prompt_template": "manga style, cel-shaded, ...", "color_palette": {"primary": "#1a1a2e", "accent": "#e94560"}, "panel_conventions": {"gutters": "thin", "bleeds": true}, "text_treatment": {"font_style": "bold sans-serif", "sfx": "katakana-inspired"}}'
+)
 ```
 
 The style name should match the requested style (e.g., "manga", "superhero", or the custom description slugified). This makes the style guide retrievable by downstream agents and reusable across issues.

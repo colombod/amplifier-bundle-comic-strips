@@ -66,7 +66,7 @@ The HTML output is organized into discrete pages, not one scrollable document:
 
 - **Page 1: Cover page** — hero image + title overlay + AmpliVerse branding
 - **Page 2: Character intro page** — each character with portrait, name, role, and backstory (who they are as a character, NOT design notes)
-- **Pages 3+: Story pages** — 3-5 panels each, split based on the storyboard's `page_break_after` markers
+- **Pages 3+: Story pages** — typically 3-6 panels each (some pages may use 2 for dramatic full-spread moments), split based on the storyboard's `page_break_after` markers
 
 Each page is a full-viewport `<section class="page">` element. `assemble_comic` handles the HTML rendering.
 

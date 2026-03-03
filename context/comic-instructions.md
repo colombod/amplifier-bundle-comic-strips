@@ -33,8 +33,9 @@ The AmpliVerse logo MUST be the actual Amplifier GitHub avatar image:
 
 Characters represent agents from the actual session transcript, not inventions.
 
-- **Main characters (3-4 max)**: Agents with the most tool calls and delegation activity that drove key moments
+- **Main characters (4-5 default)**: Agents with the most tool calls and delegation activity that drove key moments
 - **Supporting characters (1-2)**: Agents with one meaningful moment but not central
+- **Total default: 5-6 characters.** Recipe param `max_characters` can override.
 - **Antagonists**: Real session obstacles (errors, rate limits, failures) visualized as ENVIRONMENTAL THREATS -- walls, storms, barriers. NOT as characters with portraits or dialogue.
 - **Cut entirely**: Agents that appeared briefly or did routine work
 
@@ -44,35 +45,36 @@ Agents from the same bundle share visual team markers (color accents, insignia, 
 
 ## Issue Budget Standards
 
-Every comic issue has a FIXED page and panel budget. These limits are non-negotiable.
+Every comic issue has default budgets. The user can override these via recipe params.
 
-| Budget Item | Default | Hard Limit | Notes |
+| Budget Item | Default | Override Param | Notes |
 |---|---|---|---|
-| Cover | 1 page | 1 page | Always present, always first page |
-| Story pages | 4 | 3-5 | Adjustable within range per story needs |
-| **Total pages** | **5** | **6 max** | Cover + story pages |
-| Panels per page | 2-3 | 3 max | Never exceed 3 panels on a single page |
-| **Total panels** | **~10** | **12 max** | Budget = story pages x panels per page |
-| Characters | 4 main + 2 supporting | 6 max | Unchanged |
+| Cover | 1 page | — | Always present, always first page |
+| Cast page | 1 page | — | Always present, shows character backstories |
+| Story pages | 5 | `max_pages` | Adjustable per story needs |
+| Panels per page | 3-6 | `panels_per_page` | Pages with 2 panels allowed for dramatic full-spread moments |
+| Characters | 5-6 (4-5 main + 1-2 supporting) | `max_characters` | Curate the most interesting cast |
 
-### Why Fixed Budgets
+### Why Budgets
 
-- **Predictable output**: Every issue is 4-6 pages. No 15-page monsters.
-- **Readable panels**: At max 3 panels per page, each panel image is large enough to read.
-- **Bounded cost**: Image generation is capped at 12 panels + 1 cover = 13 images max.
+- **Predictable output**: Consistent issue size. No 20-page monsters.
+- **Readable panels**: 3-6 panels per page balances density with readability. 2-panel pages for impact.
+- **Bounded cost**: Image generation is capped by pages x panels-per-page + characters + cover.
 - **Multi-issue by design**: When a story is too rich for one issue, split into a saga.
+- **User-steerable**: All limits can be adjusted via recipe context params when needed.
 
 ### Page Structure
 
-A standard 5-page issue follows this structure:
+A standard issue follows this structure:
 
 | Page | Content | Typical Panels |
 |---|---|---|
 | 1 | Cover | 1 (hero image) |
-| 2 | Setup / Challenge | 2-3 |
-| 3 | Rising Action / Approach | 2-3 |
-| 4 | Climax / Turning Point | 2-3 |
-| 5 | Resolution / Results | 2-3 |
+| 2 | Cast | Character portraits + backstories |
+| 3 | Setup / Challenge | 3-6 (or 2 for a dramatic full-spread opening) |
+| 4 | Rising Action / Approach | 3-6 |
+| 5 | Climax / Turning Point | 3-6 (or 2 for maximum impact) |
+| 6 | Resolution / Results | 3-6 |
 
 ### Sagas (Multi-Issue Stories)
 

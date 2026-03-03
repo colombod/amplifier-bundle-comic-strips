@@ -205,12 +205,15 @@ tags: ["comic", "visual-storytelling", "session-analysis", "uri-protocol"]
 
 context:
   session_file: ""        # Required: path to events.jsonl session file or session ID
-  style: "superhero"      # 27 styles: manga, superhero, indie, newspaper, ligne-claire, retro-americana, watchmen, berserk, cuphead, ghibli, attack-on-titan, spider-man, x-men, solo-leveling, gundam, transformers, tatsunoko, witchblade, dylan-dog, tex-willer, disney-classic, bendy, hellraiser, naruto, jujutsu-kaisen, one-piece, go-nagai — or any custom description
+  style: "superhero"      # 28 styles: manga, superhero, indie, newspaper, ligne-claire, retro-americana, sin-city, watchmen, berserk, cuphead, ghibli, attack-on-titan, spider-man, x-men, solo-leveling, gundam, transformers, tatsunoko, witchblade, dylan-dog, tex-willer, disney-classic, bendy, hellraiser, naruto, jujutsu-kaisen, one-piece, go-nagai — or any custom description
   output_name: ""         # Optional: custom output filename (defaults to comic-{timestamp})
-  project_name: ""     # Optional: project name (defaults to "comic-project")
-  issue_title: ""      # Optional: issue title (defaults to comic title from research)
+  project_name: ""        # Optional: project name (defaults to "comic-project")
+  issue_title: ""         # Optional: issue title (defaults to comic title from research)
   saga_issue: ""          # Optional: saga issue number (2, 3, ...). Empty = issue 1 or standalone.
   previous_issue_id: ""   # Optional: issue ID of previous saga issue (for continuity).
+  max_characters: ""      # Optional: max characters to design (default 5-6). User can steer e.g. "3" or "8".
+  max_pages: ""           # Optional: max story pages per issue (default 5). Increase for epic arcs.
+  panels_per_page: ""     # Optional: panels per page range (default "3-6"). Use "2-4" for cinematic, "4-6" for dense.
 
 stages:
   # ==========================================================================
@@ -339,8 +342,9 @@ stages:
 
           **Phase 2 — Translate to Comic:**
           Take the narrative prose from Phase 1 and translate it into comic panels.
-          Select 3-4 main characters (most active agents) + 1-2 supporting (one key moment).
-          Do NOT create more than 6 characters total. Do NOT include every agent mentioned.
+          **Character budget:** Default 5-6 total (4 main + 1-2 supporting).
+          {{max_characters}} — if the user specified a number, use that instead.
+          Do NOT include every agent mentioned — curate the most interesting cast.
 
           All dialogue must be natural, dramatized character speech. NO raw session data
           (UUIDs, file paths, file sizes, token counts, raw error messages) in speech bubbles.
@@ -348,14 +352,15 @@ stages:
 
           Set page breaks every 2-3 panels, after dramatic beats.
 
-          **ISSUE BUDGET (non-negotiable):**
-          - Story pages: 3-5 (default 4). Plus 1 cover = 4-6 total pages.
-          - Panels per page: 2-3 (max 3). Total panels: 6-12.
+          **ISSUE BUDGET (defaults — user can override via recipe params):**
+          - Max characters: {{max_characters}} (default: 5-6 if empty. 4 main + 1-2 supporting.)
+          - Story pages: {{max_pages}} (default: 5 if empty). Plus 1 cover + 1 cast page.
+          - Panels per page: {{panels_per_page}} (default: 3-6 if empty. Some pages can use 2 for big dramatic moments.)
           - Include `page_count` in your output JSON.
-          - If the narrative needs more than 12 panels, plan a saga:
+          - If the narrative needs more panels than pages x max-panels-per-page, plan a saga:
             add a `saga_plan` field and produce only issue #1's storyboard.
 
-          Break the story into 6-12 panels following the style guide's conventions.
+          Break the story into panels following the style guide's conventions.
 
           CRITICAL OUTPUT REQUIREMENT: Your JSON output MUST include these top-level fields:
           - title: string (comic title)

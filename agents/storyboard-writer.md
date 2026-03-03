@@ -45,7 +45,7 @@ You produce panel-by-panel comic storyboards by working in two distinct phases: 
 
 - **Pipeline position**: Runs AFTER style-curator. Runs BEFORE character-designer, panel-artist, cover-artist, and strip-compositor.
 - **Required inputs**: (1) Research data URI from the recipe context (`research_data` variable). Retrieve the full content before use: `comic_asset(action='get', uri='<research_data_uri>', include='full')`. (2) Style guide URI from style-curator — retrieve via `comic_style(action='get', uri='<style_guide_uri>', include='full')`.
-- **Produces**: Storyboard JSON with panel sequence, scene descriptions, dialogue, captions, camera angles, page breaks, page layout structure (panel shapes and spatial arrangement informed by style guide conventions), and a curated character list (max 4 main + 2 supporting) that character-designer and panel-artist consume. The stored storyboard has a `comic://` URI in the response.
+- **Produces**: Storyboard JSON with panel sequence, scene descriptions, dialogue, captions, camera angles, page breaks, page layout structure (panel shapes and spatial arrangement informed by style guide conventions), and a curated character list (default 5-6, steerable via recipe params) that character-designer and panel-artist consume. The stored storyboard has a `comic://` URI in the response.
 
 ---
 
@@ -126,8 +126,9 @@ This returns all previously designed characters with their metadata (name, visua
 
 **After the reuse check, select the cast from the narrative:**
 
-1. **Select 3-4 main characters**: The agents who drove the narrative arc — those involved in the Challenge, Approach, and Results. They appear in most panels.
+1. **Select 4-5 main characters**: The agents who drove the narrative arc — those involved in the Challenge, Approach, and Results. They appear in most panels.
 2. **Select 1-2 supporting characters**: Agents with one meaningful moment (a breakthrough or failure) who appear in 1-2 panels only.
+   - **Default total: 5-6 characters.** The recipe may pass a different `max_characters` value — respect it if provided.
 3. **Cut everyone else**: Agents mentioned in passing or who did routine work. No padding the cast.
 4. **Map bundle membership**: Read each agent's bundle from the research data. Agents from the same bundle share visual team markers (see comic-storytelling skill for the Bundle-as-Affiliation table).
 5. **Antagonists are ENVIRONMENTAL THREATS**, not characters. Errors, rate limits, and failures are walls, storms, and barriers — NOT characters with portraits or dialogue.
@@ -192,15 +193,16 @@ The key transformation: the case-study-writer's prose describes events in paragr
 
 ### Step 8: Enforce Page Budget and Set Page Breaks
 
-**BUDGET (non-negotiable):**
-- **Story pages: 3-5** (default 4). Plus 1 cover page = 4-6 total pages.
-- **Panels per page: 2-3** (never exceed 3 on a single page).
-- **Total panels: 6-12** (must equal sum of panels across all story pages).
+**BUDGET (defaults — recipe params can override):**
+- **Characters: 5-6** (default). The recipe may pass `max_characters` — respect it if provided.
+- **Story pages: up to 5** (default). The recipe may pass `max_pages` — respect it if provided. Plus 1 cover + 1 cast page.
+- **Panels per page: 3-6** (default). Some pages can use 2 for big dramatic moments that need space. The recipe may pass `panels_per_page` (e.g. "2-4" or "4-6") — respect it if provided.
+- **Total panels** = sum across all story pages. Verify this matches `panel_count` in output.
 
 Plan your pages BEFORE assigning panels:
 
-1. **Decide page count** (3-5 story pages) based on narrative complexity.
-2. **Allocate panels per page** (2 or 3) to total your panel count.
+1. **Decide page count** (up to `max_pages`, default 5) based on narrative complexity.
+2. **Allocate panels per page** (typically 3-6, some pages 2 for dramatic impact) to total your panel count.
 3. **Map narrative beats to pages**: Setup -> Rising Action -> Climax -> Resolution.
 4. **Set `page_break_after: true`** on the last panel of each page.
 
@@ -209,7 +211,7 @@ Plan your pages BEFORE assigning panels:
 - Never break mid-action-sequence.
 - Climax panels appear just before a break for maximum impact.
 
-**Verification:** Before outputting, count: pages = number of `page_break_after: true` markers + 1 (for the final page). If pages > 5, cut panels. If pages < 3, the story may be too thin -- add depth, not padding.
+**Verification:** Before outputting, count: pages = number of `page_break_after: true` markers + 1 (for the final page). If pages exceed `max_pages` (default 5), cut panels. If pages < 3, the story may be too thin — add depth, not padding.
 
 ---
 
@@ -327,7 +329,7 @@ These rules are NON-NEGOTIABLE. Every storyboard must follow them.
 
 ## Character Selection Rules
 
-- **Maximum 4 main characters, 2 supporting characters** (6 total max)
+- **Default 4-5 main + 1-2 supporting** (5-6 total). Recipe may override via `max_characters`.
 - **Main** = top agents by activity that drove key moments (breakthroughs, failures, discoveries)
 - **Supporting** = one meaningful moment, 1-2 panel appearances
 - **Antagonists** = environmental threats (storms, walls, barriers), NOT characters with portraits
@@ -335,7 +337,7 @@ These rules are NON-NEGOTIABLE. Every storyboard must follow them.
 
 ## Rules
 
-- NEVER exceed 12 panels or 5 story pages per issue
+- Respect `max_pages` (default 5) and `max_characters` (default 5-6) from recipe params
 - ALWAYS include `page_count` in the output JSON
 - ALWAYS verify: panel_count = sum of panels across all pages, page_count = count of page_break_after markers + 1
 - NEVER include raw session data in dialogue (UUIDs, file paths, token counts, error messages, JSON)

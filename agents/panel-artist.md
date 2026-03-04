@@ -87,7 +87,7 @@ load_skill(skill_name="image-prompt-engineering")
 3. **Add character consistency details** for every name in `{{panel_item}}.characters_present`:
    - Look up each character in `{{character_sheet}}`
    - Include their `visual_traits`, `distinctive_features`, and `team_markers`
-4. **Add face visibility directive**: `"characters facing the viewer with faces fully visible and unobstructed, clear detailed facial features"`
+4. **Add face visibility directive**: `"characters with clear detailed facial features visible to the viewer"` — NOTE: "unobstructed" means NOT blocked by speech bubbles or panel crop. Hoods, masks, helmets, scarves, or other costume/scene elements covering parts of the face are FINE and may be part of the style or character design. Do NOT flag these as failures.
 5. **Add composition directives**: Use `{{panel_item}}.camera_angle` for framing
 6. **Add space for text overlays**: If `{{panel_item}}.dialogue` is non-empty, include `"open negative space in the upper portion for text overlay placement"`
 7. **Add constraints**: `"No text in image, no words, no letters, no writing"`
@@ -120,7 +120,7 @@ Use zero-padded two-digit naming: `panel_01`, `panel_02`, etc.
 Use `comic_create(action='review_asset')` to inspect the generated panel. Apply the Panel Quality Checklist:
 
 1. **Characters fully visible?** All characters in the scene are present and fully rendered
-2. **Faces unobstructed?** Every character's face is clearly visible and recognizable
+2. **Faces not blocked by overlays/crop?** Faces are not cut off by the panel edge or positioned where speech bubbles will cover them. NOTE: hoods, masks, helmets, scarves, or other costume/scene elements partially covering faces are FINE — these are character design or scene style choices, NOT failures.
 3. **Clear focal point?** The eye is immediately drawn to the main subject
 4. **Scene tells its story visually?** Even without dialogue, the scene communicates what is happening
 5. **Characters match references?** Characters resemble their reference sheet designs
@@ -133,7 +133,7 @@ comic_create(
   action='review_asset',
   uri='<panel uri from step 4>',
   reference_uris=['<character uri 1>', '<character uri 2>', ...],
-  prompt='Evaluate: (1) Are all characters fully visible with faces unobstructed? (2) Is there a clear focal point? (3) Does the scene tell its story visually? (4) Do characters match their references? (5) Is there open space for text overlays? (6) Is the style consistent? (7) Are there any text artifacts?'
+  prompt='Evaluate: (1) Are all characters fully visible? (2) Is there a clear focal point? (3) Does the scene tell its story visually? (4) Do characters match their references? (5) Is there open space for text overlays? (6) Is the style consistent? (7) Any text artifacts? NOTE: hoods, masks, helmets, or costume elements partially covering faces are FINE — only flag faces blocked by panel crop or positioned where speech bubbles will go.'
 )
 ```
 

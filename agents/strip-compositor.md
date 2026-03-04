@@ -289,7 +289,7 @@ For each screenshot, evaluate against these SPECIFIC criteria:
 - Is there a dramatic hero image that looks like an actual comic book cover? (not generic)
 - Is the AmpliVerse logo visible as an actual IMAGE (not text or a colored badge)?
 - Is the title readable and visually integrated?
-- Are main characters visible with faces unobstructed?
+- Are main characters visible with faces not blocked by panel crop or overlay areas? (Hoods, masks, helmets, scarves are FINE — they are style/character choices.)
 
 **Character intro page:**
 - Are there 3-6 characters displayed (not 13+)?

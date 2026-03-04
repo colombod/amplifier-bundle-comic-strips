@@ -73,7 +73,7 @@ You receive:
 
 These are HARD requirements. The cover FAILS if ANY of these are missing:
 
-1. **Main characters (3-4) in a dramatic pose** visible with faces unobstructed
+1. **Main characters (3-4) in a dramatic pose** visible with faces not blocked by crop or overlay areas (hoods, masks, helmets, and other costume/scene elements partially covering faces are FINE — they are style choices)
 2. **No text in the generated image** — title and branding are handled by `assemble_comic` as overlays
 3. **Issue number present in output** — derive from session ID (first 8 chars) or use "Issue #1"
 4. **Style-consistent** — cover aesthetic matches the active style pack
@@ -115,7 +115,7 @@ Use `comic_create(action='review_asset')` to inspect the generated cover. Evalua
 
 1. **Does this look like an actual comic book cover?** (Not a generic illustration — it should have dramatic composition, dynamic energy)
 2. **Are the main characters in a dramatic, compelling pose?** (Not standing stiffly or in a generic group photo)
-3. **Are all character faces visible and unobstructed?** (Every face clearly rendered)
+3. **Are character faces not blocked by crop or overlay areas?** (Hoods, masks, helmets, scarves are FINE — only flag faces cut off by frame edges or positioned where title text will go)
 4. **Is there space in the top third for title treatment?** (Clear sky, open space, or less-detailed area)
 5. **Is the composition compelling enough to make someone want to read the comic?** (Would this work as a movie poster?)
 6. **Do the cover characters match their reference sheets?** (Compare each character against the reference images — correct colors, outfit, features, and distinctive markers. Flag any character that looks different from their reference.)
@@ -127,7 +127,7 @@ comic_create(
   action='review_asset',
   uri='<cover uri from step 2>',
   reference_uris=['<ALL character URIs from {{character_sheet}}>'],
-  prompt='Evaluate: (1) Does this look like an actual comic book cover with dramatic energy? (2) Are main characters in dynamic, compelling poses? (3) Are all faces visible and unobstructed? (4) Is there open space in the top third for title overlay? (5) Is the composition compelling as a movie poster? (6) CRITICAL: Compare the cover characters to the reference images provided. Do the characters in the cover match the visual traits and distinctive features from the character reference sheets? Flag any character that looks different from their reference (wrong colors, wrong outfit, wrong features).'
+  prompt='Evaluate: (1) Does this look like an actual comic book cover with dramatic energy? (2) Are main characters in dynamic, compelling poses? (3) Are character faces not cut off by frame edges or positioned where title text will go? (Hoods, masks, helmets, scarves are FINE — they are style/character choices, not failures.) (4) Is there open space in the top third for title overlay? (5) Is the composition compelling as a movie poster? (6) CRITICAL: Compare the cover characters to the reference images provided. Do the characters in the cover match the visual traits and distinctive features from the character reference sheets? Flag any character that looks different from their reference (wrong colors, wrong outfit, wrong features).'
 )
 ```
 

@@ -137,17 +137,34 @@ comic_create(
 )
 ```
 
-### Step 6: Regenerate on Failure (Max 3 Attempts Total)
+### Step 6: Handle Moderation Blocks
 
-If checks 1 (characters visible), 2 (faces unobstructed), or 3 (clear focal point) FAIL based on `review_asset` feedback, adjust the prompt describing what went wrong and call `comic_create(action='create_panel')` again:
+If `comic_create` returns `moderation_blocked: true`, the provider's safety system rejected the scene. **Do NOT retry with the same or similar prompt** — it will be blocked again.
+
+Instead, **rethink the scene entirely**:
+
+1. **Read the guidance** in the moderation_blocked response — it tells you what to change
+2. **Rewrite the scene description from scratch** — don't just soften words, reimagine the visual
+3. **Replace action/conflict imagery** with dramatic poses, energy effects, or symbolic compositions
+4. **Change the camera angle** — a wide establishing shot is less likely to trigger than a close-up combat scene
+5. **Show the buildup or aftermath** instead of the moment of conflict
+6. **Keep the narrative beat intact** — the story should still flow, just through a different visual
+
+Example: If "warrior strikes enemy with explosive force" is blocked, try "warrior stands in a powerful stance, radiant energy emanating outward, the opponent already defeated in the background."
+
+After rewriting, call `comic_create(action='create_panel')` with the new prompt. This counts as one of your 3 attempts.
+
+### Step 7: Regenerate on Review Failure (Max 3 Attempts Total)
+
+If checks 1 (characters visible), 2 (faces not blocked by overlay/crop), or 3 (clear focal point) FAIL based on `review_asset` feedback, adjust the prompt describing what went wrong and call `comic_create(action='create_panel')` again:
 
 - **Face cut off**: Append `"The character's full face must be visible within the frame, positioned lower in the composition."`
-- **Face obscured**: Append `"The character's face must be clearly lit and unobstructed, facing the viewer."`
+- **Face obscured by overlay area**: Append `"The character's face must be positioned away from areas where speech bubbles will be placed."`
 - **No focal point**: Append `"[Main character] must be the clear focal point, centered, with other elements supporting."`
 
 Keep the same `character_uris` when regenerating.
 
-**Maximum 3 attempts total per panel.** If all 3 fail, use the best result and set `flagged: true` in the output.
+**Maximum 3 attempts total per panel** (including any moderation-block retries). If all 3 fail, use the best result and set `flagged: true` in the output.
 
 ## Output
 

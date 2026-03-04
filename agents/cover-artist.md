@@ -131,16 +131,32 @@ comic_create(
 )
 ```
 
-### Step 4: Regenerate on Failure (Max 3 Attempts)
+### Step 4: Handle Moderation Blocks
+
+If `comic_create` returns `moderation_blocked: true`, the provider's safety system rejected the cover concept. **Do NOT retry with the same or similar prompt** — it will be blocked again.
+
+Instead, **reimagine the cover composition entirely**:
+
+1. **Read the guidance** in the moderation_blocked response
+2. **Rewrite the cover concept from scratch** — replace intense action with heroic poses, radiant energy, or symbolic group compositions
+3. **Use an iconic "team assembled" pose** instead of combat — characters standing together facing the viewer, energy auras visible, determined expressions
+4. **Keep the title space** and dramatic framing — just change what the characters are doing
+5. **Show triumph or readiness** instead of conflict — the cover should make someone want to read the comic, not depict a battle
+
+Example: If "warriors clashing in explosive combat" is blocked, try "heroes standing in a powerful formation, each radiating their unique energy signature, against a dramatic sky with the city skyline below."
+
+This counts as one of your 3 attempts.
+
+### Step 5: Regenerate on Review Failure (Max 3 Attempts)
 
 If the self-review fails on any criteria, adjust the prompt and call `comic_create(action='create_cover')` again:
 
-- **Not dramatic enough**: "The previous generation looked like a generic group illustration, not a comic book cover. Regenerate with more dynamic poses, dramatic lighting, and action energy. Characters should look heroic and engaged, not passive."
-- **Faces not visible**: "The previous generation had character faces obscured/cut off. Regenerate with all character faces clearly visible and facing the viewer."
+- **Not dramatic enough**: "The previous generation looked like a generic group illustration, not a comic book cover. Regenerate with more dynamic poses, dramatic lighting, and energy effects. Characters should look heroic and engaged, not passive."
+- **Faces blocked by crop/title area**: "The previous generation had character faces positioned where they'll be covered by title text. Regenerate with faces in the lower two-thirds, clear open space in the upper third."
 - **No space for title**: "The previous generation filled the top portion with detail. Regenerate with clear open space in the upper third for title text overlay."
 - **Characters don't match references**: "The previous generation has characters that don't match the reference sheets. Regenerate with characters matching EXACTLY the visual traits and distinctive features from the character reference images: [list specific mismatches]."
 
-Maximum 3 attempts total. Use the best result if all 3 fail.
+Maximum 3 attempts total (including any moderation-block retries). Use the best result if all 3 fail.
 
 ## Self-Review Report Format
 

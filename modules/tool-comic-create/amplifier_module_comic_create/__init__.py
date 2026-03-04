@@ -257,6 +257,50 @@ def _optimize_resolved_images(
     return optimised
 
 
+_MODERATION_KEYWORDS = ("moderation_blocked", "safety system", "content policy")
+
+
+def _is_moderation_failure(gen_result: Any) -> bool:
+    """Detect whether a failed image generation result was a moderation block."""
+    output = gen_result.output if hasattr(gen_result, "output") else str(gen_result)
+    text = str(output).lower()
+    return any(kw in text for kw in _MODERATION_KEYWORDS)
+
+
+def _moderation_or_error(
+    gen_result: Any, asset_type: str, original_prompt: str
+) -> "ToolResult":
+    """Return a structured moderation-block result or a generic error.
+
+    When a moderation block is detected, the ToolResult output is a JSON
+    object with ``moderation_blocked: true`` and guidance for the calling
+    agent to rethink the scene — not just retry the same prompt.
+    """
+    if _is_moderation_failure(gen_result):
+        return ToolResult(
+            success=False,
+            output=json.dumps(
+                {
+                    "moderation_blocked": True,
+                    "asset_type": asset_type,
+                    "original_prompt_excerpt": original_prompt[:200],
+                    "guidance": (
+                        "The image generation was blocked by the provider's safety system. "
+                        "Do NOT retry with the same or similar prompt — it will be blocked again. "
+                        "Instead, RETHINK the scene entirely: (1) Remove all violent, dark, or intense "
+                        "combat imagery. (2) Replace action scenes with dramatic poses, energy effects, "
+                        "or symbolic compositions. (3) Use calmer color palettes and less aggressive "
+                        "framing. (4) Rewrite the scene description from scratch with a PG-rated, "
+                        "family-friendly tone. (5) If the scene fundamentally requires blocked content, "
+                        "change the narrative beat — show the aftermath or buildup instead of the "
+                        "moment of conflict."
+                    ),
+                }
+            ),
+        )
+    return _error(f"Image generation failed: {gen_result.output}")
+
+
 def _ok(result: Any) -> ToolResult:
     return ToolResult(success=True, output=json.dumps(result))
 
@@ -570,7 +614,7 @@ class ComicCreateTool:
             )
 
             if not gen_result.success:
-                return _error(f"Image generation failed: {gen_result.output}")
+                return _moderation_or_error(gen_result, "panel", raw_prompt)
 
             store_result = await self._resolve_service().store_asset(
                 project,
@@ -643,7 +687,7 @@ class ComicCreateTool:
             )
 
             if not gen_result.success:
-                return _error(f"Image generation failed: {gen_result.output}")
+                return _moderation_or_error(gen_result, "cover", raw_prompt)
 
             store_result = await self._resolve_service().store_asset(
                 project,

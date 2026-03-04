@@ -509,7 +509,66 @@ stages:
         timeout: 600  # per character: generate + store (~3-5 min each)
 
       # ============================================
-      # STEP 5a: ART GENERATION - Cover Art (FIRST — cover failure = pipeline stop)
+      # STEP 5a: ART GENERATION - Panel Art (foreach per panel)
+      # Runs in PARALLEL with cover (both depend only on characters)
+      # ============================================
+      - id: "generate-panels"
+        foreach: "{{storyboard.panel_list}}"
+        as: panel_item
+        depends_on: ["design-characters"]
+        agent: "comic-strips:panel-artist"
+        parallel: 2
+        max_iterations: 60  # 10 pages x 6 panels/page = 60 max
+        retry:
+          max_attempts: 2
+          initial_delay: 5
+        prompt: |
+          Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}, style={{style}}
+
+          Generate the artwork for a single comic panel using comic_create.
+
+          Panel to generate:
+          {{panel_item}}
+
+          Character URIs (for visual consistency — pass these directly to comic_create):
+          {{character_uris}}
+
+          Style Guide URI: {{style_guide}}
+          Load the style guide using: comic_style(action='get', uri='{{style_guide}}')
+
+          Call:
+          comic_create(action='create_panel',
+                       project='{{project_init.project_id}}',
+                       issue='{{project_init.issue_id}}',
+                       name=<panel-name-slug from panel_item>,
+                       prompt=<scene description from panel_item informed by style guide>,
+                       character_uris=<list of URIs from {{character_uris}} whose characters appear in this panel>,
+                       size=<landscape/portrait/square as appropriate for panel_item>,
+                       camera_angle=<framing hint from panel_item>)
+
+          After generating, self-review using:
+          comic_create(action='review_asset',
+                       uri=<returned panel URI>,
+                       prompt="Are faces visible and unobstructed? Is there a clear focal point? Does it tell the story visually? Does it match the style?",
+                       reference_uris=<character URIs from character_uris for consistency check>)
+
+          If the review fails (passed=false), regenerate with an adjusted prompt (max 3 attempts).
+
+          Return ONLY the panel URI string from the final successful comic_create response
+          (e.g., "comic://proj/issues/issue-001/panels/panel_03").
+          Do NOT return JSON objects, image paths, or base64 data.
+
+          Content Policy Notes (accumulated from earlier stages):
+          {{content_policy_notes}}
+          If content_policy_notes is non-empty, these are LESSONS FROM MODERATION BLOCKS
+          on earlier images in this same comic. Apply them to ALL your prompts immediately.
+          Do not repeat patterns that were already blocked.
+        collect: "panel_results"
+        timeout: 600  # per panel: generate + self-review + possible retry (~3-5 min each)
+
+      # ============================================
+      # STEP 5b: ART GENERATION - Cover Art
+      # Runs in PARALLEL with panels (both depend only on characters)
       # ============================================
       - id: "generate-cover"
         agent: "comic-strips:cover-artist"
@@ -559,66 +618,8 @@ stages:
 
           IMPORTANT: If cover generation fails after all attempts (including moderation blocks),
           return ONLY the text "COVER_GENERATION_FAILED" — do not return a URI.
-          The pipeline will stop here rather than waste resources generating panels with no cover.
         output: "cover_results"
         timeout: 600  # cover: generate + self-review + possible retry (~3-5 min)
-
-      # ============================================
-      # STEP 5b: ART GENERATION - Panel Art (foreach per panel)
-      # ============================================
-      - id: "generate-panels"
-        foreach: "{{storyboard.panel_list}}"
-        as: panel_item
-        depends_on: ["design-characters", "generate-cover"]
-        agent: "comic-strips:panel-artist"
-        parallel: 2
-        max_iterations: 60  # 10 pages x 6 panels/page = 60 max
-        retry:
-          max_attempts: 2
-          initial_delay: 5
-        prompt: |
-          Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}, style={{style}}
-
-          Generate the artwork for a single comic panel using comic_create.
-
-          Panel to generate:
-          {{panel_item}}
-
-          Character URIs (for visual consistency — pass these directly to comic_create):
-          {{character_uris}}
-
-          Style Guide URI: {{style_guide}}
-          Load the style guide using: comic_style(action='get', uri='{{style_guide}}')
-
-          Call:
-          comic_create(action='create_panel',
-                       project='{{project_init.project_id}}',
-                       issue='{{project_init.issue_id}}',
-                       name=<panel-name-slug from panel_item>,
-                       prompt=<scene description from panel_item informed by style guide>,
-                       character_uris=<list of URIs from {{character_uris}} whose characters appear in this panel>,
-                       size=<landscape/portrait/square as appropriate for panel_item>,
-                       camera_angle=<framing hint from panel_item>)
-
-          After generating, self-review using:
-          comic_create(action='review_asset',
-                       uri=<returned panel URI>,
-                       prompt="Are faces visible and unobstructed? Is there a clear focal point? Does it tell the story visually? Does it match the style?",
-                       reference_uris=<character URIs from character_uris for consistency check>)
-
-          If the review fails (passed=false), regenerate with an adjusted prompt (max 3 attempts).
-
-          Return ONLY the panel URI string from the final successful comic_create response
-          (e.g., "comic://proj/issues/issue-001/panels/panel_03").
-          Do NOT return JSON objects, image paths, or base64 data.
-
-          Content Policy Notes (accumulated from cover and earlier stages):
-          {{content_policy_notes}}
-          If content_policy_notes is non-empty, these are LESSONS FROM MODERATION BLOCKS
-          on earlier images in this same comic. Apply them to ALL your prompts immediately.
-          Do not repeat patterns that were already blocked.
-        collect: "panel_results"
-        timeout: 600  # per panel: generate + self-review + possible retry (~3-5 min each)
 
       # ============================================
       # STEP 6: COMPOSITION + QA + CLEANUP

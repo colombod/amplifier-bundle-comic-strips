@@ -284,6 +284,11 @@ def _moderation_or_error(
                     "moderation_blocked": True,
                     "asset_type": asset_type,
                     "original_prompt_excerpt": original_prompt[:200],
+                    "content_policy_note": (
+                        f"Scene blocked by content policy. The following {asset_type} description "
+                        f"was rejected: '{original_prompt[:100]}...'. Avoid similar imagery, "
+                        f"action intensity, or thematic elements in ALL subsequent prompts."
+                    ),
                     "guidance": (
                         "The image generation was blocked by the provider's safety system. "
                         "Do NOT retry with the same or similar prompt — it will be blocked again. "

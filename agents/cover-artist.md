@@ -69,6 +69,8 @@ You receive:
 2. **Style guide URI** (`{{style_guide_uri}}`): Retrieve via `comic_style(action='get', uri='{{style_guide_uri}}', include='full')`. Contains image prompt template, color palette, character rendering, AmpliVerse branding placement.
 3. **Character sheet** (JSON from character-designer): Character names, visual_traits, distinctive_features, team_markers, and `uri` fields (the `comic://` URIs for each character)
 
+**Content Policy Notes** — If `{{content_policy_notes}}` is non-empty, these are lessons from moderation blocks. Apply these lessons to your prompt BEFORE generating. Preemptively tone down any scene elements that match blocked patterns.
+
 ## Non-Negotiable Cover Constraints
 
 These are HARD requirements. The cover FAILS if ANY of these are missing:
@@ -157,6 +159,14 @@ If the self-review fails on any criteria, adjust the prompt and call `comic_crea
 - **Characters don't match references**: "The previous generation has characters that don't match the reference sheets. Regenerate with characters matching EXACTLY the visual traits and distinctive features from the character reference images: [list specific mismatches]."
 
 Maximum 3 attempts total (including any moderation-block retries). Use the best result if all 3 fail.
+
+## Cover Failure = Pipeline Stop
+
+If ALL 3 generation attempts fail (including moderation blocks), return ONLY the text:
+```
+COVER_GENERATION_FAILED
+```
+Do NOT return a URI, do NOT return JSON. The recipe pipeline checks for this sentinel value and stops rather than wasting resources generating panels for a comic with no cover.
 
 ## Self-Review Report Format
 

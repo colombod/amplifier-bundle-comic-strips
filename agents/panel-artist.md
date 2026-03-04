@@ -61,6 +61,8 @@ You receive three inputs:
 
 3. **`{{style_guide}}`** — The full style guide from style-curator, including the Image Prompt Template and color palette.
 
+4. **Content Policy Notes** — If `{{content_policy_notes}}` is non-empty, these are lessons from moderation blocks on EARLIER images in this comic. Apply these lessons to your prompt BEFORE generating. Do not repeat patterns that were already blocked — adapt your scene descriptions preemptively.
+
 ## Before You Start
 
 ### Step 1: Load Domain Knowledge

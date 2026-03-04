@@ -610,6 +610,12 @@ class ComicCreateTool:
                     "size": params.get("size", "square"),
                     "style": params.get("style"),
                     "reference_images": ref_paths or None,
+                    "requirements": {
+                        "needs_reference_images": bool(ref_paths),
+                        "style_category": "comic",
+                        "detail_level": "high",
+                        "task_hint": "composition",
+                    },
                 }
             )
 
@@ -683,6 +689,12 @@ class ComicCreateTool:
                     "size": params.get("size", "portrait"),
                     "style": params.get("style"),
                     "reference_images": ref_paths or None,
+                    "requirements": {
+                        "needs_reference_images": bool(ref_paths),
+                        "style_category": "comic",
+                        "detail_level": "high",
+                        "task_hint": "composition",
+                    },
                 }
             )
 

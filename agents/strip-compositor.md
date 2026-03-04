@@ -25,7 +25,7 @@ meta:
     and character-designer. Invoking it prematurely produces an incomplete comic.
     </commentary>
     </example>
-  model_role: [creative, general]
+  model_role: [vision, creative, general]
 
 tools:
   - module: tool-comic-create

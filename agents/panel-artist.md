@@ -22,7 +22,7 @@ meta:
     with URI. The recipe foreach loop handles all panels in sequence.
     </commentary>
     </example>
-  model_role: [image-gen, creative, general]
+  model_role: [image-gen, vision, creative, general]
 
 tools:
   - module: tool-comic-create

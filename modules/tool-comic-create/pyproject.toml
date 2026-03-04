@@ -11,6 +11,9 @@ dependencies = [
     "amplifier-module-tool-comic-image-gen",
 ]
 
+[project.optional-dependencies]
+images = ["Pillow>=10.0"]
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",

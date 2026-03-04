@@ -22,7 +22,7 @@ meta:
     with panel-artist since both depend on the same upstream outputs.
     </commentary>
     </example>
-  model_role: [image-gen, creative, general]
+  model_role: [image-gen, vision, creative, general]
 
 tools:
   - module: tool-comic-create

@@ -53,6 +53,73 @@ def _detect_mime(image_bytes: bytes) -> str:
 
 _IMAGE_MAX_BYTES: int = 4 * 1024 * 1024  # 4 MB (safe margin below 5 MB limit)
 
+# ---------------------------------------------------------------------------
+# HTML embedding defaults — keep final comic files under ~5 MB total
+# ---------------------------------------------------------------------------
+_HTML_PANEL_MAX_W: int = 1200
+_HTML_PANEL_MAX_H: int = 900
+_HTML_COVER_MAX_W: int = 1600
+_HTML_COVER_MAX_H: int = 1200
+_HTML_CHAR_MAX_W: int = 600
+_HTML_CHAR_MAX_H: int = 800
+_HTML_JPEG_QUALITY: int = 82
+
+
+def _optimize_for_html(
+    image_bytes: bytes,
+    *,
+    max_width: int = _HTML_PANEL_MAX_W,
+    max_height: int = _HTML_PANEL_MAX_H,
+    quality: int = _HTML_JPEG_QUALITY,
+) -> tuple[bytes, str]:
+    """Resize and compress an image for HTML embedding.
+
+    Typical reduction: 1536x1024 PNG (~4 MB) → 1200x800 JPEG (~200 KB).
+    A 10-panel comic goes from ~50 MB to ~3 MB of base64.
+
+    Returns ``(optimized_bytes, mime_type)``.  Falls back to the original
+    bytes (with detected MIME) when Pillow is not installed.
+    """
+    try:
+        from io import BytesIO
+
+        from PIL import Image  # type: ignore[import-untyped]
+    except ImportError:
+        logger.warning(
+            "Pillow not installed — skipping HTML image optimization. "
+            "Install with: pip install Pillow"
+        )
+        return image_bytes, _detect_mime(image_bytes)
+
+    try:
+        img = Image.open(BytesIO(image_bytes))
+        img.load()  # force decode — catches truncated/corrupt data early
+    except Exception:
+        logger.warning("Could not decode image for optimization — using original bytes")
+        return image_bytes, _detect_mime(image_bytes)
+
+    # Down-scale to fit within bounds, preserving aspect ratio
+    img.thumbnail((max_width, max_height), Image.LANCZOS)
+
+    # JPEG requires RGB (no alpha channel)
+    if img.mode in ("RGBA", "P", "LA"):
+        img = img.convert("RGB")
+
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=quality, optimize=True)
+
+    original_kb = len(image_bytes) / 1024
+    optimized_kb = buf.tell() / 1024
+    logger.info(
+        "HTML image optimized: %.0f KB → %.0f KB (%dx%d, q=%d)",
+        original_kb,
+        optimized_kb,
+        img.width,
+        img.height,
+        quality,
+    )
+    return buf.getvalue(), "image/jpeg"
+
 
 def _shrink_image_bytes(
     image_bytes: bytes,
@@ -118,6 +185,76 @@ def _shrink_image_bytes(
             max_bytes,
         )
     return result
+
+
+def _optimize_resolved_images(
+    layout: dict[str, Any],
+    resolved: dict[str, str],
+) -> dict[str, str]:
+    """Re-encode every resolved data-URI image at HTML-appropriate dimensions.
+
+    Classifies each URI by its role in the layout (cover, character, panel)
+    and applies the matching size cap.  Returns a *new* dict with optimised
+    data URIs.  Falls back to the original data URI when Pillow is absent.
+    """
+    import base64 as _b64
+
+    from amplifier_module_comic_assets.encoding import bytes_to_data_uri  # type: ignore[import-untyped]
+
+    # Build URI → role lookup from layout
+    cover_uris: set[str] = set()
+    char_uris: set[str] = set()
+
+    cover = layout.get("cover")
+    if cover and cover.get("uri"):
+        cover_uris.add(cover["uri"])
+
+    for char in layout.get("characters") or []:
+        if char.get("uri"):
+            char_uris.add(char["uri"])
+
+    optimised: dict[str, str] = {}
+    total_before = 0
+    total_after = 0
+
+    for uri, data_uri_str in resolved.items():
+        # Extract raw bytes from data:image/...;base64,...
+        try:
+            header, encoded = data_uri_str.split(",", 1)
+            raw = _b64.b64decode(encoded)
+        except Exception:
+            optimised[uri] = data_uri_str
+            continue
+
+        total_before += len(raw)
+
+        # Choose size cap based on image role
+        if uri in cover_uris:
+            opt_bytes, mime = _optimize_for_html(
+                raw, max_width=_HTML_COVER_MAX_W, max_height=_HTML_COVER_MAX_H
+            )
+        elif uri in char_uris:
+            opt_bytes, mime = _optimize_for_html(
+                raw, max_width=_HTML_CHAR_MAX_W, max_height=_HTML_CHAR_MAX_H
+            )
+        else:
+            # Panel (default)
+            opt_bytes, mime = _optimize_for_html(raw)
+
+        total_after += len(opt_bytes)
+        optimised[uri] = bytes_to_data_uri(opt_bytes, mime)
+
+    if total_before > 0:
+        saved_mb = (total_before - total_after) / (1024 * 1024)
+        logger.info(
+            "HTML image budget: %.1f MB raw → %.1f MB optimised (saved %.1f MB across %d images)",
+            total_before / (1024 * 1024),
+            total_after / (1024 * 1024),
+            saved_mb,
+            len(optimised),
+        )
+
+    return optimised
 
 
 def _ok(result: Any) -> ToolResult:
@@ -922,6 +1059,11 @@ class ComicCreateTool:
         resolved_images: dict[str, str] = {
             uri: du for uri, du in zip(all_uris, data_uris) if du
         }
+
+        # --- Optimize images for HTML embedding (shrink ~4 MB PNGs to ~200 KB JPEGs) ---
+        resolved_images = await asyncio.to_thread(
+            _optimize_resolved_images, layout, resolved_images
+        )
 
         # Count embedded images and pages for the response payload
         images_embedded = len(resolved_images)

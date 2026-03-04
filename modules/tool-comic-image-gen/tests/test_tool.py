@@ -237,6 +237,9 @@ async def test_execute_with_explicit_model_passes_to_backend(tmp_path: Path) -> 
     """When params contain 'model', it should be passed to backend.generate()."""
     backend = MagicMock()
     backend.provider.name = "mock-provider"
+    # dall-e-3 maps to provider='openai' in MODEL_MAP, so the backend must expose
+    # provider_type='openai' for hard-target routing to find it.
+    backend.provider_type = "openai"
     backend.generate = AsyncMock(
         return_value={
             "success": True,

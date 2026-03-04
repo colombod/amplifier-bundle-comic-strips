@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import platform
 from dataclasses import dataclass
 from typing import Any
 
@@ -29,9 +30,19 @@ except ImportError:  # pragma: no cover — runs without amplifier_core in tests
         output: Any = ""
 
 
+from .comic_uri import (  # noqa: E402
+    COMIC_URI_TYPES,
+    ISSUE_SCOPED_TYPES,
+    PROJECT_SCOPED_TYPES,
+    ComicURI,
+    InvalidComicURI,
+    parse_comic_uri,
+    pluralize_type,
+    singularize_type,
+)
 from .encoding import base64_to_bytes  # noqa: E402
 from .service import ComicProjectService  # noqa: E402
-from .storage import FileSystemStorage, StorageProtocol  # noqa: E402
+from .storage import FileSystemStorage, PathTraversalError, StorageProtocol  # noqa: E402
 
 __amplifier_module_type__ = "tool"
 
@@ -41,6 +52,15 @@ __all__ = [
     "ComicCharacterTool",
     "ComicAssetTool",
     "ComicStyleTool",
+    "PathTraversalError",
+    "ComicURI",
+    "InvalidComicURI",
+    "parse_comic_uri",
+    "PROJECT_SCOPED_TYPES",
+    "ISSUE_SCOPED_TYPES",
+    "COMIC_URI_TYPES",
+    "pluralize_type",
+    "singularize_type",
 ]
 
 
@@ -52,6 +72,40 @@ def _require(params: dict[str, Any], *keys: str) -> str | None:
     for k in keys:
         if k not in params:
             return k
+    return None
+
+
+def _parse_uri_params(params: dict[str, Any]) -> "ToolResult | None":
+    """Populate decomposed params from a ``uri`` entry using :func:`parse_comic_uri`.
+
+    Applies :meth:`dict.setdefault` so that any params already supplied by the
+    caller are left untouched (explicit params take priority over URI values).
+
+    Scope-aware behaviour:
+    - Project-scoped URIs (characters, styles): ``parsed.issue`` is ``None``
+      and ``params["issue"]`` is **not** set.
+    - Issue-scoped URIs (panels, covers, etc.): ``parsed.issue`` is present
+      and ``params["issue"]`` is set via ``setdefault``.
+
+    The ``type`` param is always singularized so the service layer (which uses
+    singular forms such as ``"panel"``) receives the correct value.
+
+    Returns a ``ToolResult`` error if the URI is malformed, or ``None`` when
+    the operation succeeds (including when no ``uri`` key is present at all).
+    """
+    if "uri" not in params:
+        return None
+    try:
+        parsed = parse_comic_uri(params["uri"])
+    except ValueError as exc:
+        return ToolResult(success=False, output=f"Invalid URI: {exc}")
+    params.setdefault("project", parsed.project)
+    if parsed.issue is not None:
+        params.setdefault("issue", parsed.issue)
+    params.setdefault("type", singularize_type(parsed.asset_type))
+    params.setdefault("name", parsed.name)
+    if parsed.version is not None:
+        params.setdefault("version", parsed.version)
     return None
 
 
@@ -132,6 +186,14 @@ class ComicProjectTool:
                     "type": "string",
                     "description": "Optional issue description. Used by create_issue.",
                 },
+                "metadata": {
+                    "type": "object",
+                    "description": (
+                        "Optional metadata dict stored with the issue (e.g. "
+                        "generation trigger, session_file, style, original prompt). "
+                        "Useful for auditing, re-running, and benchmarking."
+                    ),
+                },
             },
             "required": ["action"],
         }
@@ -152,6 +214,7 @@ class ComicProjectTool:
                     params["project"],
                     params["title"],
                     params.get("description", ""),
+                    metadata=params.get("metadata"),
                 )
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:
@@ -341,8 +404,8 @@ class ComicCharacterTool:
                 },
                 "format": {
                     "type": "string",
-                    "description": "Image format when include='full': 'path' (default), 'base64', or 'data_uri'.",
-                    "enum": ["path", "base64", "data_uri"],
+                    "description": "Image format when include='full'. Only 'path' is supported.",
+                    "enum": ["path"],
                     "default": "path",
                 },
                 "review_status": {
@@ -357,6 +420,13 @@ class ComicCharacterTool:
                     "type": "object",
                     "description": "Arbitrary metadata dict to merge (for update_metadata).",
                 },
+                "uri": {
+                    "type": "string",
+                    "description": (
+                        "comic:// URI (alternative to separate project/name params). "
+                        "Project-scoped format: comic://project/characters/name[?v=N]."
+                    ),
+                },
             },
             "required": ["action"],
         }
@@ -365,6 +435,8 @@ class ComicCharacterTool:
 
     async def execute(self, params: dict[str, Any]) -> ToolResult:
         """Dispatch to the appropriate character service method."""
+        if err := _parse_uri_params(params):
+            return err
         action = params.get("action")
 
         async def _store() -> ToolResult:
@@ -417,6 +489,12 @@ class ComicCharacterTool:
         async def _get() -> ToolResult:
             if m := _require(params, "project", "name"):
                 return _missing_error(m)
+            fmt = params.get("format", "path")
+            if fmt in ("base64", "data_uri"):
+                return ToolResult(
+                    success=False,
+                    output=f"format='{fmt}' is no longer supported. Use format='path'.",
+                )
             version_raw = params.get("version")
             version: int | None = int(version_raw) if version_raw is not None else None
             try:
@@ -426,7 +504,7 @@ class ComicCharacterTool:
                     style=params.get("style"),
                     version=version,
                     include=params.get("include", "metadata"),
-                    format=params.get("format", "path"),
+                    format=fmt,
                 )
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:
@@ -527,8 +605,8 @@ class ComicAssetTool:
                         "store",
                         "get",
                         "list",
-                        "batch_encode",
                         "update_metadata",
+                        "preview",
                     ],
                 },
                 "project": {
@@ -544,7 +622,7 @@ class ComicAssetTool:
                     "description": (
                         "Asset type. One of: panel, cover, avatar, qa_screenshot, "
                         "research, storyboard, final. Required for store, get, "
-                        "batch_encode, update_metadata; optional filter for list."
+                        "update_metadata; optional filter for list."
                     ),
                     "enum": [
                         "panel",
@@ -591,8 +669,8 @@ class ComicAssetTool:
                 },
                 "format": {
                     "type": "string",
-                    "description": "Payload format when include='full': 'path' (default), 'base64', or 'data_uri'. Also used by batch_encode.",
-                    "enum": ["path", "base64", "data_uri"],
+                    "description": "Payload format when include='full'. Only 'path' is supported.",
+                    "enum": ["path"],
                     "default": "path",
                 },
                 "review_status": {
@@ -603,6 +681,13 @@ class ComicAssetTool:
                     "type": "string",
                     "description": "Review feedback text (for update_metadata).",
                 },
+                "uri": {
+                    "type": "string",
+                    "description": (
+                        "comic:// URI (alternative to separate project/issue/type/name params). "
+                        "Issue-scoped format: comic://project/issues/issue-id/collection/name[?v=N]."
+                    ),
+                },
             },
             "required": ["action"],
         }
@@ -611,6 +696,8 @@ class ComicAssetTool:
 
     async def execute(self, params: dict[str, Any]) -> ToolResult:
         """Dispatch to the appropriate asset service method."""
+        if err := _parse_uri_params(params):
+            return err
         action = params.get("action")
 
         async def _store() -> ToolResult:
@@ -645,6 +732,12 @@ class ComicAssetTool:
         async def _get() -> ToolResult:
             if m := _require(params, "project", "issue", "type", "name"):
                 return _missing_error(m)
+            fmt = params.get("format", "path")
+            if fmt in ("base64", "data_uri"):
+                return ToolResult(
+                    success=False,
+                    output=f"format='{fmt}' is no longer supported. Use format='path'.",
+                )
             version_raw = params.get("version")
             version: int | None = int(version_raw) if version_raw is not None else None
             try:
@@ -655,7 +748,7 @@ class ComicAssetTool:
                     params["name"],
                     version=version,
                     include=params.get("include", "metadata"),
-                    format=params.get("format", "path"),
+                    format=fmt,
                 )
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:
@@ -669,20 +762,6 @@ class ComicAssetTool:
                     params["project"],
                     params["issue"],
                     asset_type=params.get("type"),
-                )
-                return _ok(result)
-            except (ValueError, FileNotFoundError) as exc:
-                return _exc_error(exc)
-
-        async def _batch_encode() -> ToolResult:
-            if m := _require(params, "project", "issue", "type"):
-                return _missing_error(m)
-            try:
-                result = await self._service.batch_encode(
-                    params["project"],
-                    params["issue"],
-                    params["type"],
-                    format=params.get("format", "data_uri"),
                 )
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:
@@ -706,12 +785,36 @@ class ComicAssetTool:
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
+        async def _preview() -> ToolResult:
+            if m := _require(params, "project", "issue", "type", "name"):
+                return _missing_error(m)
+            try:
+                asset = await self._service.get_asset(
+                    params["project"],
+                    params["issue"],
+                    params["type"],
+                    params["name"],
+                    include="full",
+                    format="path",
+                )
+                hint_cmd = "open" if platform.system() == "Darwin" else "xdg-open"
+                return _ok(
+                    {
+                        "uri": asset.get("uri", ""),
+                        "path": asset.get("image", ""),
+                        "type": asset.get("mime_type", "application/octet-stream"),
+                        "hint": hint_cmd,
+                    }
+                )
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
         dispatch: dict[str, Any] = {
             "store": _store,
             "get": _get,
             "list": _list,
-            "batch_encode": _batch_encode,
             "update_metadata": _update_metadata,
+            "preview": _preview,
         }
 
         handler = dispatch.get(action)  # type: ignore[arg-type]
@@ -791,6 +894,13 @@ class ComicStyleTool:
                     "type": "object",
                     "description": "Optional metadata dict to attach to the style guide (for store).",
                 },
+                "uri": {
+                    "type": "string",
+                    "description": (
+                        "comic:// URI (alternative to separate project/name params). "
+                        "Project-scoped format: comic://project/styles/name[?v=N]."
+                    ),
+                },
             },
             "required": ["action"],
         }
@@ -799,6 +909,8 @@ class ComicStyleTool:
 
     async def execute(self, params: dict[str, Any]) -> ToolResult:
         """Dispatch to the appropriate style service method."""
+        if err := _parse_uri_params(params):
+            return err
         action = params.get("action")
 
         async def _store() -> ToolResult:
@@ -888,8 +1000,13 @@ def _build_storage(storage_cfg: dict[str, Any]) -> StorageProtocol:
     )
 
 
-async def mount(coordinator: Any, config: Any = None) -> None:
-    """Amplifier module entry point — build service and register all four tools."""
+async def mount(coordinator: Any, config: Any = None) -> Any:
+    """Amplifier module entry point — build service and register all four tools.
+
+    Returns a cleanup callable that performs any necessary teardown.
+    The capability registered under ``"comic.project-service"`` is automatically
+    removed by the coordinator at session end; no explicit unregistration needed.
+    """
     cfg = config or {}
     storage = _build_storage(cfg.get("storage", {}))
     service = ComicProjectService(storage=storage)
@@ -901,3 +1018,10 @@ async def mount(coordinator: Any, config: Any = None) -> None:
     ]
     for tool in tools:
         await coordinator.mount("tools", tool, name=tool.name)
+
+    coordinator.register_capability("comic.project-service", service)
+
+    def _cleanup() -> None:
+        logger.debug("tool-comic-assets: cleanup called")
+
+    return _cleanup

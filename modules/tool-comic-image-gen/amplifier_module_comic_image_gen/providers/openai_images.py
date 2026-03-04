@@ -33,7 +33,23 @@ _EDIT_CAPABLE_MODELS: frozenset[str] = frozenset(
     }
 )
 
+# Models that require the legacy ``response_format`` kwarg (not ``output_format``).
+# Only classic DALL-E models use this parameter; gpt-image-* and unknown models must not.
+_DALLE_RESPONSE_FORMAT_MODELS: frozenset[str] = frozenset({"dall-e-3"})
+
 _MAX_ATTEMPTS: int = 3
+
+
+def _detect_mime(image_bytes: bytes) -> str:
+    """Detect image MIME type from magic bytes."""
+    if image_bytes[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if image_bytes[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if image_bytes[:4] == b"RIFF" and image_bytes[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/png"  # fallback
+
 
 _RETRYABLE: tuple[type[Exception], ...] = (
     openai.RateLimitError,
@@ -43,9 +59,99 @@ _RETRYABLE: tuple[type[Exception], ...] = (
 _NON_RETRYABLE: tuple[type[Exception], ...] = (
     openai.AuthenticationError,
     openai.PermissionDeniedError,
-    openai.BadRequestError,
     openai.UnprocessableEntityError,
 )
+# BadRequestError is handled separately — moderation blocks get prompt
+# softening and a retry, while other 400 errors fail immediately.
+
+
+def _is_moderation_block(exc: openai.BadRequestError) -> bool:
+    """Return True if the error is a content-moderation / safety-system block."""
+    msg = str(exc).lower()
+    return any(
+        kw in msg
+        for kw in (
+            "moderation_blocked",
+            "safety system",
+            "content policy",
+            "safety_system",
+        )
+    )
+
+
+def _soften_prompt(prompt: str) -> str:
+    """Tone down a prompt that triggered moderation.
+
+    Strategy: strip violent/dark language, add PG framing, keep the
+    scene composition intact so the panel layout still works.
+    """
+    # Common trigger words in Jujutsu-Kaisen / action comic styles
+    _TRIGGERS: dict[str, str] = {
+        "blood": "energy",
+        "bloody": "intense",
+        "bleeding": "glowing",
+        "gore": "impact",
+        "gory": "dramatic",
+        "wound": "mark",
+        "wounds": "marks",
+        "wounded": "marked",
+        "kill": "defeat",
+        "killing": "defeating",
+        "death": "defeat",
+        "dead": "fallen",
+        "dying": "fading",
+        "corpse": "fallen figure",
+        "skull": "emblem",
+        "severed": "broken",
+        "dismember": "shatter",
+        "stab": "strike",
+        "stabbing": "striking",
+        "slash": "sweep",
+        "slashing": "sweeping",
+        "impale": "pierce",
+        "decapitate": "overpower",
+        "torture": "struggle",
+        "scream": "shout",
+        "screaming": "shouting",
+        "agony": "strain",
+        "cursed energy": "spiritual energy",
+        "curse": "shadow",
+        "cursed": "dark",
+        "demon": "spirit",
+        "demonic": "spectral",
+        "hell": "void",
+        "infernal": "otherworldly",
+        "explode": "burst",
+        "explosion": "energy burst",
+        "destroy": "overwhelm",
+        "destruction": "upheaval",
+        "shatter": "crack",
+        "shatters": "cracks",
+        "shattered": "cracked",
+    }
+    softened = prompt
+    for trigger, replacement in _TRIGGERS.items():
+        # Case-insensitive replacement preserving first-char case
+        import re
+
+        def _case_replace(m: re.Match[str]) -> str:
+            matched = m.group(0)
+            if matched[0].isupper():
+                return replacement.capitalize()
+            return replacement
+
+        softened = re.sub(
+            r"\b" + re.escape(trigger) + r"\b",
+            _case_replace,
+            softened,
+            flags=re.IGNORECASE,
+        )
+
+    # Add a PG safety framing if not already present
+    if "family-friendly" not in softened.lower() and "pg" not in softened.lower():
+        softened = "Create a PG-rated, family-friendly comic illustration. " + softened
+
+    return softened
 
 
 class OpenAIImageBackend:
@@ -89,19 +195,22 @@ class OpenAIImageBackend:
         pixel_size = ASPECT_RATIO_MAP.get(size, ASPECT_RATIO_MAP["square"])
         use_edit = bool(reference_images) and model in _EDIT_CAPABLE_MODELS
 
+        active_prompt = prompt
+        moderation_softened = False
+
         for attempt in range(_MAX_ATTEMPTS):
             try:
                 if use_edit:
                     response = await self._call_edit(
                         model=model,
-                        prompt=prompt,
+                        prompt=active_prompt,
                         pixel_size=pixel_size,
                         reference_images=reference_images,  # type: ignore[arg-type]  # narrowed by use_edit check above
                     )
                 else:
                     response = await self._call_generate(
                         model=model,
-                        prompt=prompt,
+                        prompt=active_prompt,
                         pixel_size=pixel_size,
                         style=style,
                     )
@@ -110,11 +219,47 @@ class OpenAIImageBackend:
                 out.parent.mkdir(parents=True, exist_ok=True)
                 out.write_bytes(image_bytes)
 
-                return {
+                result: dict[str, Any] = {
                     "success": True,
                     "provider_used": self.provider.name,
                     "path": str(out),
                     "error": None,
+                }
+                if moderation_softened:
+                    result["moderation_softened"] = True
+                return result
+
+            # Moderation / safety blocks: soften the prompt and retry once.
+            # Re-submitting the same prompt won't help — the content policy
+            # is deterministic on the same input.
+            except openai.BadRequestError as exc:
+                if _is_moderation_block(exc) and not moderation_softened:
+                    active_prompt = _soften_prompt(active_prompt)
+                    moderation_softened = True
+                    logger.warning(
+                        "Moderation block on attempt %d/%d for model %s — "
+                        "softening prompt and retrying",
+                        attempt + 1,
+                        _MAX_ATTEMPTS,
+                        model,
+                    )
+                    continue  # retry with softened prompt (counts as an attempt)
+
+                # Non-moderation BadRequestError or already softened — fail
+                logger.exception(
+                    "OpenAI image generation failed (non-retryable) for model %s",
+                    model,
+                )
+                return {
+                    "success": False,
+                    "provider_used": self.provider.name,
+                    "path": str(out),
+                    "error": str(exc),
+                    **(
+                        {"moderation_blocked": True}
+                        if _is_moderation_block(exc)
+                        else {}
+                    ),
                 }
 
             # NOTE: _NON_RETRYABLE must be caught before _RETRYABLE — AuthenticationError
@@ -186,11 +331,12 @@ class OpenAIImageBackend:
             "size": pixel_size,
             "quality": "high",
         }
-        # gpt-image-1 always returns base64; uses output_format not response_format
+        # gpt-image-1 family: returns base64; uses output_format, not response_format.
+        # DALL-E 3: legacy response_format kwarg.
+        # Unknown/future models: omit both — the API decides.
         if model in _EDIT_CAPABLE_MODELS:
             kwargs["output_format"] = "png"
-        else:
-            # DALL-E 3 uses response_format
+        elif model in _DALLE_RESPONSE_FORMAT_MODELS:
             kwargs["response_format"] = "b64_json"
         if style is not None and model == "dall-e-3":
             kwargs["style"] = style
@@ -204,21 +350,35 @@ class OpenAIImageBackend:
         pixel_size: str,
         reference_images: list[str],
     ) -> Any:
-        """Call ``client.images.edit`` with reference image file bytes."""
+        """Call ``client.images.edit`` with reference image file bytes.
+
+        Each image is passed as a ``(filename, bytes, content_type)`` tuple so
+        that the OpenAI API receives a proper MIME type in the multipart upload.
+        Sending raw bytes without a content-type causes the server to treat them
+        as ``application/octet-stream``, which the Images edit endpoint rejects.
+        """
         # Use asyncio.to_thread to avoid blocking the event loop during disk I/O
-        image_bytes_list = [
-            await asyncio.to_thread(Path(p).read_bytes) for p in reference_images
-        ]
+        image_files: list[tuple[str, bytes, str]] = []
+        for p in reference_images:
+            img_bytes = await asyncio.to_thread(Path(p).read_bytes)
+            mime = _detect_mime(img_bytes)
+            # Derive a safe extension from the MIME type ("image/png" → "png")
+            ext = mime.split("/")[-1]
+            image_files.append((f"image.{ext}", img_bytes, mime))
+
         kwargs: dict[str, Any] = {
             "model": model,
             "prompt": prompt,
-            "image": image_bytes_list,
+            "image": image_files,
             "size": pixel_size,
             "quality": "high",
         }
         # gpt-image-1 always returns base64; doesn't accept response_format.
         # Defensive: _call_edit is only invoked when model is in _EDIT_CAPABLE_MODELS,
         # so this branch is currently unreachable — kept for future call-site safety.
-        if model not in _EDIT_CAPABLE_MODELS:
+        # Uses _DALLE_RESPONSE_FORMAT_MODELS (not a broad "not-edit-capable" check)
+        # so that response_format is ONLY ever sent for DALL-E 3, never for unknown
+        # or Google Imagen models that may reach this path in future refactors.
+        if model in _DALLE_RESPONSE_FORMAT_MODELS:
             kwargs["response_format"] = "b64_json"
         return await self.client.images.edit(**kwargs)

@@ -11,6 +11,7 @@ Issue #90 lands a native solution.
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from typing import Any
@@ -30,8 +31,16 @@ except ImportError:  # pragma: no cover – bridge runs without amplifier_core i
 
 
 from ._version import __version__  # noqa: F401, E402
+from .model_map import MODEL_MAP  # noqa: E402
 from .model_selector import select_model  # noqa: E402
 from .providers import discover_image_backends  # noqa: E402
+
+# Maps user-facing provider names (from preferred_provider param and MODEL_MAP)
+# to the backend provider_type values used for direct routing.
+_PROVIDER_TO_BACKEND_TYPE: dict[str, str] = {
+    "openai": "openai",
+    "google": "gemini",
+}
 
 __amplifier_module_type__ = "tool"
 
@@ -116,6 +125,17 @@ class ComicImageGenTool:
                             "description": "Level of detail required.",
                             "enum": ["low", "medium", "high", "ultra"],
                         },
+                        "task_hint": {
+                            "type": "string",
+                            "description": (
+                                "Hint about the kind of image work. "
+                                "'composition' biases toward models with "
+                                "strong spatial/layout reasoning (panel "
+                                "framing, multi-character scenes, negative "
+                                "space). Omit for cheapest-viable default."
+                            ),
+                            "enum": ["composition"],
+                        },
                     },
                 },
             },
@@ -145,16 +165,18 @@ class ComicImageGenTool:
 
         backends = list(self._backends)
 
-        # Sort backends so the preferred provider comes first
-        if preferred_provider and len(backends) > 1:
-            pref = preferred_provider.lower()
-            backends.sort(key=lambda b: pref not in b.provider.name.lower())
-
         if not backends:
             return ToolResult(
                 success=False,
                 output="No image-capable providers available. Configure an OpenAI or Google provider.",
             )
+
+        # Direct lookup map: provider_type → backend instance (O(1) routing).
+        backend_by_type: dict[str, Any] = {
+            getattr(b, "provider_type", ""): b
+            for b in backends
+            if getattr(b, "provider_type", "")
+        }
 
         gen_kwargs: dict[str, Any] = {
             "prompt": prompt,
@@ -163,8 +185,26 @@ class ComicImageGenTool:
             "style": style,
             "reference_images": reference_images,
         }
+
+        # Resolve which backend provider_type to target.
+        # Later assignments override earlier ones, so explicit_model / requirements
+        # take precedence over preferred_provider.
+        target_type: str | None = None
+        # hard_target=True when the target came from a *known* model's provider entry.
+        # In that case the model is only valid on that specific backend — we must NOT
+        # fall back to a different provider (e.g. Imagen → OpenAI).
+        hard_target: bool = False
+        if preferred_provider:
+            target_type = _PROVIDER_TO_BACKEND_TYPE.get(preferred_provider.lower())
+
         if explicit_model is not None:
             gen_kwargs["model"] = explicit_model
+            entry = MODEL_MAP.get(explicit_model)
+            if entry is not None:
+                target_type = _PROVIDER_TO_BACKEND_TYPE.get(entry.provider)
+                hard_target = (
+                    True  # known model → hard constraint, no cross-provider fallback
+                )
         elif requirements is not None:
             available_providers: list[str] = []
             for b in backends:
@@ -183,16 +223,76 @@ class ComicImageGenTool:
                 ),
                 style_category=requirements.get("style_category"),
                 detail_level=requirements.get("detail_level"),
+                task_hint=requirements.get("task_hint"),
             )
             if selection.model_id is not None:
                 gen_kwargs["model"] = selection.model_id
+            if selection.provider is not None:
+                target_type = _PROVIDER_TO_BACKEND_TYPE.get(selection.provider)
+
+        # Build ordered backend list.
+        target = backend_by_type.get(target_type) if target_type is not None else None
+
+        # Hard-target: explicit model maps to a known provider → restrict to that
+        # backend only.  Never fall back across provider families; an Imagen model
+        # on the OpenAI backend (or vice-versa) is always an error.
+        if hard_target:
+            if target is not None:
+                ordered_backends: list[Any] = [target]
+            else:
+                return ToolResult(
+                    success=False,
+                    output=(
+                        f"Model '{explicit_model}' requires a '{target_type}' backend "
+                        f"but none is available "
+                        f"(registered backends: {sorted(backend_by_type) or 'none'})."
+                    ),
+                )
+        elif target is not None:
+            ordered_backends = [target, *(b for b in backends if b is not target)]
+        else:
+            ordered_backends = backends
 
         errors: list[str] = []
-        for backend in backends:
+        moderation_hit = False
+        for backend in ordered_backends:
             result = await backend.generate(**gen_kwargs)
             if result["success"]:
                 return ToolResult(success=True, output=result)
+
+            # Track whether ANY backend hit a moderation block — if so,
+            # the next backend gets to try the SAME prompt (Gemini may
+            # accept what OpenAI blocks).  If ALL backends fail on
+            # moderation, we surface structured feedback to the agent.
+            if result.get("moderation_blocked"):
+                moderation_hit = True
+                logger.warning(
+                    "generate_image: %s hit moderation block — trying next backend",
+                    getattr(backend, "provider_type", type(backend).__name__),
+                )
+
             errors.append(f"{backend.provider.name}: {result['error']}")
+
+        # When moderation blocked ALL backends, give the agent structured
+        # feedback so it can rethink the scene — not just a raw error string.
+        if moderation_hit:
+            return ToolResult(
+                success=False,
+                output=json.dumps(
+                    {
+                        "moderation_blocked": True,
+                        "errors": errors,
+                        "guidance": (
+                            "ALL image providers blocked this prompt due to content "
+                            "policy. Do NOT retry with the same prompt. Rethink the "
+                            "scene: remove intense action/combat imagery, use dramatic "
+                            "poses instead of conflict, show buildup or aftermath "
+                            "instead of the moment of impact. Rewrite the scene "
+                            "description from scratch with a PG-rated tone."
+                        ),
+                    }
+                ),
+            )
 
         return ToolResult(
             success=False,

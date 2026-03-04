@@ -12,6 +12,12 @@ from typing import Final
 from .model_map import MODEL_MAP, ApiSurface, ModelEntry
 
 _DETAIL_RANK: Final[dict[str, int]] = {"low": 1, "medium": 2, "high": 3, "ultra": 4}
+_COMPOSITION_RANK: Final[dict[str, int]] = {
+    "poor": 1,
+    "fair": 2,
+    "good": 3,
+    "excellent": 4,
+}
 
 # Maps Amplifier canonical provider names to MODEL_MAP provider names
 _PROVIDER_NORMALIZER: Final[dict[str, str]] = {
@@ -38,8 +44,24 @@ def select_model(
     style_category: str | None = None,
     detail_level: str | None = None,
     explicit_model: str | None = None,
+    task_hint: str | None = None,
 ) -> SelectionResult:
     """Select the best model for the given requirements.
+
+    Parameters
+    ----------
+    task_hint:
+        Optional hint about the *kind* of image work being done.
+        Currently recognised values:
+
+        * ``"composition"`` — multi-element scenes, panel framing,
+          negative-space planning, cover layouts.  Biases selection
+          toward models with strong spatial reasoning (e.g.
+          gemini-3-pro-image-preview, rated "Nano Banana Pro" by
+          StrongDM Weather Report for UX Ideation).
+        * ``None`` (default) — no bias; cheapest viable model wins.
+
+        Unknown hints are silently ignored (future-proof).
 
     Returns a :class:`SelectionResult` with the chosen model's details,
     or ``model_id=None`` when no viable model exists.
@@ -114,7 +136,30 @@ def select_model(
         if filtered:
             candidates = filtered
 
-    # (7) Sort by cost ascending, pick cheapest (model_id breaks ties deterministically)
+    # (7) Task-hint bias — prefer models strong at the requested task
+    #     This is a *soft* preference: it re-sorts among viable candidates
+    #     rather than filtering.  The cheapest-viable tiebreaker still
+    #     applies within each composition tier.
+    if task_hint == "composition":
+        # Sort by composition_strength DESC, then cost ASC, then model_id
+        candidates.sort(
+            key=lambda e: (
+                -_COMPOSITION_RANK.get(e.composition_strength, 0),
+                e.cost_tier,
+                e.model_id,
+            )
+        )
+        winner = candidates[0]
+        comp = winner.composition_strength
+        return SelectionResult(
+            model_id=winner.model_id,
+            provider=winner.provider,
+            api_surface=winner.api_surface,
+            cost_tier=winner.cost_tier,
+            rationale=f"best composition model ({comp}, tier {winner.cost_tier})",
+        )
+
+    # (8) Default: sort by cost ascending, pick cheapest (model_id breaks ties)
     candidates.sort(key=lambda e: (e.cost_tier, e.model_id))
     winner = candidates[0]
 

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
+import pytest_asyncio
 
 from amplifier_module_comic_assets.service import ComicProjectService
 from amplifier_module_comic_assets.storage import FileSystemStorage
@@ -32,3 +35,17 @@ def sample_png(tmp_path):
     png_path = tmp_path / "test.png"
     png_path.write_bytes(_MINIMAL_PNG)
     return str(png_path)
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _drain_executor() -> None:
+    """Ensure the default executor is shut down after each test.
+
+    ``asyncio.to_thread()`` in ``FileSystemStorage`` creates a
+    ``ThreadPoolExecutor`` per event loop.  With ``loop_scope="function"``
+    each test gets a fresh loop; without explicit shutdown, thread stacks
+    (8 MB each on Linux) accumulate across the suite.
+    """
+    yield
+    loop = asyncio.get_event_loop()
+    await loop.shutdown_default_executor()

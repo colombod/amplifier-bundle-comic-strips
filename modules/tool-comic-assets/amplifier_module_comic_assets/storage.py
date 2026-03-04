@@ -13,6 +13,15 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 
+class PathTraversalError(Exception):
+    """Raised when a storage path would escape the storage root.
+
+    This is a security guard: any attempt to read or write outside
+    the configured root directory raises this error immediately,
+    before any I/O takes place.
+    """
+
+
 @runtime_checkable
 class StorageProtocol(Protocol):
     """Async storage interface.  V1 is filesystem; future is cloud."""
@@ -60,9 +69,28 @@ class FileSystemStorage:
     def root(self) -> Path:
         return self._root
 
+    def _safe_resolve(self, rel_path: str) -> Path:
+        """Resolve *rel_path* within the storage root, guarding against traversal.
+
+        Raises:
+            PathTraversalError: If *rel_path* is absolute or resolves outside
+                the storage root.
+        """
+        if Path(rel_path).is_absolute():
+            raise PathTraversalError(
+                f"Absolute paths not allowed in storage: '{rel_path}'"
+            )
+        resolved = (self._root / rel_path).resolve()
+        if not resolved.is_relative_to(self._root):
+            raise PathTraversalError(
+                f"Path '{rel_path}' resolves outside storage root '{self._root}'"
+            )
+        return resolved
+
     async def write_bytes(self, rel_path: str, data: bytes) -> int:
+        p = self._safe_resolve(rel_path)
+
         def _write() -> int:
-            p = self._root / rel_path
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_bytes(data)
             return len(data)
@@ -70,8 +98,9 @@ class FileSystemStorage:
         return await asyncio.to_thread(_write)
 
     async def write_text(self, rel_path: str, text: str) -> int:
+        p = self._safe_resolve(rel_path)
+
         def _write() -> int:
-            p = self._root / rel_path
             p.parent.mkdir(parents=True, exist_ok=True)
             encoded = text.encode("utf-8")
             p.write_bytes(encoded)
@@ -80,19 +109,21 @@ class FileSystemStorage:
         return await asyncio.to_thread(_write)
 
     async def read_bytes(self, rel_path: str) -> bytes:
-        return await asyncio.to_thread((self._root / rel_path).read_bytes)
+        p = self._safe_resolve(rel_path)
+        return await asyncio.to_thread(p.read_bytes)
 
     async def read_text(self, rel_path: str) -> str:
-        return await asyncio.to_thread(
-            lambda: (self._root / rel_path).read_text(encoding="utf-8")
-        )
+        p = self._safe_resolve(rel_path)
+        return await asyncio.to_thread(lambda: p.read_text(encoding="utf-8"))
 
     async def exists(self, rel_path: str) -> bool:
-        return await asyncio.to_thread((self._root / rel_path).exists)
+        p = self._safe_resolve(rel_path)
+        return await asyncio.to_thread(p.exists)
 
     async def delete(self, rel_path: str) -> bool:
+        p = self._safe_resolve(rel_path)
+
         def _delete() -> bool:
-            p = self._root / rel_path
             if not p.exists():
                 return False
             if p.is_dir():
@@ -104,8 +135,9 @@ class FileSystemStorage:
         return await asyncio.to_thread(_delete)
 
     async def list_dir(self, rel_path: str) -> list[str]:
+        p = self._safe_resolve(rel_path)
+
         def _list() -> list[str]:
-            p = self._root / rel_path
             if not p.is_dir():
                 return []
             return sorted(e.name for e in p.iterdir())
@@ -113,4 +145,5 @@ class FileSystemStorage:
         return await asyncio.to_thread(_list)
 
     async def abs_path(self, rel_path: str) -> str:
-        return str((self._root / rel_path).resolve())
+        p = self._safe_resolve(rel_path)
+        return str(p)

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest_asyncio
 
 # 1x1 red PNG encoded as base64 — used by OpenAI, Gemini, and tool tests
 TINY_PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
@@ -66,3 +69,17 @@ def make_gemini_imagen_provider(name: str = "provider-google") -> MagicMock:
     # Also provide generate_content so we can assert it was NOT called
     provider.client.aio.models.generate_content = AsyncMock()
     return provider
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _drain_executor() -> None:
+    """Ensure the default executor is shut down after each test.
+
+    ``asyncio.to_thread()`` creates a ``ThreadPoolExecutor`` per event loop.
+    With ``loop_scope="function"`` each test gets a fresh loop; without
+    explicit shutdown, thread stacks (8 MB each on Linux) accumulate across
+    the suite.
+    """
+    yield
+    loop = asyncio.get_event_loop()
+    await loop.shutdown_default_executor()

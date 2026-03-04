@@ -267,6 +267,87 @@ class TestCombinedScenarios:
 # ── Provider name normalization ────────────────────────────────────────────────────────
 
 
+# ── Task hint: composition bias ──────────────────────────────────────────
+
+
+class TestTaskHintComposition:
+    """task_hint='composition' biases toward high composition_strength models."""
+
+    def test_composition_hint_selects_best_compositor(self) -> None:
+        """With both providers, composition hint picks an 'excellent' model."""
+        result = select_model(
+            available_providers=["openai", "google"],
+            task_hint="composition",
+        )
+        # Both gemini-3-pro and gpt-image-1.5 are "excellent" —
+        # gemini-3-pro wins on cost (tier 4 vs tier 5)
+        assert result.model_id == "gemini-3-pro-image-preview"
+        assert "composition" in result.rationale
+
+    def test_composition_hint_google_only_selects_nano_banana(self) -> None:
+        """Google-only: the 'Nano Banana Pro' (gemini-3-pro) should win."""
+        result = select_model(
+            available_providers=["google"],
+            task_hint="composition",
+        )
+        assert result.model_id == "gemini-3-pro-image-preview"
+
+    def test_composition_hint_openai_only(self) -> None:
+        """OpenAI-only: gpt-image-1.5 is the best compositor."""
+        result = select_model(
+            available_providers=["openai"],
+            task_hint="composition",
+        )
+        # gpt-image-1.5 is "excellent" (tier 5), gpt-image-1 is "good" (tier 4)
+        assert result.model_id == "gpt-image-1.5"
+
+    def test_composition_hint_with_refs_still_works(self) -> None:
+        """Composition + reference images: filters refs first, then biases composition."""
+        result = select_model(
+            available_providers=["openai", "google"],
+            needs_reference_images=True,
+            task_hint="composition",
+        )
+        # Must support refs AND be good at composition
+        assert result.model_id is not None
+        # Should NOT pick imagen (no refs) or dall-e-3 (no refs)
+        assert result.model_id not in (
+            "imagen-4.0-fast-generate-001",
+            "imagen-4.0-generate-001",
+            "imagen-4.0-ultra-generate-001",
+            "dall-e-3",
+        )
+
+    def test_composition_hint_with_style_filter(self) -> None:
+        """Composition + comic style: both filters apply, then composition bias."""
+        result = select_model(
+            available_providers=["openai", "google"],
+            style_category="comic",
+            task_hint="composition",
+        )
+        assert result.model_id is not None
+        assert "composition" in result.rationale
+
+    def test_no_task_hint_uses_cheapest(self) -> None:
+        """Without task_hint, cheapest model still wins (no regression)."""
+        result = select_model(
+            available_providers=["openai", "google"],
+        )
+        assert result.model_id == "imagen-4.0-fast-generate-001"
+        assert result.cost_tier == 1
+
+    def test_unknown_task_hint_ignored(self) -> None:
+        """Unknown task hints don't break anything — fall through to cheapest."""
+        result = select_model(
+            available_providers=["openai", "google"],
+            task_hint="nonexistent_hint",
+        )
+        assert result.model_id == "imagen-4.0-fast-generate-001"
+
+
+# ── Provider name normalization ──────────────────────────────────────────
+
+
 class TestProviderNameNormalization:
     """Amplifier canonical provider names map to MODEL_MAP provider names."""
 

@@ -62,7 +62,7 @@ _HTML_COVER_MAX_W: int = 1600
 _HTML_COVER_MAX_H: int = 1200
 _HTML_CHAR_MAX_W: int = 600
 _HTML_CHAR_MAX_H: int = 800
-_HTML_JPEG_QUALITY: int = 82
+_HTML_JPEG_QUALITY: int = 92
 
 
 def _optimize_for_html(

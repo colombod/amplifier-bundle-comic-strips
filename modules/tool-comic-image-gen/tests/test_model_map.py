@@ -34,7 +34,7 @@ class TestModelMapStructure:
             assert key == entry.model_id, f"Key {key!r} != model_id {entry.model_id!r}"
 
     def test_all_required_fields_present(self) -> None:
-        """Every entry must have all nine fields populated."""
+        """Every entry must have all ten fields populated."""
         required_fields = {
             "provider",
             "model_id",
@@ -45,6 +45,7 @@ class TestModelMapStructure:
             "style_strengths",
             "detail_ceiling",
             "text_avoidance",
+            "composition_strength",
         }
         for key, entry in MODEL_MAP.items():
             actual = set(vars(entry).keys())
@@ -192,6 +193,33 @@ class TestTextAvoidance:
             assert entry.text_avoidance in valid, (
                 f"{key} has invalid text_avoidance: {entry.text_avoidance!r}"
             )
+
+
+# ── Composition strength validation ─────────────────────────────────
+
+
+class TestCompositionStrength:
+    """Verify composition_strength constraints."""
+
+    def test_all_composition_strengths_are_valid(self) -> None:
+        valid = {"poor", "fair", "good", "excellent"}
+        for key, entry in MODEL_MAP.items():
+            assert entry.composition_strength in valid, (
+                f"{key} has invalid composition_strength: {entry.composition_strength!r}"
+            )
+
+    def test_gemini_3_pro_is_excellent_compositor(self) -> None:
+        """Nano Banana Pro — top pick for UX Ideation per StrongDM Weather Report."""
+        assert (
+            MODEL_MAP["gemini-3-pro-image-preview"].composition_strength == "excellent"
+        )
+
+    def test_gpt_image_1_5_is_excellent_compositor(self) -> None:
+        assert MODEL_MAP["gpt-image-1.5"].composition_strength == "excellent"
+
+    def test_imagen_fast_is_poor_compositor(self) -> None:
+        """Pure diffusion models are weaker at multi-element spatial arrangement."""
+        assert MODEL_MAP["imagen-4.0-fast-generate-001"].composition_strength == "poor"
 
 
 # ── Spot-check specific models ──────────────────────────────────────

@@ -124,6 +124,17 @@ class ComicImageGenTool:
                             "description": "Level of detail required.",
                             "enum": ["low", "medium", "high", "ultra"],
                         },
+                        "task_hint": {
+                            "type": "string",
+                            "description": (
+                                "Hint about the kind of image work. "
+                                "'composition' biases toward models with "
+                                "strong spatial/layout reasoning (panel "
+                                "framing, multi-character scenes, negative "
+                                "space). Omit for cheapest-viable default."
+                            ),
+                            "enum": ["composition"],
+                        },
                     },
                 },
             },
@@ -211,6 +222,7 @@ class ComicImageGenTool:
                 ),
                 style_category=requirements.get("style_category"),
                 detail_level=requirements.get("detail_level"),
+                task_hint=requirements.get("task_hint"),
             )
             if selection.model_id is not None:
                 gen_kwargs["model"] = selection.model_id

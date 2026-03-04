@@ -9,10 +9,8 @@ requires-python = ">=3.11"
 dependencies = [
     "amplifier-module-tool-comic-assets",
     "amplifier-module-tool-comic-image-gen",
+    "Pillow>=10.0",
 ]
-
-[project.optional-dependencies]
-images = ["Pillow>=10.0"]
 
 [dependency-groups]
 dev = [

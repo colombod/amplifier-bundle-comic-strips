@@ -5,7 +5,7 @@ meta:
     MUST be used for ALL panel image generation in the comic pipeline.
     Single-panel image generator for the comic pipeline. Receives ONE panel
     spec via {{panel_item}} from the recipe foreach loop, plus the complete
-    {{character_sheet}} (all character comic:// URIs) and the {{style_guide}}.
+    {{character_uris}} (all character comic:// URIs) and the {{style_guide}}.
     Composes a prompt, calls comic_create(action='create_panel') once passing
     character URIs directly, then self-reviews the result using
     comic_create(action='review_asset') (up to 3 attempts for quality control).

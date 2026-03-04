@@ -66,6 +66,45 @@ You receive two inputs:
 load_skill(skill_name="image-prompt-engineering")
 ```
 
+## Character Hints (User Creative Direction)
+
+The recipe may pass `character_hints` — user-provided creative direction for character design. These hints influence visual design, personality expression, and style interpretation for ALL characters. Examples:
+- "battle-worn appearance" → clothing shows wear, expressions convey fatigue and determination
+- "expressive body language" → reference pose should convey personality through posture, hand position, weight distribution
+- "emphasize team uniforms" → stronger visual emphasis on bundle-affiliation markers
+
+**How to apply hints:**
+- Weave hints into the prompt AFTER the style guide template and character identity, but BEFORE the reference sheet constraints
+- Hints affect ALL characters equally — they are global creative direction, not per-character
+- If hints are empty, proceed normally
+
+---
+
+## Style Cohesion (CRITICAL — Cross-Character Visual Consistency)
+
+**All characters in an issue MUST share the same visual DNA.** This is the single most important quality factor for a cohesive comic.
+
+Before generating ANY character, load the style guide and extract the **Character Rendering** section. This section defines the shared visual language that ALL characters must exhibit:
+
+- **Face structure**: e.g., Ghibli = round open faces with large expressive eyes; Sin City = angular high-contrast faces with heavy shadows
+- **Rendering technique**: e.g., Ghibli = soft watercolor washes, gentle gradients; Manga = cel-shaded, clean ink lines
+- **Proportions**: e.g., Ghibli = naturalistic, children look like children; Superhero = idealized heroic proportions
+- **Line quality**: e.g., Ghibli = soft thin lines; Berserk = heavy detailed crosshatching
+
+**In EVERY character prompt, include an explicit style cohesion block:**
+
+```
+STYLE COHESION: This character MUST match the following visual DNA shared by ALL characters in this comic:
+[paste the Character Rendering section from the style guide]
+The character must look like they belong in the SAME WORLD as all other characters in this issue.
+Do NOT deviate from these shared visual traits — a character with a different face structure,
+rendering technique, or line quality will look like they're from a different comic entirely.
+```
+
+This directive goes BEFORE the character-specific identity details. It ensures the style DNA is the foundation, and character individuality is expressed WITHIN those constraints (through clothing, accessories, expression, posture) rather than by overriding them.
+
+---
+
 ## Bundle-Affiliation Visual Markers
 
 Read the character's `bundle` field. Apply team visual markers based on bundle membership:
@@ -106,11 +145,15 @@ Before generating anything, check if this character already exists:
 ### Step 1: Generate Character Reference (new or redesign)
 
 1. **Read the style guide** using `comic_style(action='get', uri='{{style_guide_uri}}', include='full')` if not already available in `{{style_guide}}`
-2. **Start with the style guide's Image Prompt Template** as the base
-3. **Insert character identity details** from `{{character_item}}`: name, role, visual traits from `description`. If this is a **redesign** (Step 0 case 2), also include the existing character's `visual_traits` and `distinctive_features` to preserve identity.
-4. **Add bundle team markers**: team color accent and insignia from the `bundle` field
-5. **Apply style-dependent interpretation**: grounded or fantasy based on style guide
-6. **Add reference sheet constraints** — append exactly:
+2. **Extract the Character Rendering section** from the style guide — this defines the shared visual DNA
+3. **Start with the style guide's Image Prompt Template** as the base
+4. **Add the style cohesion directive** (BEFORE character-specific details):
+   > `STYLE COHESION: This character MUST match the following shared visual DNA: [paste Character Rendering section]. The character must look like they belong in the same world as all other characters in this comic. Same face proportions, same rendering technique, same line quality.`
+5. **Insert character identity details** from `{{character_item}}`: name, role, visual traits from `description`. If this is a **redesign** (Step 0 case 2), also include the existing character's `visual_traits` and `distinctive_features` to preserve identity.
+6. **Apply character_hints** (if provided): weave user creative direction into visual design, personality expression, and style interpretation
+7. **Add bundle team markers**: team color accent and insignia from the `bundle` field
+8. **Apply style-dependent interpretation**: grounded or fantasy based on style guide
+9. **Add reference sheet constraints** — append exactly:
    > `character reference sheet, neutral pose, full body visible, face clearly visible, plain background, no text in image`
 7. **Call comic_create**:
 

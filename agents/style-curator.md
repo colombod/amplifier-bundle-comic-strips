@@ -54,8 +54,30 @@ If the user provides one of these names, load the corresponding context file and
 | newspaper | `@comic-strips:context/styles/newspaper.md` |
 | ligne-claire | `@comic-strips:context/styles/ligne-claire.md` |
 | retro-americana | `@comic-strips:context/styles/retro-americana.md` |
+| sin-city | `@comic-strips:context/styles/sin-city.md` |
+| watchmen | `@comic-strips:context/styles/watchmen.md` |
+| berserk | `@comic-strips:context/styles/berserk.md` |
+| cuphead | `@comic-strips:context/styles/cuphead.md` |
+| ghibli | `@comic-strips:context/styles/ghibli.md` |
+| attack-on-titan | `@comic-strips:context/styles/attack-on-titan.md` |
+| spider-man | `@comic-strips:context/styles/spider-man.md` |
+| x-men | `@comic-strips:context/styles/x-men.md` |
+| solo-leveling | `@comic-strips:context/styles/solo-leveling.md` |
+| gundam | `@comic-strips:context/styles/gundam.md` |
+| transformers | `@comic-strips:context/styles/transformers.md` |
+| tatsunoko | `@comic-strips:context/styles/tatsunoko.md` |
+| witchblade | `@comic-strips:context/styles/witchblade.md` |
+| dylan-dog | `@comic-strips:context/styles/dylan-dog.md` |
+| tex-willer | `@comic-strips:context/styles/tex-willer.md` |
+| disney-classic | `@comic-strips:context/styles/disney-classic.md` |
+| bendy | `@comic-strips:context/styles/bendy.md` |
+| hellraiser | `@comic-strips:context/styles/hellraiser.md` |
+| naruto | `@comic-strips:context/styles/naruto.md` |
+| jujutsu-kaisen | `@comic-strips:context/styles/jujutsu-kaisen.md` |
+| one-piece | `@comic-strips:context/styles/one-piece.md` |
+| go-nagai | `@comic-strips:context/styles/go-nagai.md` |
 
-**How to load:** Use `read_file("@comic-strips:context/styles/<name>.md")` to load the style pack.
+**How to load:** Use `read_file("@comic-strips:context/styles/<name>.md")` to load the style pack. If the style name matches ANY row in the table above, load the corresponding file. Do NOT fall through to custom generation for named styles that have authored packs.
 
 ## Custom Styles
 
@@ -89,6 +111,14 @@ Your output MUST be a structured style guide with these exact sections:
 
 ## Character Rendering
 - [Key visual traits for rendering characters]
+- IMPORTANT: This section defines the SHARED VISUAL DNA that ALL characters must exhibit.
+  Write it as concrete rendering rules, not vague descriptions. Include:
+  - Face structure (round/angular/realistic proportions)
+  - Eye style (large/small, detailed/simplified)
+  - Line quality (thin/thick, clean/sketchy)
+  - Rendering technique (cel-shaded/watercolor/crosshatched)
+  - Body proportions (naturalistic/idealized/stylized)
+  Character-designer uses this section verbatim as a cohesion directive in every prompt.
 
 ## AmpliVerse Branding
 - [Placement and treatment per comic-instructions.md rules]

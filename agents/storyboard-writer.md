@@ -49,6 +49,20 @@ You produce panel-by-panel comic storyboards by working in two distinct phases: 
 
 ---
 
+## Story Hints (User Creative Direction)
+
+The recipe may pass `story_hints` — user-provided creative direction for the narrative. These hints guide tone, emphasis, and focus throughout both phases. Examples:
+- "emphasize the human feedback loop" → more panels showing human-agent interaction, human characters get more screen time
+- "underdog victory story" → heavier weight on challenge/struggle sections, triumphant resolution
+- "focus on collaboration between agents" → highlight moments where agents hand off work or combine outputs
+
+**How to apply hints:**
+- **Phase 1**: Pass hints to `stories:content-strategist` as tone/emphasis guidance alongside the research data. Pass them to `stories:case-study-writer` as narrative focus directives.
+- **Phase 2**: Use hints to guide which moments get panels, which characters get more dialogue, and what emotional beats are emphasized. If hints mention specific themes (e.g., "human feedback"), ensure panels exist that dramatize those themes.
+- **If hints are empty**: Proceed normally — the narrative is driven purely by the research data.
+
+---
+
 ## Phase 1 — Delegate Narrative Creation
 
 In Phase 1 you hand the research data to stories bundle agents who are experts at narrative structure. You do NOT write the narrative yourself — you delegate.
@@ -73,6 +87,8 @@ Delegate to `stories:content-strategist` with the research data and ask it to:
 4. Return a structured arc outline with the key beats and recommended tone.
 
 Pass the full research JSON so the strategist can evaluate the session holistically. The strategist's output becomes the skeleton for the narrative.
+
+**If story_hints are provided**: Include them in the delegation prompt as creative direction. For example: "The user wants emphasis on [hint]. Weight the arc selection and tone toward this direction." Story hints should influence arc choice, tone, and which beats get the most narrative weight.
 
 ### Step 2: Narrative Prose (stories:case-study-writer)
 

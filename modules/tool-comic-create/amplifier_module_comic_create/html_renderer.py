@@ -112,6 +112,22 @@ _AMPLIVERSE_PUBLISHER = "AmpliVerse"
 # ---------------------------------------------------------------------------
 
 
+def _bubble_font_size(text: str) -> str:
+    """Return an appropriate CSS font-size value for bubble text of given length."""
+    n = len(text)
+    if n > 180:
+        return "8px"
+    if n > 140:
+        return "9px"
+    if n > 100:
+        return "10px"
+    if n > 60:
+        return "11px"
+    if n > 40:
+        return "12px"
+    return "var(--bubble-font-size)"
+
+
 def _tail_triangle(
     bx: float,
     by: float,
@@ -162,26 +178,72 @@ def _tail_triangle(
     return f"{p1x:.1f},{p1y:.1f} {tx:.1f},{ty:.1f} {p2x:.1f},{p2y:.1f}"
 
 
+def _oval_tail_path(
+    cx: float,
+    cy: float,
+    rx: float,
+    ry: float,
+    tx: float,
+    ty: float,
+    half_base_frac: float = 0.10,
+) -> str:
+    """Build SVG path 'd' attribute for oval bubble with integrated tail.
+
+    Traces: ellipse arc from base point 1 → around the long way → to base
+    point 2 → line to tail tip → close.  One unified stroke with no seam.
+    """
+    dx = tx - cx
+    dy = ty - cy
+    dist = math.hypot(dx, dy) or 1.0
+    ndx, ndy = dx / dist, dy / dist
+    px, py = -ndy, ndx  # perpendicular
+
+    half_base = min(rx * 2, ry * 2) * half_base_frac
+
+    # Edge distance to ellipse in tail direction
+    if abs(ndx) < 0.001 and abs(ndy) < 0.001:
+        edge_dist = min(rx, ry)
+    else:
+        edge_dist = (rx * ry) / math.hypot(rx * ndy, ry * ndx)
+
+    # Base points ON the ellipse (edge_dist * 1.0, not 0.92)
+    edge_x = cx + ndx * edge_dist
+    edge_y = cy + ndy * edge_dist
+    p1x = edge_x + px * half_base
+    p1y = edge_y + py * half_base
+    p2x = edge_x - px * half_base
+    p2y = edge_y - py * half_base
+
+    # Determine arc sweep direction via cross product of p1→center and p2→center
+    v1x, v1y = p1x - cx, p1y - cy
+    v2x, v2y = p2x - cx, p2y - cy
+    cross = v1x * v2y - v1y * v2x
+    sweep = 0 if cross > 0 else 1
+
+    return (
+        f"M {p1x:.1f},{p1y:.1f} "
+        f"A {rx},{ry} 0 1,{sweep} {p2x:.1f},{p2y:.1f} "
+        f"L {tx:.1f},{ty:.1f} "
+        f"Z"
+    )
+
+
 def _oval_svg(text: str, tail_tx: float, tail_ty: float) -> str:
-    """Return inline SVG for an oval speech bubble with tail."""
-    # ViewBox 0 0 100 100; ellipse fills top portion, tail points down/sideways
+    """Return inline SVG for an oval speech bubble with tail.
+
+    Uses a single unified <path> (arc + tail) so there is no seam stroke where
+    the tail base meets the ellipse body.
+    """
     bx, by, bw, bh = 2, 2, 96, 70
-    points = _tail_triangle(bx, by, bw, bh, tail_tx, tail_ty)
+    cx, cy = bx + bw / 2, by + bh / 2
+    rx, ry = bw / 2, bh / 2
+    path_d = _oval_tail_path(cx, cy, rx, ry, tail_tx, tail_ty)
     safe = _html.escape(text)
-    font_size = "var(--bubble-font-size)"
-    if len(text) > 100:
-        font_size = "10px"
-    elif len(text) > 60:
-        font_size = "11px"
-    elif len(text) > 40:
-        font_size = "12px"
+    font_size = _bubble_font_size(text)
     return (
         f'<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" '
         f'width="100%" height="100%" overflow="visible">'
-        f'<ellipse cx="50" cy="{by + bh / 2:.1f}" rx="{bw / 2:.1f}" ry="{bh / 2:.1f}" '
-        f'fill="var(--bubble-fill)" stroke="var(--bubble-stroke)" '
-        f'stroke-width="var(--bubble-stroke-width)"/>'
-        f'<polygon points="{points}" '
+        f'<path d="{path_d}" '
         f'fill="var(--bubble-fill)" stroke="var(--bubble-stroke)" '
         f'stroke-width="var(--bubble-stroke-width)"/>'
         f'<foreignObject x="5" y="5" width="90" height="65">'
@@ -228,13 +290,7 @@ def _cloud_svg(text: str, tail_tx: float, tail_ty: float) -> str:
             f'fill="var(--bubble-fill)" stroke="var(--bubble-stroke)" '
             f'stroke-width="var(--bubble-stroke-width)"/>'
         )
-    font_size = "var(--bubble-font-size)"
-    if len(text) > 100:
-        font_size = "10px"
-    elif len(text) > 60:
-        font_size = "11px"
-    elif len(text) > 40:
-        font_size = "12px"
+    font_size = _bubble_font_size(text)
     return (
         f'<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" '
         f'width="100%" height="100%" overflow="visible">'
@@ -265,13 +321,7 @@ def _jagged_svg(text: str, tail_tx: float, tail_ty: float) -> str:
     pts = " ".join(points_list)
     # Tail
     tail_pts = _tail_triangle(10, 10, 80, 80, tail_tx, tail_ty)
-    font_size = "var(--bubble-font-size)"
-    if len(text) > 100:
-        font_size = "10px"
-    elif len(text) > 60:
-        font_size = "11px"
-    elif len(text) > 40:
-        font_size = "12px"
+    font_size = _bubble_font_size(text)
     return (
         f'<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" '
         f'width="100%" height="100%" overflow="visible">'
@@ -279,8 +329,7 @@ def _jagged_svg(text: str, tail_tx: float, tail_ty: float) -> str:
         f'fill="var(--bubble-fill)" stroke="var(--bubble-stroke)" '
         f'stroke-width="var(--bubble-stroke-width)"/>'
         f'<polygon points="{tail_pts}" '
-        f'fill="var(--bubble-fill)" stroke="var(--bubble-stroke)" '
-        f'stroke-width="var(--bubble-stroke-width)"/>'
+        f'fill="var(--bubble-fill)" stroke="none"/>'
         f'<foreignObject x="15" y="15" width="70" height="70">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
         f'style="font-family:var(--bubble-font);font-size:{font_size};'
@@ -292,26 +341,23 @@ def _jagged_svg(text: str, tail_tx: float, tail_ty: float) -> str:
 
 
 def _whisper_svg(text: str, tail_tx: float, tail_ty: float) -> str:
-    """Return inline SVG for a whisper bubble (dashed oval, no tail)."""
-    safe = _html.escape(text)
+    """Return inline SVG for a whisper bubble (dashed oval with integrated tail).
+
+    Uses a single unified <path> with stroke-dasharray so there is no seam
+    stroke where the tail base meets the ellipse body.
+    """
     bx, by, bw, bh = 2, 2, 96, 70
-    tail_pts = _tail_triangle(bx, by, bw, bh, tail_tx, tail_ty)
-    font_size = "var(--bubble-font-size)"
-    if len(text) > 100:
-        font_size = "10px"
-    elif len(text) > 60:
-        font_size = "11px"
-    elif len(text) > 40:
-        font_size = "12px"
+    cx, cy = bx + bw / 2, by + bh / 2
+    rx, ry = bw / 2, bh / 2
+    path_d = _oval_tail_path(cx, cy, rx, ry, tail_tx, tail_ty)
+    safe = _html.escape(text)
+    font_size = _bubble_font_size(text)
     return (
         f'<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" '
         f'width="100%" height="100%" overflow="visible">'
-        f'<ellipse cx="50" cy="{by + bh / 2:.1f}" rx="{bw / 2:.1f}" ry="{bh / 2:.1f}" '
+        f'<path d="{path_d}" '
         f'fill="var(--bubble-fill)" stroke="var(--bubble-stroke)" '
         f'stroke-width="var(--bubble-stroke-width)" stroke-dasharray="5,3"/>'
-        f'<polygon points="{tail_pts}" '
-        f'fill="var(--bubble-fill)" stroke="var(--bubble-stroke)" '
-        f'stroke-width="var(--bubble-stroke-width)" stroke-dasharray="3,2"/>'
         f'<foreignObject x="5" y="5" width="90" height="65">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
         f'style="font-family:var(--bubble-font);font-size:{font_size};'
@@ -325,16 +371,10 @@ def _whisper_svg(text: str, tail_tx: float, tail_ty: float) -> str:
 def _rectangular_svg(text: str) -> str:
     """Return inline SVG for a rectangular caption box (no tail)."""
     safe = _html.escape(text)
-    font_size = "var(--bubble-font-size)"
-    if len(text) > 100:
-        font_size = "10px"
-    elif len(text) > 60:
-        font_size = "11px"
-    elif len(text) > 40:
-        font_size = "12px"
+    font_size = _bubble_font_size(text)
     return (
         f'<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" '
-        f'width="100%" height="100%" overflow="visible">'
+        f'width="100%" height="100%" preserveAspectRatio="none" overflow="visible">'
         f'<rect x="2" y="2" width="96" height="96" rx="4" ry="4" '
         f'fill="var(--caption-fill)" stroke="var(--caption-stroke)" '
         f'stroke-width="var(--bubble-stroke-width)"/>'
@@ -438,10 +478,12 @@ def _render_panel(panel_def: dict[str, Any], resolved: dict[str, str]) -> str:
     shape = panel_def.get("shape", "")
     shape_attr = f' data-shape="{_html.escape(shape)}"' if shape else ""
     return (
+        f'<div class="panel-wrap">'
         f'<div class="panel"{shape_attr}>'
         f'<img src="{data_uri}" alt="Comic panel" />'
-        f"{overlays_html}"
-        f"</div>"
+        f'</div>'
+        f'{overlays_html}'
+        f'</div>'
     )
 
 
@@ -667,12 +709,17 @@ body {
   grid-auto-rows: 1fr;               /* overflow rows MUST stretch to fill page */
   grid-auto-columns: 1fr;            /* overflow cols MUST stretch to fill page */
 }
-.panel {
+.panel-wrap {
   position: relative;
-  overflow: hidden;
-  background: #000;
+  overflow: visible;
   min-height: 0;
   min-width: 0;
+}
+.panel {
+  overflow: hidden;
+  background: #000;
+  width: 100%;
+  height: 100%;
   /* No border on individual panels — the grid gap IS the border */
   border: none;
   border-radius: 0;
@@ -689,42 +736,42 @@ body {
    overlapping, and visually dynamic page compositions.           */
 
 /* -- Establishing shot + supporting grid -- */
-.layout-wide_establishing_plus_grid .panel:first-child { grid-column: 1 / -1; }
+.layout-wide_establishing_plus_grid .panel-wrap:first-child { grid-column: 1 / -1; }
 
 /* -- Crescendo: full-width bookends around center detail -- */
-.layout-crescendo .panel:first-child { grid-column: 1 / -1; }
-.layout-crescendo .panel:last-child { grid-column: 1 / -1; }
+.layout-crescendo .panel-wrap:first-child { grid-column: 1 / -1; }
+.layout-crescendo .panel-wrap:last-child { grid-column: 1 / -1; }
 
 /* -- Spotlight: hero panel dominates left column -- */
-.layout-spotlight .panel:first-child { grid-row: 1 / 3; }
+.layout-spotlight .panel-wrap:first-child { grid-row: 1 / 3; }
 
 /* -- Cliffhanger: dramatic wide bottom panel -- */
-.layout-cliffhanger .panel:last-child { grid-column: 1 / -1; }
+.layout-cliffhanger .panel-wrap:last-child { grid-column: 1 / -1; }
 
 /* -- Dramatic reveal: small top row, wide reveal below -- */
-.layout-dramatic_reveal .panel:last-child { grid-column: 1 / -1; }
+.layout-dramatic_reveal .panel-wrap:last-child { grid-column: 1 / -1; }
 
 /* -- Hero splash then grid -- */
-.layout-hero_plus_grid .panel:first-child { grid-column: 1 / -1; }
+.layout-hero_plus_grid .panel-wrap:first-child { grid-column: 1 / -1; }
 
 /* -- T-shape: wide top + columns below -- */
-.layout-t_shape .panel:first-child { grid-column: 1 / -1; }
+.layout-t_shape .panel-wrap:first-child { grid-column: 1 / -1; }
 
 /* -- Splash + strip footer -- */
-.layout-splash_plus_strip .panel:first-child { grid-column: 1 / -1; }
+.layout-splash_plus_strip .panel-wrap:first-child { grid-column: 1 / -1; }
 
 /* ======== MANGA LAYOUT MODIFIERS ======== */
-.layout-manga_action .panel:first-child { grid-row: 1 / 3; }
-.layout-manga_dramatic .panel:nth-child(2) { grid-row: 1 / 3; }
-.layout-manga_impact .panel:first-child { grid-column: 1 / -1; }
+.layout-manga_action .panel-wrap:first-child { grid-row: 1 / 3; }
+.layout-manga_dramatic .panel-wrap:nth-child(2) { grid-row: 1 / 3; }
+.layout-manga_impact .panel-wrap:first-child { grid-column: 1 / -1; }
 
 /* ======== PROFESSIONAL LAYOUT MODIFIERS ======== */
-.layout-l_shape .panel:first-child { grid-row: 1 / 3; }
-.layout-asymmetric_3 .panel:first-child { grid-row: 1 / 3; }
-.layout-diagonal_energy .panel:last-child { grid-column: 1 / -1; }
-.layout-corner_focus .panel:first-child { grid-row: 1 / 3; grid-column: 1 / 2; }
-.layout-bookend .panel:nth-child(2) { grid-row: 1 / 3; }
-.layout-widescreen_stack .panel:last-child { grid-column: 1 / -1; }
+.layout-l_shape .panel-wrap:first-child { grid-row: 1 / 3; }
+.layout-asymmetric_3 .panel-wrap:first-child { grid-row: 1 / 3; }
+.layout-diagonal_energy .panel-wrap:last-child { grid-column: 1 / -1; }
+.layout-corner_focus .panel-wrap:first-child { grid-row: 1 / 3; grid-column: 1 / 2; }
+.layout-bookend .panel-wrap:nth-child(2) { grid-row: 1 / 3; }
+.layout-widescreen_stack .panel-wrap:last-child { grid-column: 1 / -1; }
 
 /* ======== PANEL SHAPE TRANSFORMS ========
    Applied via data-shape attribute on .panel divs.
@@ -966,15 +1013,7 @@ def render_comic_html(
     pages_html_parts: list[str] = []
     page_idx = 0
 
-    # 1. Character intro page (S-3)
-    characters = layout.get("characters")
-    if characters:
-        pages_html_parts.append(
-            _render_character_intro(characters, resolved_images, page_idx)
-        )
-        page_idx += 1
-
-    # 2. Cover page
+    # 1. Cover page
     cover_info = layout.get("cover")
     if cover_info and cover_info.get("uri"):
         cover_info_with_title = dict(cover_info)
@@ -984,6 +1023,14 @@ def render_comic_html(
         if rendered:
             pages_html_parts.append(rendered)
             page_idx += 1
+
+    # 2. Character intro page
+    characters = layout.get("characters")
+    if characters:
+        pages_html_parts.append(
+            _render_character_intro(characters, resolved_images, page_idx)
+        )
+        page_idx += 1
 
     # 3. Story pages
     for page_def in layout.get("pages", []):

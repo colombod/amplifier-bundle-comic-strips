@@ -18,7 +18,12 @@ from amplifier_module_comic_create.html_renderer import (
 
 
 def test_oval_bubble_svg_has_ellipse_and_tail() -> None:
-    """Oval bubble must contain an <ellipse> and a tail path/polygon."""
+    """Oval bubble must contain a bubble body and a tail path/polygon.
+
+    The bubble body may be rendered as a separate <ellipse> element OR as a
+    unified <path> that integrates both the oval body and the tail in one
+    stroke (Fix 2 — no-seam unified path).
+    """
     overlay = {
         "type": "speech",
         "shape": "oval",
@@ -27,8 +32,9 @@ def test_oval_bubble_svg_has_ellipse_and_tail() -> None:
         "tail": {"points_to": {"x": 50, "y": 80}},
     }
     html = render_overlay_svg(overlay)
-    assert "<ellipse" in html
-    # Tail can be a <polygon> or <path> element
+    # Bubble body: either a separate <ellipse> or a unified <path>
+    assert "<ellipse" in html or "<path" in html
+    # Tail: may be a <polygon>, a standalone <path>, or merged into the body path
     assert "<polygon" in html or "<path" in html
     assert "Hello!" in html
 
@@ -341,7 +347,9 @@ def test_html_is_self_contained() -> None:
     # Only the Google Fonts web-font link is permitted as an external stylesheet
     import re
 
-    external_links = re.findall(r'<link[^>]+rel=["\']stylesheet["\'][^>]*>', html, re.IGNORECASE)
+    external_links = re.findall(
+        r'<link[^>]+rel=["\']stylesheet["\'][^>]*>', html, re.IGNORECASE
+    )
     for link in external_links:
         assert "fonts.googleapis.com" in link, (
             f"Unexpected external stylesheet link (only Google Fonts allowed): {link}"

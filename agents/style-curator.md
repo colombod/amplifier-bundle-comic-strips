@@ -42,42 +42,24 @@ You define the visual style for a comic strip. Your output is a structured style
 
 Given a style choice (predefined name or custom description), produce a comprehensive style guide.
 
-## Predefined Styles
+## Predefined Styles — Dynamic Discovery
 
-If the user provides one of these names, load the corresponding context file and adapt it:
+Style packs are `.md` files in the `@comic-strips:context/styles/` directory. New styles are automatically available when added — no agent code change needed.
 
-| Name | Context File |
-|------|-------------|
-| manga | `@comic-strips:context/styles/manga.md` |
-| superhero | `@comic-strips:context/styles/superhero.md` |
-| indie | `@comic-strips:context/styles/indie.md` |
-| newspaper | `@comic-strips:context/styles/newspaper.md` |
-| ligne-claire | `@comic-strips:context/styles/ligne-claire.md` |
-| retro-americana | `@comic-strips:context/styles/retro-americana.md` |
-| sin-city | `@comic-strips:context/styles/sin-city.md` |
-| watchmen | `@comic-strips:context/styles/watchmen.md` |
-| berserk | `@comic-strips:context/styles/berserk.md` |
-| cuphead | `@comic-strips:context/styles/cuphead.md` |
-| ghibli | `@comic-strips:context/styles/ghibli.md` |
-| attack-on-titan | `@comic-strips:context/styles/attack-on-titan.md` |
-| spider-man | `@comic-strips:context/styles/spider-man.md` |
-| x-men | `@comic-strips:context/styles/x-men.md` |
-| solo-leveling | `@comic-strips:context/styles/solo-leveling.md` |
-| gundam | `@comic-strips:context/styles/gundam.md` |
-| transformers | `@comic-strips:context/styles/transformers.md` |
-| tatsunoko | `@comic-strips:context/styles/tatsunoko.md` |
-| witchblade | `@comic-strips:context/styles/witchblade.md` |
-| dylan-dog | `@comic-strips:context/styles/dylan-dog.md` |
-| tex-willer | `@comic-strips:context/styles/tex-willer.md` |
-| disney-classic | `@comic-strips:context/styles/disney-classic.md` |
-| bendy | `@comic-strips:context/styles/bendy.md` |
-| hellraiser | `@comic-strips:context/styles/hellraiser.md` |
-| naruto | `@comic-strips:context/styles/naruto.md` |
-| jujutsu-kaisen | `@comic-strips:context/styles/jujutsu-kaisen.md` |
-| one-piece | `@comic-strips:context/styles/one-piece.md` |
-| go-nagai | `@comic-strips:context/styles/go-nagai.md` |
+**Step 1: Discover available styles.** List the styles directory:
+```
+read_file("@comic-strips:context/styles/")
+```
+This returns a directory listing of all `.md` files. Each filename (minus the `.md` extension) is a valid style name.
 
-**How to load:** Use `read_file("@comic-strips:context/styles/<name>.md")` to load the style pack. If the style name matches ANY row in the table above, load the corresponding file. Do NOT fall through to custom generation for named styles that have authored packs.
+**Step 2: Check if the requested style has a pack.** If `{{style}}` matches a filename from the listing (e.g., the user requests `ghibli` and `ghibli.md` exists), load it:
+```
+read_file("@comic-strips:context/styles/{{style}}.md")
+```
+
+**Step 3: If no matching file exists**, treat the style as a custom description and generate a style guide from scratch following the same structure as authored packs.
+
+**IMPORTANT:** Always discover styles dynamically from the directory listing. Do NOT rely on a hardcoded list of style names — the directory is the source of truth, and new styles may be added at any time.
 
 ## Custom Styles
 

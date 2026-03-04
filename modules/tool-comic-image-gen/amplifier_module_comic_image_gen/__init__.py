@@ -11,6 +11,7 @@ Issue #90 lands a native solution.
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from typing import Any
@@ -253,11 +254,45 @@ class ComicImageGenTool:
             ordered_backends = backends
 
         errors: list[str] = []
+        moderation_hit = False
         for backend in ordered_backends:
             result = await backend.generate(**gen_kwargs)
             if result["success"]:
                 return ToolResult(success=True, output=result)
+
+            # Track whether ANY backend hit a moderation block — if so,
+            # the next backend gets to try the SAME prompt (Gemini may
+            # accept what OpenAI blocks).  If ALL backends fail on
+            # moderation, we surface structured feedback to the agent.
+            if result.get("moderation_blocked"):
+                moderation_hit = True
+                logger.warning(
+                    "generate_image: %s hit moderation block — trying next backend",
+                    getattr(backend, "provider_type", type(backend).__name__),
+                )
+
             errors.append(f"{backend.provider.name}: {result['error']}")
+
+        # When moderation blocked ALL backends, give the agent structured
+        # feedback so it can rethink the scene — not just a raw error string.
+        if moderation_hit:
+            return ToolResult(
+                success=False,
+                output=json.dumps(
+                    {
+                        "moderation_blocked": True,
+                        "errors": errors,
+                        "guidance": (
+                            "ALL image providers blocked this prompt due to content "
+                            "policy. Do NOT retry with the same prompt. Rethink the "
+                            "scene: remove intense action/combat imagery, use dramatic "
+                            "poses instead of conflict, show buildup or aftermath "
+                            "instead of the moment of impact. Rewrite the scene "
+                            "description from scratch with a PG-rated tone."
+                        ),
+                    }
+                ),
+            )
 
         return ToolResult(
             success=False,

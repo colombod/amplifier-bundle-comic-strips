@@ -246,7 +246,7 @@ def _oval_svg(text: str, tail_tx: float, tail_ty: float) -> str:
         f'<path d="{path_d}" '
         f'fill="var(--bubble-fill)" stroke="var(--bubble-stroke)" '
         f'stroke-width="var(--bubble-stroke-width)"/>'
-        f'<foreignObject x="4" y="3" width="92" height="68">'
+        f'<foreignObject x="4" y="3" width="92" height="68" overflow="hidden">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
         f'style="font-family:var(--bubble-font);font-size:{font_size};'
         f"text-align:center;display:flex;align-items:center;justify-content:center;"
@@ -296,7 +296,7 @@ def _cloud_svg(text: str, tail_tx: float, tail_ty: float) -> str:
         f'width="100%" height="100%" overflow="visible">'
         f'<rect x="18" y="14" width="72" height="52" fill="var(--bubble-fill)" stroke="none"/>'
         f"{circles}"
-        f'<foreignObject x="20" y="18" width="62" height="44">'
+        f'<foreignObject x="20" y="18" width="62" height="44" overflow="hidden">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
         f'style="font-family:var(--bubble-font);font-size:{font_size};'
         f"text-align:center;display:flex;align-items:center;justify-content:center;"
@@ -330,7 +330,7 @@ def _jagged_svg(text: str, tail_tx: float, tail_ty: float) -> str:
         f'stroke-width="var(--bubble-stroke-width)"/>'
         f'<polygon points="{tail_pts}" '
         f'fill="var(--bubble-fill)" stroke="none"/>'
-        f'<foreignObject x="15" y="15" width="70" height="70">'
+        f'<foreignObject x="15" y="15" width="70" height="70" overflow="hidden">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
         f'style="font-family:var(--bubble-font);font-size:{font_size};'
         f"font-weight:bold;text-align:center;display:flex;align-items:center;"
@@ -358,7 +358,7 @@ def _whisper_svg(text: str, tail_tx: float, tail_ty: float) -> str:
         f'<path d="{path_d}" '
         f'fill="var(--bubble-fill)" stroke="var(--bubble-stroke)" '
         f'stroke-width="var(--bubble-stroke-width)" stroke-dasharray="5,3"/>'
-        f'<foreignObject x="4" y="3" width="92" height="68">'
+        f'<foreignObject x="4" y="3" width="92" height="68" overflow="hidden">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
         f'style="font-family:var(--bubble-font);font-size:{font_size};'
         f"font-style:italic;text-align:center;display:flex;align-items:center;"
@@ -378,7 +378,7 @@ def _rectangular_svg(text: str) -> str:
         f"border-radius:4px;padding:6px 10px;"
         f"font-family:var(--bubble-font);font-size:{font_size};"
         f"text-align:left;word-break:break-word;"
-        f"width:100%;height:100%;box-sizing:border-box;overflow:hidden;"
+        f"width:100%;height:auto;box-sizing:border-box;"
         f'">{safe}</div>'
     )
 
@@ -465,9 +465,8 @@ def render_overlay_svg(overlay: dict[str, Any]) -> str:
         style = (
             f"position:absolute;"
             f"left:{x}%;top:{y}%;"
-            f"width:{w}%;height:{h}%;"
+            f"width:{w}%;height:auto;"
             f"pointer-events:none;"
-            f"overflow:hidden;"
         )
     else:
         style = (
@@ -524,9 +523,9 @@ def _render_panel(panel_def: dict[str, Any], resolved: dict[str, str]) -> str:
         f'<div class="panel-wrap">'
         f'<div class="panel"{shape_attr}>'
         f'<img src="{data_uri}" alt="Comic panel" />'
-        f'</div>'
-        f'{overlays_html}'
-        f'</div>'
+        f"</div>"
+        f"{overlays_html}"
+        f"</div>"
     )
 
 

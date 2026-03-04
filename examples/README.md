@@ -123,3 +123,150 @@ xdg-open examples/sin-city-comic.html
 ```
 
 Use arrow keys, click the nav buttons, or tap the page dots to navigate.
+
+---
+
+## ghibli-context-intelligence-comic.html
+
+**Style:** Studio Ghibli (Miyazaki watercolor)
+**Source:** context-intelligence-second-pass project sessions
+**Recipe version:** session-to-comic v7.5.0
+**Generated:** 2026-03-04
+
+### What it is
+
+A 34-panel, 10-page comic strip generated from the Amplifier sessions that built
+the context-intelligence bundle -- the CXDB-backed session recording and analysis
+system for the Amplifier ecosystem. Rendered in Studio Ghibli's watercolor
+illustration style: soft earthy palettes, hand-painted backgrounds with dappled
+golden-hour light, gentle rounded character designs, and magical realism where
+technical concepts become nature metaphors.
+
+The story follows Diego (the lead developer) and a team of AI agents through a
+gauntlet of production bugs -- silent connection failures, ghost contexts, and a
+hidden socket leak -- culminating in a kintsugi-style repair and Brian's PR
+review that made the code community-ready. Two human characters, seven total cast
+members, and a narrative arc from quiet workshop morning to triumphant green test
+wall.
+
+### What makes this example special
+
+This comic demonstrates **v7.5.0 features** not present in the sin-city example:
+
+| Feature | Detail |
+|---------|--------|
+| **story_hints** | Rich narrative guidance passed through to storyboard-writer -- emphasis on multiple humans, difficulties, and community impact |
+| **character_hints** | Ghibli-specific character direction -- nature spirits, expressive body language, watercolor aesthetics |
+| **Style cohesion** | All 7 characters share Ghibli visual DNA (round faces, large expressive eyes, soft watercolor rendering) thanks to the new style cohesion directive |
+| **All 28 style packs** | The `ghibli` style pack loaded from its authored `.md` file instead of falling through to custom generation |
+| **Two human characters** | Diego (the builder) and Brian (the reviewer) -- demonstrating multi-human narrative |
+
+### The exact prompt that created it
+
+From an Amplifier session with the `comic-strips` bundle active:
+
+```
+execute session-to-comic with \
+  session_file=~/.amplifier/projects/-home-dicolomb-context-intelligence-second-pass/sessions/59cb8e3f-48a2-422a-867d-f78a98b2a75b/events.jsonl \
+  style=ghibli \
+  output_name=ghibli-context-intelligence-comic \
+  project_name=ghibli-context-intelligence \
+  issue_title="The Quiet Revolution - Building Context Intelligence" \
+  max_characters=7 \
+  max_pages=10 \
+  panels_per_page=3-6 \
+  story_hints="This comic tells the story of building the context-intelligence bundle... emphasis on multiple humans providing feedback, the difficulties, and the final triumph for the community" \
+  character_hints="Studio Ghibli character aesthetics are CRITICAL... Diego as a determined craftsperson, Brian as a thoughtful reviewer, AI agents as nature spirits in the Ghibli tradition"
+```
+
+(Full story_hints and character_hints were ~2000 words of creative direction --
+see the session log for the complete text.)
+
+### How it was created
+
+The full pipeline ran autonomously through 8 steps:
+
+```
+Step 1: init-project
+  Agent: style-curator
+  Created project "ghibli-context-intelligence" with generation metadata
+
+Step 2: research
+  Agent: stories:story-researcher
+  Analyzed 125 MB session log from the context-intelligence-second-pass project
+  Extracted: agent activity, tool calls, narrative beats, key decisions
+  Stored research as asset, passed only the URI downstream (~70 bytes)
+
+Step 3: style-curation
+  Agent: style-curator
+  Loaded ghibli.md style pack (NEW: all 28 packs now have explicit mappings)
+  Produced style guide with Character Rendering cohesion section
+  Stored style definition as versioned asset
+
+Step 4: storyboard
+  Agent: storyboard-writer
+  Applied story_hints to both Phase 1 (narrative arc) and Phase 2 (panel layout)
+  Delegated to stories:content-strategist + stories:case-study-writer
+  Produced structured JSON: 34 panels, 7 characters (4 main + 3 supporting),
+  10 story pages, scene descriptions, dialogue, camera angles, emotional beats
+
+  --- APPROVAL GATE ---
+  Human reviewed storyboard before committing to image generation
+
+Step 5: design-characters (parallel, max 2 concurrent)
+  Agent: character-designer (foreach character)
+  Applied character_hints to all 7 character designs
+  NEW: Style cohesion directive included in every prompt --
+  all characters share Ghibli visual DNA from Character Rendering section
+  Generated reference sheets for: Diego, The Explorer, The Builder,
+  The Critic, Brian, The Dreamer, The Keeper
+
+Step 6: generate-panels (parallel, max 2 concurrent)
+  Agent: panel-artist (foreach panel)
+  Generated 34 panel images using gpt-image-1
+  Character reference images passed for visual consistency
+  Cover generated concurrently by cover-artist
+
+Step 7: generate-cover
+  Agent: cover-artist
+  Portrait ratio (1024x1536), all 4 main characters featured
+
+Step 8: composition
+  Agent: strip-compositor
+  12 pages total (cover + character intro + 10 story pages)
+  42 images embedded (34 panels + 1 cover + 7 character refs)
+  82% non-rectangular panel shapes
+  Visual QA score: 7.5/10
+```
+
+### What the output demonstrates
+
+| Feature | Detail |
+|---------|--------|
+| 12 pages, 34 panels | Full 10-page story plus cover and character intro |
+| 7 characters | 2 humans (Diego, Brian) + 5 AI agents as Ghibli-style characters |
+| Ghibli watercolor aesthetic | Soft palettes, golden-hour light, nature metaphors |
+| Style cohesion | All characters share round faces, large eyes, watercolor rendering |
+| Story hints applied | Narrative emphasizes human feedback, difficulties, community triumph |
+| Character hints applied | Diego as craftsperson, Brian as reviewer, agents as nature spirits |
+| Nature metaphors | Errors as storms, tests as blooming gardens, fixes as kintsugi |
+| Full-bleed cover | Portrait image with all main characters, title overlaid |
+| Cast page | 7 characters with portraits, roles, and narrative backstories |
+| SVG speech bubbles | Positioned via vision-informed composition analysis |
+| Zero text in images | Code-level enforcement on every image generation prompt |
+| AmpliVerse branding | Publisher badge on cover |
+| Self-contained | Single HTML file (171 MB), all images base64-embedded, works offline |
+
+### Opening it
+
+```bash
+# macOS
+open examples/ghibli-context-intelligence-comic.html
+
+# Linux
+xdg-open examples/ghibli-context-intelligence-comic.html
+
+# or just drag the file into any browser
+```
+
+Use arrow keys, click the nav buttons, or tap the page dots to navigate.

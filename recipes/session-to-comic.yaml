@@ -426,7 +426,7 @@ stages:
         as: character_item
         agent: "comic-strips:character-designer"
         parallel: 2
-        max_iterations: 6
+        max_iterations: 12  # up to 8 characters with retries
         retry:
           max_attempts: 2
           initial_delay: 5
@@ -469,7 +469,7 @@ stages:
         depends_on: ["design-characters"]
         agent: "comic-strips:panel-artist"
         parallel: 2
-        max_iterations: 12
+        max_iterations: 60  # 10 pages x 6 panels/page = 60 max
         retry:
           max_attempts: 2
           initial_delay: 5

@@ -246,7 +246,7 @@ def _oval_svg(text: str, tail_tx: float, tail_ty: float) -> str:
         f'<path d="{path_d}" '
         f'fill="var(--bubble-fill)" stroke="var(--bubble-stroke)" '
         f'stroke-width="var(--bubble-stroke-width)"/>'
-        f'<foreignObject x="5" y="5" width="90" height="65">'
+        f'<foreignObject x="4" y="3" width="92" height="68">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
         f'style="font-family:var(--bubble-font);font-size:{font_size};'
         f"text-align:center;display:flex;align-items:center;justify-content:center;"
@@ -358,7 +358,7 @@ def _whisper_svg(text: str, tail_tx: float, tail_ty: float) -> str:
         f'<path d="{path_d}" '
         f'fill="var(--bubble-fill)" stroke="var(--bubble-stroke)" '
         f'stroke-width="var(--bubble-stroke-width)" stroke-dasharray="5,3"/>'
-        f'<foreignObject x="5" y="5" width="90" height="65">'
+        f'<foreignObject x="4" y="3" width="92" height="68">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
         f'style="font-family:var(--bubble-font);font-size:{font_size};'
         f"font-style:italic;text-align:center;display:flex;align-items:center;"
@@ -369,21 +369,42 @@ def _whisper_svg(text: str, tail_tx: float, tail_ty: float) -> str:
 
 
 def _rectangular_svg(text: str) -> str:
-    """Return inline SVG for a rectangular caption box (no tail)."""
+    """Return a pure HTML div for a rectangular caption box (no tail, no SVG)."""
     safe = _html.escape(text)
     font_size = _bubble_font_size(text)
     return (
-        f'<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" '
-        f'width="100%" height="100%" preserveAspectRatio="none" overflow="visible">'
-        f'<rect x="2" y="2" width="96" height="96" rx="4" ry="4" '
-        f'fill="var(--caption-fill)" stroke="var(--caption-stroke)" '
-        f'stroke-width="var(--bubble-stroke-width)"/>'
-        f'<foreignObject x="6" y="6" width="88" height="88">'
-        f'<div xmlns="http://www.w3.org/1999/xhtml" '
-        f'style="font-family:var(--bubble-font);font-size:{font_size};'
-        f'text-align:left;padding:4px;overflow:hidden;word-break:break-word;height:100%;width:100%;">{safe}</div>'
-        f"</foreignObject>"
-        f"</svg>"
+        f'<div style="'
+        f"background:var(--caption-fill);border:2px solid var(--caption-stroke);"
+        f"border-radius:4px;padding:6px 10px;"
+        f"font-family:var(--bubble-font);font-size:{font_size};"
+        f"text-align:left;word-break:break-word;"
+        f"width:100%;height:100%;box-sizing:border-box;overflow:hidden;"
+        f'">{safe}</div>'
+    )
+
+
+def _sfx_html(text: str) -> str:
+    """Return a pure HTML div for a sound-effect (SFX) overlay — bold, no bubble."""
+    safe = _html.escape(text)
+    # Clamp font size: shorter text → bigger; longer text → smaller
+    n = len(text)
+    if n <= 4:
+        font_size = "4em"
+    elif n <= 8:
+        font_size = "3em"
+    else:
+        font_size = "2em"
+    return (
+        f'<div style="'
+        f"font-family:var(--bubble-font);font-size:{font_size};font-weight:900;"
+        f"color:#fff;"
+        f"text-shadow:3px 3px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000;"
+        f"-webkit-text-stroke:2px black;"
+        f"text-transform:uppercase;"
+        f"transform:rotate(-5deg);"
+        f"text-align:center;display:flex;align-items:center;justify-content:center;"
+        f"width:100%;height:100%;background:none;border:none;"
+        f'">{safe}</div>'
     )
 
 
@@ -427,13 +448,35 @@ def render_overlay_svg(overlay: dict[str, Any]) -> str:
     vb_tip_x = 50 + rel_x * scale_x * 0.8
     vb_tip_y = 50 + rel_y * scale_y * 0.8
 
-    style = (
-        f"position:absolute;"
-        f"left:{x}%;top:{y}%;"
-        f"width:{w}%;height:{h}%;"
-        f"pointer-events:none;"
-        f"overflow:visible;"
-    )
+    overlay_type = overlay.get("type", "")
+
+    # SFX overlays: bold standalone text, no bubble, no tail
+    if overlay_type == "sfx":
+        style = (
+            f"position:absolute;"
+            f"left:{x}%;top:{y}%;"
+            f"width:{w}%;height:{h}%;"
+            f"pointer-events:none;"
+            f"overflow:hidden;"
+        )
+        return f'<div class="bubble-overlay" style="{style}">{_sfx_html(text)}</div>'
+
+    if shape == "rectangular":
+        style = (
+            f"position:absolute;"
+            f"left:{x}%;top:{y}%;"
+            f"width:{w}%;height:{h}%;"
+            f"pointer-events:none;"
+            f"overflow:hidden;"
+        )
+    else:
+        style = (
+            f"position:absolute;"
+            f"left:{x}%;top:{y}%;"
+            f"width:{w}%;height:{h}%;"
+            f"pointer-events:none;"
+            f"overflow:visible;"
+        )
 
     if shape == "rectangular":
         inner = _rectangular_svg(text)

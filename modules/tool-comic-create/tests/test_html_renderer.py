@@ -62,12 +62,12 @@ def test_rectangular_caption_has_no_tail() -> None:
         "position": {"x": 5, "y": 5, "width": 90, "height": 15},
     }
     html = render_overlay_svg(overlay)
-    # Should have a rect
-    assert "<rect" in html
+    # Pure HTML div implementation: caption fill and border via CSS, no SVG rect
+    assert "caption-fill" in html or "caption-stroke" in html
+    # No SVG at all — plain div with inline styles
+    assert "<svg" not in html
     # Must NOT have a tail
-    assert "tail" not in html.lower() or (
-        "<polygon" not in html and "<path" not in html and "tail-path" not in html
-    )
+    assert "<polygon" not in html and "<path" not in html
     assert "Meanwhile" in html
 
 

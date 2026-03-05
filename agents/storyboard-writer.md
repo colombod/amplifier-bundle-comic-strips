@@ -27,6 +27,8 @@ meta:
 tools:
   - module: tool-comic-assets
     source: git+https://github.com/colombod/amplifier-bundle-comic-strips@main#subdirectory=modules/tool-comic-assets
+  - module: tool-comic-create
+    source: git+https://github.com/colombod/amplifier-bundle-comic-strips@main#subdirectory=modules/tool-comic-create
   - module: tool-filesystem
     source: git+https://github.com/microsoft/amplifier-module-tool-filesystem@main
   - module: tool-skills
@@ -169,72 +171,68 @@ After selecting characters, assess whether the narrative fits in one issue:
 
 **CRITICAL: Choose the page layout BEFORE assigning panels.** The layout determines each panel's shape. Panel-artist needs correct aspect ratios to generate images that fit their grid cells. Wrong aspect ratios = images cropped badly or with wasted space.
 
+#### Step 5a: Discover Available Layouts (MANDATORY)
+
+**Before selecting ANY layout, call the tool to get the authoritative list:**
+
+```
+comic_create(action='list_layouts')
+```
+
+This returns all valid layout IDs grouped by panel count (1-panel through 6+). **ONLY use layout IDs returned by this tool call.** Do NOT invent layout names, do NOT guess names, do NOT use names from memory. If a layout ID is not in the tool response, it does not exist and the pipeline will reject it.
+
+#### Step 5b: Select Layouts for Each Page
+
 **Process:**
 1. Decide how many panels go on each page (from narrative pacing)
-2. Pick a page layout ID from the catalog below
-3. Use the aspect ratio table to assign `aspect_ratio` to each panel on that page
+2. Pick a layout ID from the `list_layouts` results for that panel count
+3. Use the aspect ratio guide below to assign `aspect_ratio` to each panel
 4. Record both `page_layout` (on the page) and `aspect_ratio` (on each panel) in the output JSON
 
-#### Page Layout Catalog — Pick by Panel Count + Narrative Beat
+#### Aspect Ratio Guide — Derived from Layout Structure
 
-**2-panel pages:**
+Use these rules to determine panel aspect ratios based on the layout you selected:
 
-| Layout ID | Visual | Panel 1 ratio | Panel 2 ratio | Best for |
-|-----------|--------|---------------|---------------|----------|
-| `2p-split` | top / bottom equal | `landscape` | `landscape` | Contrast, before/after |
-| `2p-top-heavy` | large top / strip bottom | `landscape` | `landscape` | Establishing + reaction |
-| `2p-bottom-heavy` | strip top / large bottom | `landscape` | `landscape` | Build-up + reveal |
-| `2p-vertical` | left / right equal | `portrait` | `portrait` | Confrontation, duality |
-| `2p-left-heavy` | large left / narrow right | `portrait` | `portrait` | Spotlight + context |
-| `2p-right-heavy` | narrow left / large right | `portrait` | `portrait` | Build-up + spotlight |
+**Horizontal-row layouts** (panels stack top-to-bottom, full width):
+- Layouts like `Np-rows`, `Np-stacked`, `Np-cinematic`: all panels → `landscape`
 
-**3-panel pages:**
+**Vertical-column layouts** (panels side-by-side, full height):
+- Layouts like `Np-columns`, `Np-vertical`: all panels → `portrait`
 
-| Layout ID | Visual | Panel ratios (in order) | Best for |
-|-----------|--------|------------------------|----------|
-| `3p-rows` | 3 horizontal rows | `landscape`, `landscape`, `landscape` | Steady manga pacing |
-| `3p-top-wide` | 1 wide top + 2 bottom | `landscape`, `square`, `square` | Establishing + two reactions |
-| `3p-bottom-wide` | 2 top + 1 wide bottom | `square`, `square`, `landscape` | Two build-ups + payoff |
-| `3p-columns` | 3 vertical slices | `portrait`, `portrait`, `portrait` | Triptych, parallel action |
-| `3p-left-dominant` | tall left + 2 stacked right | `portrait`, `landscape`, `landscape` | Spotlight + context |
-| `3p-right-dominant` | 2 stacked left + tall right | `landscape`, `portrait`, `landscape` | Build-up + reveal |
-| `3p-hero-top` | large top + 2 small bottom | `landscape`, `square`, `square` | Big moment + details |
-| `3p-hero-bottom` | 2 small top + large bottom | `square`, `square`, `landscape` | Quick setup + splash |
-| `3p-cinematic` | narrow-wide-narrow rows | `landscape`, `landscape`, `landscape` | Cinematic bars |
+**Grid layouts** (panels in rows AND columns):
+- Layouts like `Np-grid`: most panels → `square`
 
-**4-panel pages:**
+**Mixed layouts** (one wide/tall panel + smaller panels):
+- The wide/spanning panel → `landscape`
+- The tall/spanning panel → `portrait`
+- Remaining grid cells → `square`
 
-| Layout ID | Panel ratios | Best for |
-|-----------|-------------|----------|
-| `4p-grid` | `square`, `square`, `square`, `square` | Balanced, Z-pattern |
-| `4p-top-strip` | `landscape`, `square`, `square`, `square` | Establishing + sequence |
-| `4p-bottom-strip` | `square`, `square`, `square`, `landscape` | Sequence + conclusion |
-| `4p-stacked` | `landscape`, `landscape`, `landscape`, `landscape` | Dense manga |
+**Specific patterns:**
+| Layout pattern | Panel ratios (in order) |
+|---------------|------------------------|
+| `*-split`, `*-rows` | all `landscape` |
+| `*-columns`, `*-vertical` | all `portrait` |
+| `*-grid` | all `square` |
+| `*-top-wide` | `landscape`, then `square` for remaining |
+| `*-bottom-wide` | `square` for first panels, then `landscape` |
+| `*-top-heavy`, `*-hero-top` | `landscape`, then `square` for remaining |
+| `*-hero-bottom` | `square` for first panels, then `landscape` |
+| `*-left-dominant`, `*-left-heavy` | first `portrait`, remaining `landscape` |
+| `*-right-dominant`, `*-right-heavy` | first `landscape`, last `portrait` |
+| `1p-splash` | `portrait` (full page) |
 
-**5-panel pages:**
+#### Narrative Beat Matching
 
-| Layout ID | Panel ratios | Best for |
-|-----------|-------------|----------|
-| `5p-classic` | `landscape`, `square`, `square`, `square`, `square` | Hero intro + action |
-| `5p-hero-grid` | `landscape`, `square`, `square`, `square`, `square` | Splash (2-col hero top) + 2×2 grid |
-
-**6-panel pages:**
-
-| Layout ID | Panel ratios | Best for |
-|-----------|-------------|----------|
-| `6p-classic` | all `square` | Classic comic page |
-| `6p-wide` | all `landscape` | Cinematic widescreen |
-
-**1-panel (splash):**
-`1p-splash` — ratio: `portrait` (full page)
-
-#### How to Use This
-
-For each story page:
-1. Count the panels on the page
-2. Pick the layout that best matches the narrative beat
-3. Set `page_layout` on the page definition
-4. Set `aspect_ratio` on each panel in order, using the table above
+| Narrative beat | Recommended layout type |
+|---------------|------------------------|
+| Establishing shot / big moment | `*-top-heavy`, `*-hero-top`, `1p-splash` |
+| Build-up + dramatic reveal | `*-bottom-heavy`, `*-hero-bottom` |
+| Contrast / before-after / duality | `*-split`, `*-vertical` |
+| Steady pacing / sequential action | `*-rows`, `*-columns`, `*-stacked` |
+| Balanced scene with multiple beats | `*-grid` |
+| Spotlight + context | `*-left-dominant`, `*-left-heavy` |
+| Cinematic feel | `*-cinematic` |
+| Dense information | `*-dense`, `*-classic` (6-panel) |
 
 The `size` field on panels is still set for backward compatibility (`wide` → `landscape`, `standard` → `landscape`, `tall` → `portrait`, `square` → `square`), but `aspect_ratio` is now the authoritative field that panel-artist uses for image generation.
 
@@ -376,7 +374,7 @@ Use `panel_list` and `character_list` as the only canonical arrays — do NOT al
 
 **Page layout fields (`page_layouts` entries):**
 - `page`: Page number (1-based, story pages only — cover and cast are automatic)
-- `layout`: Layout ID from the catalog in Step 5 (e.g., `"3p-top-wide"`, `"4p-grid"`)
+- `layout`: Layout ID from `comic_create(action='list_layouts')` (e.g., `"3p-top-wide"`, `"4p-grid"`). **Must be a valid ID returned by the tool — invented names will be rejected.**
 - `panel_count`: Number of panels on this page
 
 **Panel fields (`panel_list` entries):**
@@ -425,6 +423,7 @@ These rules are NON-NEGOTIABLE. Every storyboard must follow them.
 
 ## Rules
 
+- **MANDATORY: Call `comic_create(action='list_layouts')` BEFORE selecting any page layouts.** Only use layout IDs that appear in the tool response. Do NOT invent layout names — invented names cause the entire pipeline to fail.
 - Respect `max_pages` (default 5) and `max_characters` (default 5-6) from recipe params
 - ALWAYS include `page_count` in the output JSON
 - ALWAYS verify: panel_count = sum of panels across all pages, page_count = count of page_break_after markers + 1

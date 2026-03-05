@@ -10,14 +10,19 @@ Produces a single HTML file with:
 Public API:
     render_comic_html(layout, resolved_images, style_css) -> str
     render_overlay_svg(overlay) -> str
+    get_available_layouts() -> dict
+    validate_layout_ids(layout_ids) -> tuple[list[str], dict[str, list[str]]]
 """
 
 from __future__ import annotations
 
 import html as _html
+import logging
 import math
 import re
 from typing import Any
+
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # CSS grid templates keyed by layout identifier
@@ -135,6 +140,76 @@ _GRID_TEMPLATES: dict[str, str] = {
 }
 
 _DEFAULT_GRID = "grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr"
+
+
+# ---------------------------------------------------------------------------
+# Layout discovery & validation
+# ---------------------------------------------------------------------------
+
+
+def get_available_layouts() -> dict[str, Any]:
+    """Return available layout templates grouped by panel count.
+
+    Primary layouts follow the ``{count}p-{description}`` naming convention
+    and are the recommended choices.  Legacy aliases are listed separately
+    but are also accepted by the renderer.
+    """
+    primary: dict[int, list[str]] = {}
+    aliases: list[str] = []
+
+    for layout_id in _GRID_TEMPLATES:
+        m = re.match(r"^(\d+)p-", layout_id)
+        if m:
+            count = int(m.group(1))
+            primary.setdefault(count, [])
+            primary[count].append(layout_id)
+        else:
+            aliases.append(layout_id)
+
+    return {
+        "primary_layouts": {
+            count: sorted(ids) for count, ids in sorted(primary.items())
+        },
+        "legacy_aliases": sorted(aliases),
+        "total_templates": len(_GRID_TEMPLATES),
+        "hint": (
+            "Use primary layouts (e.g. '3p-top-wide') for best results. "
+            "Legacy aliases are accepted but may be removed in the future."
+        ),
+    }
+
+
+def validate_layout_ids(
+    layout_ids: list[str],
+) -> tuple[list[str], dict[str, list[str]]]:
+    """Check layout IDs against the template dictionary.
+
+    Returns ``(invalid_ids, suggestions)`` where *suggestions* maps each
+    invalid ID to a list of valid alternatives.  If a numeric prefix can be
+    parsed from the invalid ID, suggestions are scoped to that panel count;
+    otherwise all primary layouts are returned.
+    """
+    valid_keys = set(_GRID_TEMPLATES)
+    invalid: list[str] = []
+    suggestions: dict[str, list[str]] = {}
+
+    for lid in layout_ids:
+        if lid in valid_keys:
+            continue
+        invalid.append(lid)
+        # Try to suggest based on leading digit (e.g. "naruto_wide_3" → 3)
+        m = re.search(r"(\d+)", lid)
+        if m:
+            count = int(m.group(1))
+            scoped = sorted(k for k in valid_keys if k.startswith(f"{count}p-"))
+            if scoped:
+                suggestions[lid] = scoped
+                continue
+        # Fall back to all primary layouts
+        suggestions[lid] = sorted(k for k in valid_keys if re.match(r"^\d+p-", k))
+
+    return invalid, suggestions
+
 
 # ---------------------------------------------------------------------------
 # Default CSS custom properties (theming)
@@ -557,7 +632,15 @@ def render_overlay_svg(overlay: dict[str, Any]) -> str:
 
 def _grid_css(layout_id: str) -> str:
     """Return inline CSS ``grid-template-columns`` declaration for a layout id."""
-    return _GRID_TEMPLATES.get(layout_id, _DEFAULT_GRID)
+    css = _GRID_TEMPLATES.get(layout_id)
+    if css is None:
+        _logger.warning(
+            "Unknown layout_id %r — falling back to default 2x2 grid. "
+            "Use get_available_layouts() to see valid IDs.",
+            layout_id,
+        )
+        return _DEFAULT_GRID
+    return css
 
 
 # ---------------------------------------------------------------------------

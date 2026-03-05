@@ -377,6 +377,10 @@ class ComicCreateTool:
                     "type": "string",
                     "description": (
                         "Operation to perform.\n"
+                        "- list_layouts: no required params; returns available"
+                        " layout templates grouped by panel count\n"
+                        "- validate_storyboard: requires page_layouts (array of"
+                        " {layout, ...} objects); validates all layout IDs\n"
                         "- create_character_ref: requires project, issue, name, prompt,"
                         " visual_traits, distinctive_features\n"
                         "- create_panel: requires project, issue, name, prompt;"
@@ -388,6 +392,8 @@ class ComicCreateTool:
                         " optional style_uri"
                     ),
                     "enum": [
+                        "list_layouts",
+                        "validate_storyboard",
                         "create_character_ref",
                         "create_panel",
                         "create_cover",
@@ -452,6 +458,14 @@ class ComicCreateTool:
                     "type": "object",
                     "description": "Structured layout for assemble_comic.",
                 },
+                "page_layouts": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": (
+                        "Array of page layout objects for validate_storyboard. "
+                        "Each must have a 'layout' field with a layout ID."
+                    ),
+                },
             },
             "required": ["action"],
         }
@@ -460,6 +474,8 @@ class ComicCreateTool:
         """Dispatch to the appropriate action handler."""
         action = params.get("action")
         dispatch: dict[str, Any] = {
+            "list_layouts": self._list_layouts,
+            "validate_storyboard": self._validate_storyboard,
             "create_character_ref": self._create_character_ref,
             "create_panel": self._create_panel,
             "create_cover": self._create_cover,
@@ -471,6 +487,66 @@ class ComicCreateTool:
             valid = ", ".join(sorted(dispatch))
             return _error(f"Unknown action '{action}'. Valid actions: {valid}")
         return await handler(params)
+
+    async def _list_layouts(self, _params: dict[str, Any]) -> ToolResult:
+        """Return available layout templates grouped by panel count."""
+        from .html_renderer import get_available_layouts
+
+        return _ok(get_available_layouts())
+
+    async def _validate_storyboard(self, params: dict[str, Any]) -> ToolResult:
+        """Validate page layout IDs from a storyboard against available templates.
+
+        Accepts ``page_layouts`` (list of objects with a ``layout`` key) and
+        checks every layout ID against the renderer's template dictionary.
+        Returns structured errors with suggestions on failure.
+        """
+        from .html_renderer import validate_layout_ids
+
+        page_layouts = params.get("page_layouts")
+        if not page_layouts or not isinstance(page_layouts, list):
+            return _error(
+                "Missing or invalid 'page_layouts' parameter "
+                "(must be a JSON array of {layout, ...} objects)"
+            )
+
+        layout_ids = [
+            p.get("layout", "")
+            for p in page_layouts
+            if isinstance(p, dict) and p.get("layout")
+        ]
+        if not layout_ids:
+            return _error(
+                "No layout IDs found in page_layouts entries. "
+                "Each entry must have a 'layout' field."
+            )
+
+        invalid_ids, suggestions = validate_layout_ids(layout_ids)
+        if invalid_ids:
+            return _error(
+                json.dumps(
+                    {
+                        "validation": "FAILED",
+                        "invalid_layout_ids": invalid_ids,
+                        "suggestions": suggestions,
+                        "valid_ids_used": [
+                            lid for lid in layout_ids if lid not in invalid_ids
+                        ],
+                        "hint": (
+                            "Use list_layouts action to see all available "
+                            "templates grouped by panel count."
+                        ),
+                    }
+                )
+            )
+
+        return _ok(
+            {
+                "validation": "PASSED",
+                "layout_ids": layout_ids,
+                "page_count": len(layout_ids),
+            }
+        )
 
     async def _create_character_ref(self, params: dict[str, Any]) -> ToolResult:
         """Generate + store a character reference sheet. Return URI."""
@@ -1097,7 +1173,11 @@ class ComicCreateTool:
         import asyncio
         from pathlib import Path
 
-        from .html_renderer import render_comic_html, validate_rendered_html
+        from .html_renderer import (
+            render_comic_html,
+            validate_layout_ids,
+            validate_rendered_html,
+        )
 
         required = ("project", "issue", "output_path", "layout")
         for key in required:
@@ -1106,6 +1186,26 @@ class ComicCreateTool:
 
         layout = params["layout"]
         output_path = params["output_path"]
+
+        # --- Validate layout IDs before any expensive work ---
+        page_layout_ids = [
+            page.get("layout", "1x1") for page in layout.get("pages", [])
+        ]
+        invalid_ids, suggestions = validate_layout_ids(page_layout_ids)
+        if invalid_ids:
+            return _error(
+                json.dumps(
+                    {
+                        "error": "Invalid layout IDs in page definitions",
+                        "invalid_layout_ids": invalid_ids,
+                        "suggestions": suggestions,
+                        "hint": (
+                            "Use the list_layouts action to see all available "
+                            "layout templates grouped by panel count."
+                        ),
+                    }
+                )
+            )
 
         # --- Resolve style CSS (non-fatal) ---
         style_css = ""

@@ -26,6 +26,8 @@ async def test_all_actions_listed_in_schema(service) -> None:
     tool = ComicCreateTool(service=service)
     schema_actions = tool.input_schema["properties"]["action"]["enum"]
     expected = [
+        "list_layouts",
+        "validate_storyboard",
         "create_character_ref",
         "create_panel",
         "create_cover",

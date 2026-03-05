@@ -416,6 +416,23 @@ stages:
         parse_json: true
         timeout: 1800  # storyboard: delegates to 2 stories agents + JSON production (~12-20 min)
 
+      # ============================================
+      # STEP 3b: UPDATE ISSUE TITLE
+      # Propagate the storyboard's narrative title back to issue.json
+      # so it's persisted and available for future reuse/browsing.
+      # ============================================
+      - id: "update-issue-title"
+        agent: "comic-strips:style-curator"
+        prompt: |
+          YOUR ONLY JOB: Update the issue title to match the storyboard title. Do NOTHING else.
+
+          comic_project(action='update_issue', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', title='{{storyboard.title}}')
+
+          Return ONLY: {"updated": true, "title": "{{storyboard.title}}"}
+        output: "issue_title_update"
+        parse_json: true
+        timeout: 60
+
     # ------------------------------------------------------------------
     # APPROVAL GATE: Storyboard Review
     # This is the last cheap checkpoint before expensive image generation.
@@ -500,6 +517,7 @@ stages:
                        visual_traits=<visual description from character_item>,
                        distinctive_features=<identifying features from character_item>,
                        personality=<personality context from character_item>,
+                       metadata=<metadata dict from character_item if present, e.g. {"agent_id": "foundation:explorer"}>,
                        prompt=<generation prompt combining visual_traits, style, and bundle affiliation>)
 
           Return ONLY the character URI string from the comic_create response
@@ -543,7 +561,7 @@ stages:
                        name=<panel-name-slug from panel_item>,
                        prompt=<scene description from panel_item informed by style guide>,
                        character_uris=<list of URIs from {{character_uris}} whose characters appear in this panel>,
-                       size=<landscape/portrait/square as appropriate for panel_item>,
+                       size=<use panel_item.aspect_ratio if present, otherwise map panel_item.size: wide/standard->landscape, tall->portrait, square->square>,
                        camera_angle=<framing hint from panel_item>)
 
           After generating, self-review using:

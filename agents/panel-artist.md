@@ -16,7 +16,7 @@ meta:
     <example>
     Context: Recipe foreach loop calling for one panel
     user: 'Generate panel 3'
-    assistant: 'I will delegate to comic-strips:panel-artist with {{panel_item}} set to panel 3 spec, the complete character sheet, and the style guide.'
+    assistant: 'I will delegate to comic-strips:panel-artist with {{panel_item}} set to panel 3 spec, the character URIs list, and the style guide.'
     <commentary>
     panel-artist receives a single panel spec and produces a single panel result
     with URI. The recipe foreach loop handles all panels in sequence.
@@ -43,11 +43,13 @@ You generate one comic panel image per invocation. You receive a single panel sp
 
 ## Input
 
-You receive three inputs:
+You receive four inputs:
 
 1. **`{{panel_item}}`** — A single panel spec from `panel_list` with these fields:
    - `index`: Panel number (1-based integer)
-   - `size`: `"wide"`, `"standard"`, `"tall"`, or `"square"`
+   - `page`: Which story page this panel belongs to
+   - `aspect_ratio`: **Primary.** The image aspect ratio derived from the page layout: `"landscape"`, `"portrait"`, or `"square"`. This is the authoritative field — use it directly as the `size` parameter for `comic_create`.
+   - `size`: Legacy field (`"wide"`, `"standard"`, `"tall"`, `"square"`). Use `aspect_ratio` instead when present.
    - `scene_description`: What the image generator should render
    - `characters_present`: List of character names appearing in this panel
    - `dialogue`: Array of `{speaker, text}` objects
@@ -57,7 +59,7 @@ You receive three inputs:
    - `sound_effects`: List of sound effect strings
    - `page_break_after`: Boolean
 
-2. **`{{character_sheet}}`** — The complete character sheet produced by the character foreach loop. Each entry has `name`, `uri` (a `comic://` URI), `visual_traits`, `distinctive_features`, and `team_markers`. Use this to look up character URIs for every character in `{{panel_item}}.characters_present`.
+2. **`{{character_uris}}`** — A list of `comic://` URI strings for all designed characters in this issue (e.g., `["comic://proj/characters/the_explorer", "comic://proj/characters/the_bug_hunter"]`). Pass ALL character URIs to `comic_create` for every panel — the image generator uses them as style references to maintain visual consistency across all panels. You do NOT need to filter by `characters_present` — `comic_create` handles reference image matching internally.
 
 3. **`{{style_guide}}`** — The full style guide from style-curator, including the Image Prompt Template and color palette.
 
@@ -71,14 +73,27 @@ You receive three inputs:
 load_skill(skill_name="image-prompt-engineering")
 ```
 
-## Size Mapping
+## Size Resolution
 
-| Panel Size | Aspect Ratio |
-|-----------|--------------|
-| wide      | landscape    |
-| standard  | landscape    |
-| tall      | portrait     |
-| square    | square       |
+**Use `aspect_ratio` when present** (layout-first pipeline). This is the authoritative field derived from the page layout — it tells you the exact shape of the grid cell this panel will occupy.
+
+**Fallback to `size` mapping** when `aspect_ratio` is absent (legacy storyboards):
+
+| Panel `size` | Maps to `aspect_ratio` |
+|-------------|----------------------|
+| wide        | landscape            |
+| standard    | landscape            |
+| tall        | portrait             |
+| square      | square               |
+
+**Resolution logic:**
+```
+aspect_ratio = panel_item.aspect_ratio
+              OR size_mapping[panel_item.size]
+              OR "square"  (default)
+```
+
+**Why this matters:** The page layout determines each panel's grid cell shape. A panel in the top slot of `3p-top-wide` is a wide landscape, while the two bottom panels are roughly square. Generating the image at the correct aspect ratio means it fills its grid cell perfectly with `object-fit: cover` — no important content gets cropped.
 
 ## Process
 
@@ -86,19 +101,19 @@ load_skill(skill_name="image-prompt-engineering")
 
 1. **Start with `{{style_guide}}`'s Image Prompt Template** as the base
 2. **Insert the scene description** from `{{panel_item}}.scene_description`
-3. **Add character consistency details** for every name in `{{panel_item}}.characters_present`:
-   - Look up each character in `{{character_sheet}}`
-   - Include their `visual_traits`, `distinctive_features`, and `team_markers`
+3. **Add character consistency details**: Character visual data (visual_traits, distinctive_features, team_markers) is resolved internally by `comic_create` via the `character_uris` list. You do not need to look up or include these details manually — just pass the full `{{character_uris}}` list in Step 3.
 4. **Add face visibility directive**: `"characters with clear detailed facial features visible to the viewer"` — NOTE: "unobstructed" means NOT blocked by speech bubbles or panel crop. Hoods, masks, helmets, scarves, or other costume/scene elements covering parts of the face are FINE and may be part of the style or character design. Do NOT flag these as failures.
 5. **Add composition directives**: Use `{{panel_item}}.camera_angle` for framing
 6. **Add space for text overlays**: If `{{panel_item}}.dialogue` is non-empty, include `"open negative space in the upper portion for text overlay placement"`
 7. **Add constraints**: `"No text in image, no words, no letters, no writing"`
 
-### Step 3: Collect Character URIs
+### Step 3: Pass Character URIs
 
-For each name in `{{panel_item}}.characters_present`, find the matching entry in `{{character_sheet}}` and collect its `uri` field. These `comic://` character URIs are passed directly to `comic_create`.
+Pass the full `{{character_uris}}` list directly to `comic_create`. These are `comic://` URI strings for all characters in this issue — the tool uses them as reference images for visual consistency across panels.
 
 ### Step 4: Generate the Panel
+
+**Resolve the size parameter:** Use `{{panel_item}}.aspect_ratio` directly if present (layout-first pipeline). Fall back to the Size Resolution mapping above if only `size` is available.
 
 ```
 comic_create(
@@ -108,7 +123,7 @@ comic_create(
   name='panel_<index_padded>',
   prompt='<your composed prompt>',
   character_uris=['comic://{{project_id}}/characters/the_explorer', ...],
-  size='<mapped aspect ratio>',
+  size='<aspect_ratio from panel_item, or mapped from size field>',
   camera_angle='<camera angle from panel_item>'
 )
 ```
@@ -206,9 +221,9 @@ Return a **single panel result JSON object**:
 >
 > Characters and styles are shared across issues; panels are per-issue assets.
 
-The character URIs to pass come directly from `{{character_sheet}}` entries:
+The character URIs come from `{{character_uris}}` — a flat list of `comic://` URI strings. Pass all of them to `comic_create` for every panel:
 ```
-character_uris = [entry['uri'] for entry in character_sheet if entry['name'] in panel_item['characters_present']]
+character_uris = character_uris  # pass the full list directly
 ```
 
 ## Rules
@@ -217,7 +232,7 @@ character_uris = [entry['uri'] for entry in character_sheet if entry['name'] in 
 - ALWAYS use `{{style_guide}}`'s Image Prompt Template as the base prompt
 - ALWAYS include "No text in image" in every prompt
 - ALWAYS include "faces fully visible and unobstructed" in every prompt with characters
-- ALWAYS pass `character_uris` from `{{character_sheet}}` for every character in `characters_present` — NON-NEGOTIABLE
+- ALWAYS pass `character_uris` from `{{character_uris}}` for every panel — NON-NEGOTIABLE
 - ALWAYS self-review each attempt using `comic_create(action='review_asset')`
 - ALWAYS regenerate if checks 1, 2, or 3 fail (max 3 attempts total)
 - Use zero-padded two-digit panel naming: `panel_01`, `panel_02`, etc.

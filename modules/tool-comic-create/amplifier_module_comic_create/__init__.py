@@ -534,6 +534,7 @@ class ComicCreateTool:
                 backstory=params.get("backstory", ""),
                 motivations=params.get("motivations", ""),
                 personality=params.get("personality", ""),
+                metadata=params.get("metadata"),
                 source_path=output_path,
             )
 

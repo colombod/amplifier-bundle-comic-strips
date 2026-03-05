@@ -8,7 +8,7 @@ meta:
     plus the style guide. Loads the image-prompt-engineering skill, crafts a
     single reference image prompt using the character data and style conventions,
     calls comic_create(action='create_character_ref') once with portrait aspect
-    ratio, and returns a single character sheet entry JSON with a comic:// URI.
+    ratio, and returns a single comic:// URI string for the character's reference sheet.
     Does NOT loop over multiple characters — the recipe foreach loop handles all
     iteration. Runs AFTER storyboard-writer and BEFORE panel-artist and
     cover-artist.
@@ -55,6 +55,7 @@ You receive two inputs:
    - `existing_uri`: *(saga/reuse field)* The `comic://` URI of an existing character, or `null` if new
    - `needs_redesign`: *(saga/reuse field)* `true` if the existing character needs a style update, `false` otherwise
    - `redesign_reason`: *(optional)* Why the redesign is needed (e.g., "style update from superhero to manga")
+   - `metadata`: *(optional)* Dict with additional context. When the character maps to an Amplifier agent, contains `{"agent_id": "bundle:agent-name"}` (e.g., `{"agent_id": "foundation:explorer"}`). Use this to inform visual design — an explorer looks like a scout/pathfinder, an architect like a planner with blueprints, a bug-hunter like a detective. For non-agent characters, this field may be absent or empty.
 
 2. **`{{style_guide}}`** — The style guide URI or the full style guide from style-curator, including the Image Prompt Template and Character Rendering section.
 
@@ -126,10 +127,8 @@ Before generating anything, check if this character already exists:
 1. If `{{character_item}}.existing_uri` is set AND `{{character_item}}.needs_redesign` is `false`:
    - This character is already designed. **Skip generation entirely.**
    - Retrieve the existing character metadata: `comic_character(action='get', uri='{{character_item}}.existing_uri', include='full')`
-   - Return the existing character data immediately with `reused: true`:
-     ```json
-     {"name": "...", "uri": "{{character_item}}.existing_uri", "reused": true, "version": <existing_version>}
-     ```
+   - Return the existing URI string immediately: `{{character_item}}.existing_uri`
+     The recipe only needs the URI — no JSON object is required.
    - **Do NOT call `comic_create`. Do NOT generate a new image.** The existing reference sheet is reused as-is.
 
 2. If `{{character_item}}.existing_uri` is set AND `{{character_item}}.needs_redesign` is `true`:
@@ -144,7 +143,7 @@ Before generating anything, check if this character already exists:
 
 ### Step 1: Generate Character Reference (new or redesign)
 
-1. **Read the style guide** using `comic_style(action='get', uri='{{style_guide_uri}}', include='full')` if not already available in `{{style_guide}}`
+1. **Read the style guide** using `comic_style(action='get', uri='{{style_guide}}', include='full')` if not already available in `{{style_guide}}`
 2. **Extract the Character Rendering section** from the style guide — this defines the shared visual DNA
 3. **Start with the style guide's Image Prompt Template** as the base
 4. **Add the style cohesion directive** (BEFORE character-specific details):
@@ -153,9 +152,10 @@ Before generating anything, check if this character already exists:
 6. **Apply character_hints** (if provided): weave user creative direction into visual design, personality expression, and style interpretation
 7. **Add bundle team markers**: team color accent and insignia from the `bundle` field
 8. **Apply style-dependent interpretation**: grounded or fantasy based on style guide
-9. **Add reference sheet constraints** — append exactly:
-   > `character reference sheet, neutral pose, full body visible, face clearly visible, plain background, no text in image`
-7. **Call comic_create**:
+9. **Use `metadata.agent_id` for visual identity** (if present): When `{{character_item}}.metadata.agent_id` is set (e.g., `"foundation:explorer"`), use the agent's identity to inform the character's visual concept. An explorer should look like a scout/pathfinder, a zen-architect like a visionary planner, a bug-hunter like a detective, a modular-builder like a craftsman. This enriches the prompt beyond the raw `description` field.
+10. **Add reference sheet constraints** — append exactly:
+    > `character reference sheet, neutral pose, full body visible, face clearly visible, plain background, no text in image`
+11. **Call comic_create**:
 
 ```
 comic_create(
@@ -167,6 +167,7 @@ comic_create(
   visual_traits='<key visual characteristics from description>',
   distinctive_features='<unique identifying features>',
   personality='<personality context for expression choices>',
+  metadata={{character_item}}.metadata,  # omit if not present
   prompt='<your composed prompt>'
 )
 ```
@@ -177,55 +178,23 @@ Use `<name_snake_case>` naming for the `name` parameter (e.g., `the_explorer`).
 
 ## Output
 
-Return a **single character sheet entry** (not an array) as a JSON object:
+Return **ONLY the character URI string**. The recipe collects these into a flat list of URI strings (`character_uris`). Do NOT return a JSON object.
 
 **New or redesigned character:**
-```json
-{
-  "name": "The Explorer",
-  "role": "protagonist",
-  "type": "main",
-  "bundle": "foundation",
-  "visual_traits": "seasoned scout in worn leather jacket, alert eyes, compass pendant",
-  "team_markers": "blue accent with compass insignia on jacket shoulder",
-  "distinctive_features": "leather field bag, binoculars holstered on belt, foundation blue trim",
-  "uri": "comic://{{project_id}}/characters/the_explorer",
-  "version": 1,
-  "reused": false
-}
+```
+comic://{{project_id}}/characters/the_explorer
 ```
 
 **Reused existing character (no generation):**
-```json
-{
-  "name": "The Explorer",
-  "role": "protagonist",
-  "type": "main",
-  "bundle": "foundation",
-  "visual_traits": "seasoned scout in worn leather jacket, alert eyes, compass pendant",
-  "team_markers": "blue accent with compass insignia on jacket shoulder",
-  "distinctive_features": "leather field bag, binoculars holstered on belt, foundation blue trim",
-  "uri": "comic://{{project_id}}/characters/the_explorer",
-  "version": 1,
-  "reused": true
-}
 ```
+comic://{{project_id}}/characters/the_explorer
+```
+
+Return just the URI string — nothing else. No JSON wrapper, no image paths, no base64 data.
 
 > **URI scope note:** Character URIs are **project-scoped** — they omit the issue segment.
 > Format: `comic://project/characters/name` (no `issues/` path).
 > This allows characters to be shared and reused across multiple issues of the same project.
-
-**Fields:**
-- `name`: Matches `{{character_item}}.name` exactly
-- `role`: From `{{character_item}}.role`
-- `type`: From `{{character_item}}.type` (`"main"` or `"supporting"`)
-- `bundle`: From `{{character_item}}.bundle`
-- `visual_traits`: Key visual characteristics used in the prompt
-- `team_markers`: Bundle-affiliation visual elements (color accent + insignia)
-- `distinctive_features`: Unique identifying features for downstream panel consistency
-- `uri`: The `comic://` URI returned by `comic_create` (or the existing URI if reused) — pass this to panel-artist and cover-artist for character references
-- `version`: Version number returned by `comic_create` (or the existing version if reused)
-- `reused`: `true` if this character was reused from the project roster without regeneration, `false` if newly generated or redesigned
 
 ## Rules
 
@@ -237,7 +206,7 @@ Return a **single character sheet entry** (not an array) as a JSON object:
 - ALWAYS include "No text in image" in every prompt
 - Face MUST be clearly visible — this is the top priority for downstream consistency
 - Use `comic_create(action='create_character_ref')` for ALL character generation — never bash, curl, or direct API calls
-- Return a SINGLE JSON object — do NOT wrap output in a characters array
+- Return ONLY a character URI string — do NOT return a JSON object or array
 - The `uri` field in the output is the canonical reference for downstream agents
 - For redesigns, PRESERVE the character's core identity (silhouette, key features) while adapting to the new style
 
@@ -247,7 +216,7 @@ Return a **single character sheet entry** (not an array) as a JSON object:
 
 To retrieve the style guide for prompt crafting:
 ```
-comic_style(action='get', uri='{{style_guide_uri}}', include='full')
+comic_style(action='get', uri='{{style_guide}}', include='full')
 ```
 
-Output the character entry JSON with the `uri` and `version` returned by `comic_create`.
+Output ONLY the character URI string returned by `comic_create`.

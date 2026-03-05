@@ -157,6 +157,7 @@ class ComicProjectTool:
                     "description": "Operation to perform.",
                     "enum": [
                         "create_issue",
+                        "update_issue",
                         "list_projects",
                         "list_issues",
                         "get_issue",
@@ -180,7 +181,7 @@ class ComicProjectTool:
                 },
                 "title": {
                     "type": "string",
-                    "description": "Issue title. Required for create_issue.",
+                    "description": "Issue title. Required for create_issue; optional for update_issue.",
                 },
                 "description": {
                     "type": "string",
@@ -214,6 +215,21 @@ class ComicProjectTool:
                     params["project"],
                     params["title"],
                     params.get("description", ""),
+                    metadata=params.get("metadata"),
+                )
+                return _ok(result)
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
+        async def _update_issue() -> ToolResult:
+            if m := _require(params, "project", "issue"):
+                return _missing_error(m)
+            try:
+                result = await self._service.update_issue(
+                    params["project"],
+                    params["issue"],
+                    title=params.get("title"),
+                    description=params.get("description"),
                     metadata=params.get("metadata"),
                 )
                 return _ok(result)
@@ -269,6 +285,7 @@ class ComicProjectTool:
 
         dispatch: dict[str, Any] = {
             "create_issue": _create_issue,
+            "update_issue": _update_issue,
             "list_projects": _list_projects,
             "list_issues": _list_issues,
             "get_issue": _get_issue,
@@ -418,7 +435,7 @@ class ComicCharacterTool:
                 },
                 "metadata": {
                     "type": "object",
-                    "description": "Arbitrary metadata dict to merge (for update_metadata).",
+                    "description": "Arbitrary metadata dict (for store and update_metadata). On store, attached to the new character. On update_metadata, merged into existing.",
                 },
                 "uri": {
                     "type": "string",
@@ -479,6 +496,7 @@ class ComicCharacterTool:
                     backstory=params.get("backstory", ""),
                     motivations=params.get("motivations", ""),
                     personality=params.get("personality", ""),
+                    metadata=params.get("metadata"),
                     source_path=params.get("source_path"),
                     data=data_bytes,
                 )

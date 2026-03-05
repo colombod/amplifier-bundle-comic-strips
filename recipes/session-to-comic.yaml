@@ -414,12 +414,14 @@ stages:
           - title: string (comic title)
           - subtitle: string (comic subtitle)
           - panel_count: integer (total number of panels)
+          - page_layouts: array of {page, layout, panel_count} objects (one per story page — layout IDs MUST come from comic_create list_layouts)
           - character_list: array of character objects (one entry per character to be designed)
           - panel_list: array of panel objects (one entry per panel to be generated)
           These arrays will be used by downstream foreach loops to drive character design
           and panel art generation. Each character_list entry should contain all info needed
           to design that character. Each panel_list entry should contain all info needed to
-          generate that panel's artwork.
+          generate that panel's artwork. page_layouts is validated by a downstream step —
+          invalid layout IDs will cause the pipeline to fail.
 
           Output the complete panel sequence as structured JSON.
 
@@ -449,7 +451,7 @@ stages:
           Call: comic_create(action='validate_storyboard', page_layouts=<the page_layouts array above>)
 
           If validation PASSED, return ONLY: {"validation": "PASSED", "page_count": <count>}
-          If validation FAILED, return the FULL error JSON from the tool including invalid_layout_ids and suggestions.
+          If validation FAILED, return: {"validation": "FAILED", "invalid_layout_ids": <from tool>, "suggestions": <from tool>}
         output: "storyboard_validation"
         parse_json: true
         timeout: 120

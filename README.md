@@ -168,7 +168,7 @@ scene description.
 
 ## Style Gallery
 
-28 predefined visual styles, plus custom descriptions:
+29 predefined visual styles, plus custom descriptions:
 
 | Style | Aesthetic |
 |-------|-----------|
@@ -181,6 +181,7 @@ scene description.
 | **ligne-claire** | European clear-line (Tintin/Herge), flat bright colors, detailed backgrounds |
 | **retro-americana** | Vintage halftone dots, warm palette, cheerful proportions, 1950s aesthetic |
 | **berserk** | Monochrome Gothic hatching, grotesque detail, dark fantasy |
+| **charles-addams** | Macabre New Yorker single-panel cartoon, elegant ink wash, Gothic Victorian, deadpan sophistication |
 | **cuphead** | 1930s rubber-hose animation, watercolor backgrounds, vintage film grain |
 | **ghibli** | Watercolor washes, earthy natural palette, magical realism, gentle forms |
 | **attack-on-titan** | Gritty cross-hatching, extreme scale contrast, raw emotional intensity |

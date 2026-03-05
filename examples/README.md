@@ -255,7 +255,7 @@ Step 8: composition
 | SVG speech bubbles | Positioned via vision-informed composition analysis |
 | Zero text in images | Code-level enforcement on every image generation prompt |
 | AmpliVerse branding | Publisher badge on cover |
-| Self-contained | Single HTML file (171 MB), all images base64-embedded, works offline |
+| Self-contained | Single HTML file (~16 MB compressed), all images base64-embedded, works offline |
 
 ### Opening it
 

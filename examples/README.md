@@ -398,3 +398,85 @@ xdg-open examples/ghibli-context-intelligence-comic.html
 ```
 
 Use arrow keys, click the nav buttons, or tap the page dots to navigate.
+
+---
+
+## naruto-layout-validation-e2e.html
+
+**Style:** Naruto (Masashi Kishimoto manga)
+**Source:** SST (Semantic Space Time) knowledge graph research session
+**Recipe version:** session-to-comic v7.6.0
+**Generated:** 2026-03-05
+
+### What it is
+
+A 9-panel, 3-page comic strip titled "The Unfinished Scroll" -- generated from
+an SST ontology research session that was cancelled at 90% completion. Rendered
+in Masashi Kishimoto's Naruto manga aesthetic. The story follows four agents
+through a research mission cut short, with the incomplete nature of the session
+becoming a narrative element.
+
+### What makes this example special
+
+This is the FIRST comic generated with the v7.6.0 layout validation system.
+Previous comics silently fell back to a default 2x2 grid when the
+storyboard-writer invented layout names that did not exist in the renderer. This
+comic proves the closed feedback loop works end-to-end:
+
+| Validation layer | What happened |
+|------------------|---------------|
+| **Tool discovery** | storyboard-writer called `comic_create(action='list_layouts')` to discover valid layout IDs programmatically |
+| **Recipe checkpoint** | `validate-storyboard` recipe step confirmed all 3 layout IDs are valid BEFORE image generation |
+| **Render-time gate** | `assemble_comic` validated layout IDs again at render time (defense-in-depth) |
+| **Distinct layouts** | Every page uses a DIFFERENT, purposeful grid layout instead of the same default 2x2 |
+| **Approval gate** | Layout validation status shown to the human reviewer |
+
+Page layouts used: `3p-top-wide` (page 1), `3p-left-dominant` (page 2),
+`3p-cinematic` (page 3).
+
+### The exact prompt that created it
+
+Run inside a container with the `comic-strips` bundle active:
+
+```
+amplifier tool invoke recipes \
+  operation=execute \
+  recipe_path=@comic-strips:recipes/session-to-comic.yaml \
+  context='{"session_file": "/workspace/test-session.jsonl", "style": "naruto", "output_name": "e2e-layout-test", "project_name": "e2e-layout-validation", "max_pages": "3", "max_characters": "4"}'
+```
+
+### Characters
+
+| Character | Role | Description |
+|-----------|------|-------------|
+| The Scout | Specialist | Reconnaissance agent mapping the SST ontology space |
+| The Coordinator | Protagonist | Manages the research timeline and task allocation |
+| The Questgiver | Specialist | Defines the research objectives and acceptance criteria |
+| The Retriever | Specialist | Fetches and synthesizes source material from the knowledge graph |
+
+### What the output demonstrates
+
+| Feature | Detail |
+|---------|--------|
+| 5 pages, 9 panels | Cover + cast page + 3 story pages |
+| 4 characters | All AI agents rendered in Kishimoto's manga style |
+| Naruto manga aesthetic | Speed lines, dramatic angles, ink brushwork |
+| 3 distinct page layouts | `3p-top-wide`, `3p-left-dominant`, `3p-cinematic` |
+| Layout validation | All layout IDs validated at storyboard, approval, and render time |
+| 14 images embedded | 9 panels + 1 cover + 4 character references |
+| Compact file | ~3.7 MB |
+| Self-contained | Single HTML file, all images base64-embedded, works offline |
+
+### Opening it
+
+```bash
+# macOS
+open examples/naruto-layout-validation-e2e.html
+
+# Linux
+xdg-open examples/naruto-layout-validation-e2e.html
+
+# or just drag the file into any browser
+```
+
+Use arrow keys, click the nav buttons, or tap the page dots to navigate.

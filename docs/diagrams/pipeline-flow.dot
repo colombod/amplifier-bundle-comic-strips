@@ -13,7 +13,7 @@ digraph pipeline {
 
   // Title
   labelloc="t";
-  label=<<B><FONT POINT-SIZE="16">Comic Generation Pipeline v8</FONT></B>>;
+  label=<<B><FONT POINT-SIZE="16">Comic Generation Pipeline v7.6.0</FONT></B>>;
   labeljust="c";
 
   // Input
@@ -35,7 +35,7 @@ digraph pipeline {
 
     init [
       label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
-        <TR><TD><B>1. Init Project</B></TD></TR>
+        <TR><TD><B>0. Init Project</B></TD></TR>
         <TR><TD><FONT POINT-SIZE="9" COLOR="#1565C0">style-curator</FONT></TD></TR>
       </TABLE>>,
       shape=box, style="rounded,filled", fillcolor="#E3F2FD", color="#90CAF9",
@@ -44,7 +44,7 @@ digraph pipeline {
 
     research [
       label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
-        <TR><TD><B>2. Research</B></TD></TR>
+        <TR><TD><B>1. Research</B></TD></TR>
         <TR><TD><FONT POINT-SIZE="9" COLOR="#1565C0">stories:story-researcher</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">agent_id + bundle mapping</FONT></TD></TR>
       </TABLE>>,
@@ -54,7 +54,7 @@ digraph pipeline {
 
     style_curation [
       label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
-        <TR><TD><B>3. Style Curation</B></TD></TR>
+        <TR><TD><B>2. Style Curation</B></TD></TR>
         <TR><TD><FONT POINT-SIZE="9" COLOR="#1565C0">style-curator</FONT></TD></TR>
       </TABLE>>,
       shape=box, style="rounded,filled", fillcolor="#E3F2FD", color="#90CAF9",
@@ -63,10 +63,11 @@ digraph pipeline {
 
     storyboard [
       label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
-        <TR><TD><B>4. Storyboard</B></TD></TR>
+        <TR><TD><B>3. Storyboard</B></TD></TR>
         <TR><TD><FONT POINT-SIZE="9" COLOR="#1565C0">storyboard-writer</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">+ stories:content-strategist</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">+ stories:case-study-writer</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">calls list_layouts for valid IDs</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">LAYOUT-FIRST: picks page layouts</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">emits aspect_ratio per panel</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">emits metadata.agent_id per char</FONT></TD></TR>
@@ -77,7 +78,7 @@ digraph pipeline {
 
     update_title [
       label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
-        <TR><TD><B>4b. Update Issue Title</B></TD></TR>
+        <TR><TD><B>3b. Update Issue Title</B></TD></TR>
         <TR><TD><FONT POINT-SIZE="9" COLOR="#1565C0">style-curator</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">storyboard.title → issue.json</FONT></TD></TR>
       </TABLE>>,
@@ -85,7 +86,18 @@ digraph pipeline {
       width=2.2
     ];
 
-    init -> research -> style_curation -> storyboard -> update_title [color="#90CAF9"];
+    validate_storyboard [
+      label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
+        <TR><TD><B>3a. Validate Storyboard</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#1565C0">style-curator</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#C62828">validate_storyboard(page_layouts)</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#C62828">rejects invalid layout IDs</FONT></TD></TR>
+      </TABLE>>,
+      shape=box, style="rounded,filled", fillcolor="#FFEBEE", color="#EF9A9A",
+      width=2.6
+    ];
+
+    init -> research -> style_curation -> storyboard -> validate_storyboard -> update_title [color="#90CAF9"];
   }
 
   // Data flow annotations (between stages)
@@ -104,6 +116,7 @@ digraph pipeline {
     label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
       <TR><TD><B>APPROVAL GATE</B></TD></TR>
       <TR><TD><FONT POINT-SIZE="9">Review storyboard, characters &amp; layouts</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="8" COLOR="#C62828">shows layout_validation: PASSED/FAILED</FONT></TD></TR>
     </TABLE>>,
     shape=diamond, style="filled", fillcolor="#FFF9C4", color="#F9A825",
     width=3.0, height=1.0
@@ -121,7 +134,7 @@ digraph pipeline {
 
     characters [
       label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
-        <TR><TD><B>5. Character Design</B></TD></TR>
+        <TR><TD><B>4. Character Design</B></TD></TR>
         <TR><TD><FONT POINT-SIZE="9" COLOR="#E65100">character-designer</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">foreach, parallel 2</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">uses metadata.agent_id for visuals</FONT></TD></TR>
@@ -133,7 +146,7 @@ digraph pipeline {
 
     panels [
       label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
-        <TR><TD><B>6. Panel Art</B></TD></TR>
+        <TR><TD><B>5. Panel Art</B></TD></TR>
         <TR><TD><FONT POINT-SIZE="9" COLOR="#E65100">panel-artist</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">foreach, parallel 2 + self-review</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">uses aspect_ratio from layout</FONT></TD></TR>
@@ -145,7 +158,7 @@ digraph pipeline {
 
     cover [
       label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
-        <TR><TD><B>7. Cover Art</B></TD></TR>
+        <TR><TD><B>6. Cover Art</B></TD></TR>
         <TR><TD><FONT POINT-SIZE="9" COLOR="#E65100">cover-artist</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">concurrent with panels</FONT></TD></TR>
       </TABLE>>,
@@ -158,7 +171,7 @@ digraph pipeline {
 
     composition [
       label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
-        <TR><TD><B>8. Composition</B></TD></TR>
+        <TR><TD><B>7. Composition</B></TD></TR>
         <TR><TD><FONT POINT-SIZE="9" COLOR="#E65100">strip-compositor</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">uses page_layouts for grid assembly</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">text/speech styling per balloon type</FONT></TD></TR>

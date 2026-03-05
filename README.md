@@ -2,6 +2,14 @@
 
 Transform Amplifier sessions into AI-generated multi-page comic strips with consistent characters, dramatic storytelling, and AmpliVerse publisher branding.
 
+### Pipeline
+
+![Pipeline Flow](docs/diagrams/pipeline-flow.png)
+
+### Agent Model Routing
+
+![Agent Model Routing](docs/diagrams/agent-model-routing.png)
+
 ## Prerequisites
 
 - [Amplifier CLI](https://github.com/microsoft/amplifier) installed

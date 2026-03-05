@@ -1,0 +1,163 @@
+digraph pipeline {
+  // Global settings
+  rankdir=TB;
+  bgcolor="transparent";
+  fontname="Helvetica Neue,Helvetica,Arial,sans-serif";
+  node [fontname="Helvetica Neue,Helvetica,Arial,sans-serif", fontsize=11];
+  edge [fontname="Helvetica Neue,Helvetica,Arial,sans-serif", fontsize=9];
+  newrank=true;
+  compound=true;
+  splines=ortho;
+  nodesep=0.5;
+  ranksep=0.6;
+
+  // Title
+  labelloc="t";
+  label=<<B><FONT POINT-SIZE="16">Comic Generation Pipeline</FONT></B>>;
+  labeljust="c";
+
+  // Input
+  input [
+    label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+      <TR><TD><B>events.jsonl</B></TD></TR>
+      <TR><TD><FONT POINT-SIZE="9" COLOR="#666666">Amplifier session log</FONT></TD></TR>
+    </TABLE>>,
+    shape=note, style="filled", fillcolor="#E8F4FD", color="#90CAF9",
+    width=2.0
+  ];
+
+  // Stage 1 cluster
+  subgraph cluster_stage1 {
+    label=<<B>Stage 1 -- Research &amp; Storyboard</B><BR/><FONT POINT-SIZE="9" COLOR="#555555">text-only, low cost</FONT>>;
+    style="rounded,filled"; fillcolor="#F5F5F5"; color="#BDBDBD";
+    fontname="Helvetica Neue,Helvetica,Arial,sans-serif"; fontsize=12;
+    margin=16;
+
+    init [
+      label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
+        <TR><TD><B>1. Init Project</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#1565C0">style-curator</FONT></TD></TR>
+      </TABLE>>,
+      shape=box, style="rounded,filled", fillcolor="#E3F2FD", color="#90CAF9",
+      width=2.2
+    ];
+
+    research [
+      label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
+        <TR><TD><B>2. Research</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#1565C0">stories:story-researcher</FONT></TD></TR>
+      </TABLE>>,
+      shape=box, style="rounded,filled", fillcolor="#E3F2FD", color="#90CAF9",
+      width=2.2
+    ];
+
+    style_curation [
+      label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
+        <TR><TD><B>3. Style Curation</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#1565C0">style-curator</FONT></TD></TR>
+      </TABLE>>,
+      shape=box, style="rounded,filled", fillcolor="#E3F2FD", color="#90CAF9",
+      width=2.2
+    ];
+
+    storyboard [
+      label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
+        <TR><TD><B>4. Storyboard</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#1565C0">storyboard-writer</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">+ stories:content-strategist</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">+ stories:case-study-writer</FONT></TD></TR>
+      </TABLE>>,
+      shape=box, style="rounded,filled", fillcolor="#E3F2FD", color="#90CAF9",
+      width=2.2
+    ];
+
+    init -> research -> style_curation -> storyboard [color="#90CAF9"];
+  }
+
+  // Approval gate
+  gate [
+    label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
+      <TR><TD><B>APPROVAL GATE</B></TD></TR>
+      <TR><TD><FONT POINT-SIZE="9">Review storyboard &amp; characters</FONT></TD></TR>
+    </TABLE>>,
+    shape=diamond, style="filled", fillcolor="#FFF9C4", color="#F9A825",
+    width=2.8, height=1.0
+  ];
+
+  // Stage 2 cluster
+  subgraph cluster_stage2 {
+    label=<<B>Stage 2 -- Art Generation</B><BR/><FONT POINT-SIZE="9" COLOR="#555555">image generation, high cost</FONT>>;
+    style="rounded,filled"; fillcolor="#FFF3E0"; color="#FFB74D";
+    fontname="Helvetica Neue,Helvetica,Arial,sans-serif"; fontsize=12;
+    margin=16;
+
+    // Parallel fork point
+    fork [label="", shape=point, width=0.15, color="#FF9800"];
+
+    characters [
+      label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
+        <TR><TD><B>5. Character Design</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#E65100">character-designer</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">parallel, max 2</FONT></TD></TR>
+      </TABLE>>,
+      shape=box, style="rounded,filled", fillcolor="#FFE0B2", color="#FFB74D",
+      width=2.2
+    ];
+
+    panels [
+      label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
+        <TR><TD><B>6. Panel Art</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#E65100">panel-artist</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">parallel, max 2 + self-review</FONT></TD></TR>
+      </TABLE>>,
+      shape=box, style="rounded,filled", fillcolor="#FFE0B2", color="#FFB74D",
+      width=2.2
+    ];
+
+    cover [
+      label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
+        <TR><TD><B>7. Cover Art</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#E65100">cover-artist</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">concurrent with panels</FONT></TD></TR>
+      </TABLE>>,
+      shape=box, style="rounded,filled", fillcolor="#FFE0B2", color="#FFB74D",
+      width=2.2
+    ];
+
+    // Join point
+    join [label="", shape=point, width=0.15, color="#FF9800"];
+
+    composition [
+      label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
+        <TR><TD><B>8. Composition</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#E65100">strip-compositor</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">layout + bubbles + visual QA</FONT></TD></TR>
+      </TABLE>>,
+      shape=box, style="rounded,filled", fillcolor="#FFE0B2", color="#FFB74D",
+      width=2.2
+    ];
+
+    fork -> characters [color="#FFB74D"];
+    characters -> panels [color="#FFB74D"];
+    fork -> cover [color="#FFB74D"];
+    panels -> join [color="#FFB74D"];
+    cover -> join [color="#FFB74D"];
+    join -> composition [color="#FFB74D"];
+  }
+
+  // Output
+  output [
+    label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+      <TR><TD><B>comic.html</B></TD></TR>
+      <TR><TD><FONT POINT-SIZE="9" COLOR="#666666">Self-contained, open in browser</FONT></TD></TR>
+    </TABLE>>,
+    shape=note, style="filled", fillcolor="#E8F5E9", color="#81C784",
+    width=2.0
+  ];
+
+  // Main flow edges
+  input -> init [lhead=cluster_stage1, color="#90CAF9"];
+  storyboard -> gate [ltail=cluster_stage1, color="#F9A825"];
+  gate -> fork [lhead=cluster_stage2, color="#FFB74D"];
+  composition -> output [ltail=cluster_stage2, color="#81C784"];
+}

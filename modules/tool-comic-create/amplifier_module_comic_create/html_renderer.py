@@ -379,7 +379,7 @@ def _oval_svg(text: str, tail_tx: float, tail_ty: float) -> str:
         f'<path d="{path_d}" '
         f'fill="var(--bubble-fill)" stroke="var(--bubble-stroke)" '
         f'stroke-width="var(--bubble-stroke-width)"/>'
-        f'<foreignObject x="4" y="3" width="92" height="68" overflow="hidden">'
+        f'<foreignObject x="16" y="12" width="68" height="50" overflow="hidden">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
         f'style="font-family:var(--bubble-font);font-size:{font_size};'
         f"text-align:center;display:flex;align-items:center;justify-content:center;"
@@ -439,21 +439,90 @@ def _cloud_svg(text: str, tail_tx: float, tail_ty: float) -> str:
     )
 
 
+def _jagged_tail_polygon(
+    vertices: list[tuple[float, float]],
+    cx: float,
+    cy: float,
+    tail_tx: float,
+    tail_ty: float,
+    half_base: float = 4.6,
+) -> str:
+    """Splice tail into star polygon, returning SVG ``points`` attribute string.
+
+    Finds the polygon edge that the tail-direction ray from (cx, cy) first
+    intersects, then inserts three new points — [base_p1, tip, base_p2] —
+    between the two vertices of that edge.  The result is a single closed
+    polygon with fill **and** stroke covering the tail, eliminating any seam.
+
+    Args:
+        vertices:  Star polygon vertices as (x, y) tuples (no closing repeat).
+        cx, cy:    Centre of the star (50, 50 for the default bubble).
+        tail_tx, tail_ty:  Tail tip coordinates in SVG viewBox space.
+        half_base: Half-width of the tail base, in viewBox units.
+
+    Returns:
+        Space-separated ``x,y`` pairs ready for the ``points`` attribute.
+    """
+    dx = tail_tx - cx
+    dy = tail_ty - cy
+    dist = math.hypot(dx, dy) or 1.0
+    ndx, ndy = dx / dist, dy / dist
+    px, py = -ndy, ndx  # unit perpendicular to tail direction
+
+    # Find the polygon edge closest to the centre along the tail ray
+    t_min = float("inf")
+    best_i = 0
+    edge_x_best = cx + ndx * 46  # fallback: outer radius in that direction
+    edge_y_best = cy + ndy * 46
+
+    n = len(vertices)
+    for i in range(n):
+        v1x, v1y = vertices[i]
+        v2x, v2y = vertices[(i + 1) % n]
+        # Ray: P = (cx,cy) + t*(ndx,ndy)
+        # Segment: Q = v1 + s*(v2-v1)
+        # Solve 2×2 system; denominator = (v2x-v1x)*ndy - (v2y-v1y)*ndx
+        denom = (v2x - v1x) * ndy - (v2y - v1y) * ndx
+        if abs(denom) < 1e-10:
+            continue
+        t = ((v1y - cy) * (v2x - v1x) - (v1x - cx) * (v2y - v1y)) / denom
+        s = (ndx * (v1y - cy) - (v1x - cx) * ndy) / denom
+        if t > 0 and 0.0 <= s <= 1.0 and t < t_min:
+            t_min = t
+            best_i = i
+            edge_x_best = cx + ndx * t
+            edge_y_best = cy + ndy * t
+
+    # Base points on the polygon edge, offset perpendicular to tail direction
+    p1 = (edge_x_best + px * half_base, edge_y_best + py * half_base)
+    p2 = (edge_x_best - px * half_base, edge_y_best - py * half_base)
+
+    # Splice [p1, tip, p2] between vertex best_i and best_i+1
+    spliced: list[tuple[float, float]] = (
+        list(vertices[: best_i + 1])
+        + [p1, (tail_tx, tail_ty), p2]
+        + list(vertices[best_i + 1 :])
+    )
+    return " ".join(f"{x:.1f},{y:.1f}" for x, y in spliced)
+
+
 def _jagged_svg(text: str, tail_tx: float, tail_ty: float) -> str:
-    """Return inline SVG for a jagged/explosive speech bubble."""
+    """Return inline SVG for a jagged/explosive speech bubble with unified tail.
+
+    Uses a single ``<polygon>`` element (star body + spliced tail) so there is
+    no seam where the tail base meets the spiky body — stroke covers all edges.
+    """
     safe = _html.escape(text)
-    # Build a spiky star polygon (16 points: alternating outer/inner)
+    # Build a 24-point star polygon (12 spikes, outer r=46, inner r=32)
     n_spikes = 12
-    points_list = []
+    cx, cy = 50.0, 50.0
+    vertices: list[tuple[float, float]] = []
     for i in range(n_spikes * 2):
         angle = math.pi * i / n_spikes - math.pi / 2
-        r = 46 if i % 2 == 0 else 32
-        x = 50 + r * math.cos(angle)
-        y = 50 + r * math.sin(angle)
-        points_list.append(f"{x:.1f},{y:.1f}")
-    pts = " ".join(points_list)
-    # Tail
-    tail_pts = _tail_triangle(10, 10, 80, 80, tail_tx, tail_ty)
+        r = 46.0 if i % 2 == 0 else 32.0
+        vertices.append((cx + r * math.cos(angle), cy + r * math.sin(angle)))
+
+    pts = _jagged_tail_polygon(vertices, cx, cy, tail_tx, tail_ty)
     font_size = _bubble_font_size(text)
     return (
         f'<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" '
@@ -461,9 +530,7 @@ def _jagged_svg(text: str, tail_tx: float, tail_ty: float) -> str:
         f'<polygon points="{pts}" '
         f'fill="var(--bubble-fill)" stroke="var(--bubble-stroke)" '
         f'stroke-width="var(--bubble-stroke-width)"/>'
-        f'<polygon points="{tail_pts}" '
-        f'fill="var(--bubble-fill)" stroke="none"/>'
-        f'<foreignObject x="15" y="15" width="70" height="70" overflow="hidden">'
+        f'<foreignObject x="27" y="27" width="46" height="46" overflow="hidden">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
         f'style="font-family:var(--bubble-font);font-size:{font_size};'
         f"font-weight:bold;text-align:center;display:flex;align-items:center;"
@@ -491,7 +558,7 @@ def _whisper_svg(text: str, tail_tx: float, tail_ty: float) -> str:
         f'<path d="{path_d}" '
         f'fill="var(--bubble-fill)" stroke="var(--bubble-stroke)" '
         f'stroke-width="var(--bubble-stroke-width)" stroke-dasharray="5,3"/>'
-        f'<foreignObject x="4" y="3" width="92" height="68" overflow="hidden">'
+        f'<foreignObject x="16" y="12" width="68" height="50" overflow="hidden">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
         f'style="font-family:var(--bubble-font);font-size:{font_size};'
         f"font-style:italic;text-align:center;display:flex;align-items:center;"

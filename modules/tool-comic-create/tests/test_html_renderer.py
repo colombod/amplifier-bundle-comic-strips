@@ -7,8 +7,10 @@ from __future__ import annotations
 
 
 from amplifier_module_comic_create.html_renderer import (
+    get_available_layouts,
     render_comic_html,
     render_overlay_svg,
+    validate_layout_ids,
 )
 
 
@@ -366,3 +368,96 @@ def test_panel_images_embedded_as_data_uris() -> None:
     assert "data:image/png;base64,def" in html
     # Original comic:// URIs must NOT appear in the output
     assert "comic://" not in html
+
+
+# ---------------------------------------------------------------------------
+# get_available_layouts
+# ---------------------------------------------------------------------------
+
+
+def test_get_available_layouts_returns_grouped_primary() -> None:
+    """Primary layouts must be grouped by panel count (1-6+)."""
+    result = get_available_layouts()
+    primary = result["primary_layouts"]
+    # Must have at least 1-panel through 6-panel groups
+    for count in (1, 2, 3, 4, 5, 6):
+        assert count in primary, f"Missing {count}-panel group"
+        assert len(primary[count]) > 0
+
+
+def test_get_available_layouts_primary_follow_naming_convention() -> None:
+    """All primary layout IDs must match the {count}p-{desc} pattern."""
+    import re
+
+    result = get_available_layouts()
+    for count, ids in result["primary_layouts"].items():
+        for lid in ids:
+            assert re.match(rf"^{count}p-", lid), (
+                f"Primary layout '{lid}' in {count}-panel group "
+                f"doesn't match {count}p-* naming convention"
+            )
+
+
+def test_get_available_layouts_includes_legacy_aliases() -> None:
+    """Legacy aliases must be listed separately."""
+    result = get_available_layouts()
+    aliases = result["legacy_aliases"]
+    assert isinstance(aliases, list)
+    assert len(aliases) > 0
+    # Known legacy alias should be present
+    assert "2x2" in aliases
+
+
+def test_get_available_layouts_total_matches_template_dict() -> None:
+    """Total count must match the actual _GRID_TEMPLATES dictionary."""
+    from amplifier_module_comic_create.html_renderer import _GRID_TEMPLATES
+
+    result = get_available_layouts()
+    primary_count = sum(len(ids) for ids in result["primary_layouts"].values())
+    alias_count = len(result["legacy_aliases"])
+    assert primary_count + alias_count == result["total_templates"]
+    assert result["total_templates"] == len(_GRID_TEMPLATES)
+
+
+# ---------------------------------------------------------------------------
+# validate_layout_ids
+# ---------------------------------------------------------------------------
+
+
+def test_validate_layout_ids_all_valid() -> None:
+    """No errors when all layout IDs are valid."""
+    invalid, suggestions = validate_layout_ids(["2p-split", "3p-top-wide", "4p-grid"])
+    assert invalid == []
+    assert suggestions == {}
+
+
+def test_validate_layout_ids_catches_invalid() -> None:
+    """Invalid IDs must be reported with suggestions."""
+    invalid, suggestions = validate_layout_ids(["naruto_wide_3", "2p-split"])
+    assert "naruto_wide_3" in invalid
+    assert "2p-split" not in invalid
+    # Should suggest 3-panel layouts (extracted digit 3 from the name)
+    assert "naruto_wide_3" in suggestions
+    assert any(s.startswith("3p-") for s in suggestions["naruto_wide_3"])
+
+
+def test_validate_layout_ids_legacy_aliases_accepted() -> None:
+    """Legacy aliases like '2x2' must pass validation."""
+    invalid, _ = validate_layout_ids(["2x2", "full-bleed", "manga_action"])
+    assert invalid == []
+
+
+def test_validate_layout_ids_empty_list() -> None:
+    """Empty input produces empty output."""
+    invalid, suggestions = validate_layout_ids([])
+    assert invalid == []
+    assert suggestions == {}
+
+
+def test_validate_layout_ids_suggestions_are_primary() -> None:
+    """When no digit can be extracted, suggestions should list all primary layouts."""
+    invalid, suggestions = validate_layout_ids(["totally_bogus"])
+    assert "totally_bogus" in invalid
+    assert "totally_bogus" in suggestions
+    # Should get primary layouts as fallback
+    assert len(suggestions["totally_bogus"]) > 0

@@ -7,7 +7,7 @@ meta:
     stories:content-strategist and prose generation to stories:case-study-writer.
     Phase 2: translates the narrative into a panel-by-panel comic storyboard
     with scene descriptions, dialogue, captions, camera angles, page breaks,
-    and a curated character list (max 4 main + 2 supporting). Uses
+    and a curated character list (up to 4 main + 2 supporting, 6 total). Uses
     comic-storytelling and comic-panel-composition skills for visual pacing.
     Requires a style guide from style-curator and structured research JSON
     from stories:story-researcher as inputs.
@@ -27,6 +27,8 @@ meta:
 tools:
   - module: tool-comic-assets
     source: git+https://github.com/colombod/amplifier-bundle-comic-strips@main#subdirectory=modules/tool-comic-assets
+  - module: tool-comic-create
+    source: git+https://github.com/colombod/amplifier-bundle-comic-strips@main#subdirectory=modules/tool-comic-create
   - module: tool-filesystem
     source: git+https://github.com/microsoft/amplifier-module-tool-filesystem@main
   - module: tool-skills
@@ -142,15 +144,15 @@ This returns all previously designed characters with their metadata (name, visua
 
 **After the reuse check, select the cast from the narrative:**
 
-1. **Select 4-5 main characters**: The agents who drove the narrative arc — those involved in the Challenge, Approach, and Results. They appear in most panels.
+1. **Select up to 4 main characters**: The agents who drove the narrative arc — those involved in the Challenge, Approach, and Results. They appear in most panels.
 2. **Select 1-2 supporting characters**: Agents with one meaningful moment (a breakthrough or failure) who appear in 1-2 panels only.
-   - **Default total: 5-6 characters.** The recipe may pass a different `max_characters` value — respect it if provided.
+   - **Default total: up to 4 main + 2 supporting (6 total).** The recipe may pass a different `max_characters` value — respect it if provided.
 3. **Cut everyone else**: Agents mentioned in passing or who did routine work. No padding the cast.
 4. **Map bundle membership**: Read each agent's bundle from the research data. Agents from the same bundle share visual team markers (see comic-storytelling skill for the Bundle-as-Affiliation table).
 5. **Antagonists are ENVIRONMENTAL THREATS**, not characters. Errors, rate limits, and failures are walls, storms, and barriers — NOT characters with portraits or dialogue.
 6. **For each selected character**, check the existing roster from the reuse check above and set the appropriate fields (`existing_uri`, `needs_redesign`).
 
-### Step 4.5: Saga Assessment
+### Step 4a: Saga Assessment
 
 After selecting characters, assess whether the narrative fits in one issue:
 
@@ -165,25 +167,74 @@ After selecting characters, assess whether the narrative fits in one issue:
    e. Add a `saga_plan` field to the storyboard JSON.
    f. The CURRENT storyboard covers only issue #1. End with a cliffhanger or "To Be Continued."
 
-### Step 5: Map Narrative Beats to Panels and Page Layout
+### Step 5: LAYOUT-FIRST — Pick Page Layout, Then Derive Panel Aspect Ratios
 
-Take the Challenge → Approach → Results beats from the narrative and assign each to panels:
+**CRITICAL: Choose the page layout BEFORE assigning panels.** The layout determines each panel's shape. Panel-artist needs correct aspect ratios to generate images that fit their grid cells. Wrong aspect ratios = images cropped badly or with wasted space.
 
-- `wide` panels for establishing shots and action sequences
-- `standard` panels for dialogue and general scenes
-- `tall` panels for reveals and dramatic moments
-- `square` panels for emotional close-ups
+#### Step 5a: Discover Available Layouts (MANDATORY)
 
-Each panel corresponds to a narrative beat. The Challenge section typically maps to the opening 2-3 panels, the Approach fills the middle panels, and the Results close the strip.
+**Before selecting ANY layout, call the tool to get the authoritative list:**
 
-**Also define page layout structure** for each story page. Consult the style guide's Panel Shapes section to learn the available page layout identifiers for the chosen style. Use these to make narrative-informed spatial decisions:
+```
+comic_create(action='list_layouts')
+```
 
-- Splash panels for dramatic reveals (e.g., `manga-splash`)
-- Tight equal grids for rapid-fire dialogue (e.g., `newspaper-equal-3`)
-- Irregular dynamic grids for action sequences (e.g., `manga-dynamic-4`)
-- Quiet symmetric layouts for emotional moments (e.g., `indie-portrait-2`)
+This returns all valid layout IDs grouped by panel count (1-panel through 6+). **ONLY use layout IDs returned by this tool call.** Do NOT invent layout names, do NOT guess names, do NOT use names from memory. If a layout ID is not in the tool response, it does not exist and the pipeline will reject it.
 
-Record the chosen layout identifier in the panel sequence so strip-compositor can reference it when building the `assemble_comic` layout JSON.
+#### Step 5b: Select Layouts for Each Page
+
+**Process:**
+1. Decide how many panels go on each page (from narrative pacing)
+2. Pick a layout ID from the `list_layouts` results for that panel count
+3. Use the aspect ratio guide below to assign `aspect_ratio` to each panel
+4. Record both `page_layout` (on the page) and `aspect_ratio` (on each panel) in the output JSON
+
+#### Aspect Ratio Guide — Derived from Layout Structure
+
+Use these rules to determine panel aspect ratios based on the layout you selected:
+
+**Horizontal-row layouts** (panels stack top-to-bottom, full width):
+- Layouts like `Np-rows`, `Np-stacked`, `Np-cinematic`: all panels → `landscape`
+
+**Vertical-column layouts** (panels side-by-side, full height):
+- Layouts like `Np-columns`, `Np-vertical`: all panels → `portrait`
+
+**Grid layouts** (panels in rows AND columns):
+- Layouts like `Np-grid`: most panels → `square`
+
+**Mixed layouts** (one wide/tall panel + smaller panels):
+- The wide/spanning panel → `landscape`
+- The tall/spanning panel → `portrait`
+- Remaining grid cells → `square`
+
+**Specific patterns:**
+| Layout pattern | Panel ratios (in order) |
+|---------------|------------------------|
+| `*-split`, `*-rows` | all `landscape` |
+| `*-columns`, `*-vertical` | all `portrait` |
+| `*-grid` | all `square` |
+| `*-top-wide` | `landscape`, then `square` for remaining |
+| `*-bottom-wide` | `square` for first panels, then `landscape` |
+| `*-top-heavy`, `*-hero-top` | `landscape`, then `square` for remaining |
+| `*-hero-bottom` | `square` for first panels, then `landscape` |
+| `*-left-dominant`, `*-left-heavy` | first `portrait`, remaining `landscape` |
+| `*-right-dominant`, `*-right-heavy` | first `landscape`, last `portrait` |
+| `1p-splash` | `portrait` (full page) |
+
+#### Narrative Beat Matching
+
+| Narrative beat | Recommended layout type |
+|---------------|------------------------|
+| Establishing shot / big moment | `*-top-heavy`, `*-hero-top`, `1p-splash` |
+| Build-up + dramatic reveal | `*-bottom-heavy`, `*-hero-bottom` |
+| Contrast / before-after / duality | `*-split`, `*-vertical` |
+| Steady pacing / sequential action | `*-rows`, `*-columns`, `*-stacked` |
+| Balanced scene with multiple beats | `*-grid` |
+| Spotlight + context | `*-left-dominant`, `*-left-heavy` |
+| Cinematic feel | `*-cinematic` |
+| Dense information | `*-dense`, `*-classic` (6-panel) |
+
+The `size` field on panels is still set for backward compatibility (`wide` → `landscape`, `standard` → `landscape`, `tall` → `portrait`, `square` → `square`), but `aspect_ratio` is now the authoritative field that panel-artist uses for image generation.
 
 ### Step 6: Write Scene Descriptions
 
@@ -242,10 +293,16 @@ Your output MUST be a single structured JSON block in this exact format. `parse_
   "panel_count": 8,
   "page_count": 4,
   "saga_plan": null,
+  "page_layouts": [
+    {"page": 1, "layout": "2p-split", "panel_count": 2},
+    {"page": 2, "layout": "3p-top-wide", "panel_count": 3}
+  ],
   "panel_list": [
     {
       "index": 1,
+      "page": 1,
       "size": "wide",
+      "aspect_ratio": "landscape",
       "scene_description": "A wide establishing shot of a high-tech command center. Multiple holographic displays float in the air showing cascading code. The Explorer stands at the center console, hand on chin, studying the displays. A massive wall of red error symbols looms behind the windows like a storm approaching.",
       "characters_present": ["The Explorer"],
       "camera_angle": "wide-overhead",
@@ -259,7 +316,9 @@ Your output MUST be a single structured JSON block in this exact format. `parse_
     },
     {
       "index": 2,
+      "page": 1,
       "size": "standard",
+      "aspect_ratio": "landscape",
       "scene_description": "Close-up of the Explorer's face illuminated by holographic light, eyes narrowing with determination. Behind them, a shadowy figure emerges from a doorway -- the Bug Hunter arriving.",
       "characters_present": ["The Explorer", "The Bug Hunter"],
       "camera_angle": "close-up",
@@ -281,6 +340,7 @@ Your output MUST be a single structured JSON block in this exact format. `parse_
       "bundle": "foundation",
       "existing_uri": "comic://my-project/characters/the_explorer",
       "needs_redesign": false,
+      "metadata": {"agent_id": "foundation:explorer"},
       "backstory": "A seasoned pathfinder who maps uncharted codebases. First to enter unknown territory, last to leave. Trusts her instincts over documentation — and she's usually right.",
       "description": "A seasoned scout in a worn leather jacket with a compass pendant. Alert eyes constantly scanning the environment. Foundation team blue accent on jacket shoulder."
     },
@@ -291,6 +351,7 @@ Your output MUST be a single structured JSON block in this exact format. `parse_
       "bundle": "foundation",
       "existing_uri": null,
       "needs_redesign": false,
+      "metadata": {"agent_id": "foundation:bug-hunter"},
       "backstory": "Obsessive tracker who sees patterns where others see noise. Once followed a null pointer through twelve modules. Doesn't rest until the root cause surrenders.",
       "description": "A sharp-eyed tracker with a magnifying glass holstered at the hip. Wears a detective-style coat with foundation team blue accent on the lapel."
     }
@@ -308,10 +369,19 @@ Use `panel_list` and `character_list` as the only canonical arrays — do NOT al
 - `existing_uri`: **Required.** The `comic://` URI of an existing character to reuse, or `null` if this is a new character. When set, character-designer will skip generation and reuse the existing reference sheet.
 - `needs_redesign`: **Required.** `false` by default. Set to `true` only when an existing character needs a style update for this issue. When `true`, also include `redesign_reason` explaining why (e.g., "style update from superhero to manga").
 - `backstory`: **Required.** 1-2 sentence character biography for the reader — who they are, what drives them, their personality. This is displayed on the character intro page. Write as narrative prose, NOT as design notes. Example: "A seasoned pathfinder who maps uncharted codebases. Trusts her instincts over documentation — and she's usually right."
+- `metadata`: **Optional.** Dict of arbitrary key/value pairs stored with the character. When the character maps to an Amplifier agent, include `{"agent_id": "bundle:agent-name"}` (e.g., `{"agent_id": "foundation:explorer"}`). The `agent_id` enables downstream agents (character-designer, strip-compositor) to look up the agent's description for richer visual design and dialog voice. For non-agent characters (people, environmental entities), omit or leave empty.
 - `description`: Visual description for the character-designer — appearance, clothing, team markers, distinguishing features
+
+**Page layout fields (`page_layouts` entries):**
+- `page`: Page number (1-based, story pages only — cover and cast are automatic)
+- `layout`: Layout ID from `comic_create(action='list_layouts')` (e.g., `"3p-top-wide"`, `"4p-grid"`). **Must be a valid ID returned by the tool — invented names will be rejected.**
+- `panel_count`: Number of panels on this page
 
 **Panel fields (`panel_list` entries):**
 - `index`: Integer panel number (1-based). Use `index` consistently — do NOT use `number`.
+- `page`: Which story page this panel belongs to (matches `page_layouts[*].page`)
+- `aspect_ratio`: **Required.** The image aspect ratio derived from the page layout: `"landscape"`, `"portrait"`, or `"square"`. Use the layout catalog table in Step 5 to determine this. Panel-artist uses this directly to generate correctly shaped images.
+- `size`: Legacy field, kept for backward compatibility. Maps: `wide` → `landscape`, `standard` → `landscape`, `tall` → `portrait`, `square` → `square`.
 - `characters_present`: List of character display names **exactly as they appear in `character_list[*].name`**. The recipe engine uses these to locate reference images — any mismatch will cause a lookup failure.
 - `dialogue`: Array of `{speaker, text}` objects. `speaker` must also match a `character_list[*].name` exactly.
 
@@ -345,7 +415,7 @@ These rules are NON-NEGOTIABLE. Every storyboard must follow them.
 
 ## Character Selection Rules
 
-- **Default 4-5 main + 1-2 supporting** (5-6 total). Recipe may override via `max_characters`.
+- **Up to 4 main + 2 supporting** (6 total). Recipe may override via `max_characters`.
 - **Main** = top agents by activity that drove key moments (breakthroughs, failures, discoveries)
 - **Supporting** = one meaningful moment, 1-2 panel appearances
 - **Antagonists** = environmental threats (storms, walls, barriers), NOT characters with portraits
@@ -353,6 +423,7 @@ These rules are NON-NEGOTIABLE. Every storyboard must follow them.
 
 ## Rules
 
+- **MANDATORY: Call `comic_create(action='list_layouts')` BEFORE selecting any page layouts.** Only use layout IDs that appear in the tool response. Do NOT invent layout names — invented names cause the entire pipeline to fail.
 - Respect `max_pages` (default 5) and `max_characters` (default 5-6) from recipe params
 - ALWAYS include `page_count` in the output JSON
 - ALWAYS verify: panel_count = sum of panels across all pages, page_count = count of page_break_after markers + 1
@@ -364,7 +435,7 @@ These rules are NON-NEGOTIABLE. Every storyboard must follow them.
 - Dialogue entries are exact spoken lines only — no stage directions, no action beats, no parenthetical notes
 - Every character MUST have `type` ("main" or "supporting") and `bundle` fields
 - The final panel should have a satisfying conclusion or punchline
-- Maximum 4 main + 2 supporting characters (6 total)
+- Up to 4 main + 2 supporting characters (6 total)
 - All dialogue must sound natural — no character would say a UUID or file path out loud
 
 ## Asset Integration

@@ -13,7 +13,7 @@ digraph pipeline {
 
   // Title
   labelloc="t";
-  label=<<B><FONT POINT-SIZE="16">Comic Generation Pipeline</FONT></B>>;
+  label=<<B><FONT POINT-SIZE="16">Comic Generation Pipeline v8</FONT></B>>;
   labeljust="c";
 
   // Input
@@ -46,6 +46,7 @@ digraph pipeline {
       label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
         <TR><TD><B>2. Research</B></TD></TR>
         <TR><TD><FONT POINT-SIZE="9" COLOR="#1565C0">stories:story-researcher</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">agent_id + bundle mapping</FONT></TD></TR>
       </TABLE>>,
       shape=box, style="rounded,filled", fillcolor="#E3F2FD", color="#90CAF9",
       width=2.2
@@ -66,22 +67,46 @@ digraph pipeline {
         <TR><TD><FONT POINT-SIZE="9" COLOR="#1565C0">storyboard-writer</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">+ stories:content-strategist</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">+ stories:case-study-writer</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">LAYOUT-FIRST: picks page layouts</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">emits aspect_ratio per panel</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">emits metadata.agent_id per char</FONT></TD></TR>
+      </TABLE>>,
+      shape=box, style="rounded,filled", fillcolor="#E3F2FD", color="#90CAF9",
+      width=2.8
+    ];
+
+    update_title [
+      label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
+        <TR><TD><B>4b. Update Issue Title</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#1565C0">style-curator</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">storyboard.title → issue.json</FONT></TD></TR>
       </TABLE>>,
       shape=box, style="rounded,filled", fillcolor="#E3F2FD", color="#90CAF9",
       width=2.2
     ];
 
-    init -> research -> style_curation -> storyboard [color="#90CAF9"];
+    init -> research -> style_curation -> storyboard -> update_title [color="#90CAF9"];
   }
+
+  // Data flow annotations (between stages)
+  storyboard_data [
+    label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
+      <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32"><B>Storyboard outputs:</B></FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">page_layouts[ ] → layout ID per page</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">panel_list[ ] → aspect_ratio per panel</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">character_list[ ] → metadata.agent_id</FONT></TD></TR>
+    </TABLE>>,
+    shape=none, margin=0
+  ];
 
   // Approval gate
   gate [
     label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
       <TR><TD><B>APPROVAL GATE</B></TD></TR>
-      <TR><TD><FONT POINT-SIZE="9">Review storyboard &amp; characters</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="9">Review storyboard, characters &amp; layouts</FONT></TD></TR>
     </TABLE>>,
     shape=diamond, style="filled", fillcolor="#FFF9C4", color="#F9A825",
-    width=2.8, height=1.0
+    width=3.0, height=1.0
   ];
 
   // Stage 2 cluster
@@ -98,20 +123,24 @@ digraph pipeline {
       label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
         <TR><TD><B>5. Character Design</B></TD></TR>
         <TR><TD><FONT POINT-SIZE="9" COLOR="#E65100">character-designer</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">parallel, max 2</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">foreach, parallel 2</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">uses metadata.agent_id for visuals</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">stores metadata with character</FONT></TD></TR>
       </TABLE>>,
       shape=box, style="rounded,filled", fillcolor="#FFE0B2", color="#FFB74D",
-      width=2.2
+      width=2.6
     ];
 
     panels [
       label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
         <TR><TD><B>6. Panel Art</B></TD></TR>
         <TR><TD><FONT POINT-SIZE="9" COLOR="#E65100">panel-artist</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">parallel, max 2 + self-review</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">foreach, parallel 2 + self-review</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">uses aspect_ratio from layout</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">landscape / portrait / square</FONT></TD></TR>
       </TABLE>>,
       shape=box, style="rounded,filled", fillcolor="#FFE0B2", color="#FFB74D",
-      width=2.2
+      width=2.6
     ];
 
     cover [
@@ -131,14 +160,18 @@ digraph pipeline {
       label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
         <TR><TD><B>8. Composition</B></TD></TR>
         <TR><TD><FONT POINT-SIZE="9" COLOR="#E65100">strip-compositor</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">layout + bubbles + visual QA</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">uses page_layouts for grid assembly</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">text/speech styling per balloon type</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">SFX: size, color, placement by intensity</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">+ agent_id → dialog voice per character</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">+ visual QA via visual-documenter</FONT></TD></TR>
       </TABLE>>,
       shape=box, style="rounded,filled", fillcolor="#FFE0B2", color="#FFB74D",
-      width=2.2
+      width=2.8
     ];
 
     fork -> characters [color="#FFB74D"];
-    characters -> panels [color="#FFB74D"];
+    characters -> panels [color="#FFB74D", label=<<FONT POINT-SIZE="8">character_uris</FONT>>];
     fork -> cover [color="#FFB74D"];
     panels -> join [color="#FFB74D"];
     cover -> join [color="#FFB74D"];
@@ -157,7 +190,8 @@ digraph pipeline {
 
   // Main flow edges
   input -> init [lhead=cluster_stage1, color="#90CAF9"];
-  storyboard -> gate [ltail=cluster_stage1, color="#F9A825"];
+  update_title -> storyboard_data [ltail=cluster_stage1, color="#2E7D32", style=dashed];
+  storyboard_data -> gate [color="#F9A825"];
   gate -> fork [lhead=cluster_stage2, color="#FFB74D"];
   composition -> output [ltail=cluster_stage2, color="#81C784"];
 }

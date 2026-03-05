@@ -10,73 +10,206 @@ Produces a single HTML file with:
 Public API:
     render_comic_html(layout, resolved_images, style_css) -> str
     render_overlay_svg(overlay) -> str
+    get_available_layouts() -> dict
+    validate_layout_ids(layout_ids) -> tuple[list[str], dict[str, list[str]]]
 """
 
 from __future__ import annotations
 
 import html as _html
+import logging
 import math
 import re
 from typing import Any
+
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # CSS grid templates keyed by layout identifier
 # ---------------------------------------------------------------------------
 
 _GRID_TEMPLATES: dict[str, str] = {
-    # ---- Simple grids (rows use 1fr so panels fill page height) ----
+    # ==================================================================
+    # DESIGN RULE: Every layout MUST fill the entire comic page.
+    # No half-pages, no newspaper strips.  Real comics use the full
+    # page height with panels that tile edge-to-edge.
+    #
+    # Naming convention:
+    #   {count}p-{description}  — e.g. "2p-split" for 2-panel top/bottom
+    #   Legacy NxM names kept as aliases for backward compatibility.
+    # ==================================================================
+    # ---- 1 panel: full-page splash ----
+    "1p-splash": "grid-template-columns:1fr;grid-template-rows:1fr",
     "1x1": "grid-template-columns:1fr;grid-template-rows:1fr",
-    "2x1": "grid-template-columns:repeat(2,1fr);grid-template-rows:1fr",
-    "1x2": "grid-template-columns:1fr;grid-template-rows:1fr 1fr",
-    "2x2": "grid-template-columns:repeat(2,1fr);grid-template-rows:1fr 1fr",
-    "3x1": "grid-template-columns:repeat(3,1fr);grid-template-rows:1fr",
-    "3x2": "grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr",
-    "2x3": "grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(3,1fr)",
-    "3-row": "grid-template-columns:1fr;grid-template-rows:repeat(3,1fr)",
-    "2-row": "grid-template-columns:1fr;grid-template-rows:1fr 1fr",
     "full-bleed": "grid-template-columns:1fr;grid-template-rows:1fr",
-    # ---- Dramatic compositions ----
+    "hero_splash": "grid-template-columns:1fr;grid-template-rows:1fr",
+    # ---- 2 panels: ALWAYS fill the full page ----
+    # Top / bottom equal halves (the classic 2-panel comic page)
+    "2p-split": "grid-template-columns:1fr;grid-template-rows:1fr 1fr",
+    # Top large / bottom strip (dramatic establishing + reaction)
+    "2p-top-heavy": "grid-template-columns:1fr;grid-template-rows:2fr 1fr",
+    # Top strip / bottom large (build-up + reveal)
+    "2p-bottom-heavy": "grid-template-columns:1fr;grid-template-rows:1fr 2fr",
+    # Left / right vertical halves (confrontation, duality)
+    "2p-vertical": "grid-template-columns:1fr 1fr;grid-template-rows:1fr",
+    # Left large / right narrow (spotlight + reaction)
+    "2p-left-heavy": "grid-template-columns:2fr 1fr;grid-template-rows:1fr",
+    # Left narrow / right large (build-up + spotlight)
+    "2p-right-heavy": "grid-template-columns:1fr 2fr;grid-template-rows:1fr",
+    # Legacy aliases
+    "1x2": "grid-template-columns:1fr;grid-template-rows:1fr 1fr",
+    "2-row": "grid-template-columns:1fr;grid-template-rows:1fr 1fr",
+    "2x1": "grid-template-columns:1fr 1fr;grid-template-rows:1fr",
+    "dialogue-focus": "grid-template-columns:1fr 1fr;grid-template-rows:1fr",
+    "manga_dynamic_2": "grid-template-columns:1fr;grid-template-rows:2fr 1fr",
+    "splash_plus_strip": "grid-template-columns:1fr;grid-template-rows:3fr 1fr",
+    # ---- 3 panels: ALWAYS fill the full page ----
+    # 3 equal horizontal rows (classic manga/comic stack)
+    "3p-rows": "grid-template-columns:1fr;grid-template-rows:1fr 1fr 1fr",
+    # 1 wide top + 2 side-by-side bottom
+    "3p-top-wide": "grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr",
+    # 2 side-by-side top + 1 wide bottom
+    "3p-bottom-wide": "grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr",
+    # 3 equal vertical columns (triptych — fills full page height)
+    "3p-columns": "grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr",
+    # Left dominant + 2 stacked right (spotlight + context)
+    "3p-left-dominant": "grid-template-columns:2fr 1fr;grid-template-rows:1fr 1fr",
+    # 2 stacked left + right dominant (build-up + reveal)
+    "3p-right-dominant": "grid-template-columns:1fr 2fr;grid-template-rows:1fr 1fr",
+    # Top large + 2 small bottom (establishing + details)
+    "3p-hero-top": "grid-template-columns:1fr 1fr;grid-template-rows:2fr 1fr",
+    # 2 small top + large bottom (build-up + dramatic payoff)
+    "3p-hero-bottom": "grid-template-columns:1fr 1fr;grid-template-rows:1fr 2fr",
+    # Weighted rows: narrow-wide-narrow (cinematic bars)
+    "3p-cinematic": "grid-template-columns:1fr;grid-template-rows:1fr 2fr 1fr",
+    # Legacy aliases
+    "3-row": "grid-template-columns:1fr;grid-template-rows:1fr 1fr 1fr",
+    "3x1": "grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr",
+    "manga_3_panel": "grid-template-columns:1fr;grid-template-rows:1fr 1fr 1fr",
+    "action-sequence": "grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr",
+    "manga_widescreen": "grid-template-columns:1fr;grid-template-rows:1fr 2fr 1fr",
+    "manga_vertical_triptych": "grid-template-columns:1fr;grid-template-rows:1fr 2fr 1fr",
+    "panoramic": "grid-template-columns:1fr;grid-template-rows:2fr 1fr 1fr",
+    "asymmetric_3": "grid-template-columns:2fr 1fr;grid-template-rows:1fr 2fr",
+    # ---- 4 panels ----
+    "4p-grid": "grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr",
+    "4p-top-strip": "grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr 1fr",
+    "4p-bottom-strip": "grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr 1fr",
+    "4p-stacked": "grid-template-columns:1fr;grid-template-rows:1fr 1fr 1fr 1fr",
+    # Legacy aliases
+    "2x2": "grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr",
     "wide-establishing-plus-grid": "grid-template-columns:1fr 1fr;"
     "grid-template-rows:2fr 1fr",
     "crescendo": "grid-template-columns:1fr 1fr;grid-template-rows:1fr 2fr",
     "spotlight": "grid-template-columns:2fr 1fr;grid-template-rows:1fr 1fr",
-    "action-sequence": "grid-template-columns:repeat(3,1fr);grid-template-rows:1fr",
-    "dialogue-focus": "grid-template-columns:1fr 1fr;grid-template-rows:1fr",
-    "montage": "grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr",
     "cliffhanger": "grid-template-columns:1fr 1fr;grid-template-rows:2fr 1fr",
-    # ---- Manga layouts (used by manga/anime style guides) ----
-    "manga_3_panel": "grid-template-columns:1fr;grid-template-rows:repeat(3,1fr)",
-    "manga_dynamic_2": "grid-template-columns:1fr;grid-template-rows:2fr 1fr",
     "manga_action": "grid-template-columns:2fr 1fr;grid-template-rows:1fr 2fr",
-    "manga_widescreen": "grid-template-columns:1fr;grid-template-rows:1fr 2fr 1fr",
-    "manga_split": "grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr 1fr",
     "manga_dramatic": "grid-template-columns:1fr 2fr;grid-template-rows:1fr 1fr",
-    "manga_vertical_triptych": "grid-template-columns:1fr;grid-template-rows:1fr 2fr 1fr",
     "manga_impact": "grid-template-columns:1fr 1fr;grid-template-rows:3fr 1fr",
-    # ---- Professional comic layouts ----
-    "cinematic_widescreen": "grid-template-columns:1fr;grid-template-rows:1fr 3fr 1fr",
-    "dramatic_reveal": "grid-template-columns:1fr 1fr;grid-template-rows:1fr 3fr",
-    "conversation": "grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,1fr)",
     "split_action": "grid-template-columns:1fr 1fr;grid-template-rows:2fr 1fr",
-    "panoramic": "grid-template-columns:1fr;grid-template-rows:2fr 1fr 1fr",
-    "grid_9": "grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr)",
-    "l_shape": "grid-template-columns:2fr 1fr;grid-template-rows:1fr 1fr 1fr",
-    "t_shape": "grid-template-columns:repeat(3,1fr);grid-template-rows:2fr 1fr",
-    "asymmetric_3": "grid-template-columns:2fr 1fr;grid-template-rows:1fr 2fr",
-    "stacked_wides": "grid-template-columns:1fr;grid-template-rows:repeat(4,1fr)",
-    "hero_plus_grid": "grid-template-columns:repeat(2,1fr);grid-template-rows:2fr 1fr 1fr",
-    "diagonal_energy": "grid-template-columns:3fr 2fr;grid-template-rows:1fr 1fr 2fr",
-    "splash_plus_strip": "grid-template-columns:1fr;grid-template-rows:3fr 1fr",
+    "dramatic_reveal": "grid-template-columns:1fr 1fr;grid-template-rows:1fr 3fr",
     "corner_focus": "grid-template-columns:3fr 1fr;grid-template-rows:3fr 1fr",
-    # ---- Superhero / western comic layouts ----
-    "hero_splash": "grid-template-columns:1fr;grid-template-rows:1fr",
-    "classic_6": "grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(3,1fr)",
-    "classic_9": "grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr)",
+    # ---- 5 panels ----
+    "5p-classic": "grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr",
+    "5p-hero-grid": "grid-template-columns:repeat(2,1fr);grid-template-rows:2fr 1fr 1fr",
+    "5p-stacked": "grid-template-columns:1fr;grid-template-rows:repeat(5,1fr)",
+    # Legacy aliases
+    "hero_plus_grid": "grid-template-columns:repeat(2,1fr);grid-template-rows:2fr 1fr 1fr",
+    "t_shape": "grid-template-columns:repeat(3,1fr);grid-template-rows:2fr 1fr",
+    "diagonal_energy": "grid-template-columns:3fr 2fr;grid-template-rows:1fr 1fr 2fr",
     "widescreen_stack": "grid-template-columns:1fr;grid-template-rows:1fr 1fr 2fr",
+    # ---- 6 panels ----
+    "6p-classic": "grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(3,1fr)",
+    "6p-wide": "grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr",
+    "6p-manga": "grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr 1fr",
+    "6p-dense": "grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr",
+    # Legacy aliases
+    "3x2": "grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr",
+    "2x3": "grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(3,1fr)",
+    "classic_6": "grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(3,1fr)",
+    "conversation": "grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,1fr)",
+    "montage": "grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr",
+    "manga_split": "grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr 1fr",
+    "l_shape": "grid-template-columns:2fr 1fr;grid-template-rows:1fr 1fr 1fr",
     "bookend": "grid-template-columns:1fr 2fr 1fr;grid-template-rows:1fr 1fr",
+    "cinematic_widescreen": "grid-template-columns:1fr;grid-template-rows:1fr 3fr 1fr",
+    # ---- 7+ panels ----
+    "stacked_wides": "grid-template-columns:1fr;grid-template-rows:repeat(4,1fr)",
+    "grid_9": "grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr)",
+    "classic_9": "grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr)",
 }
 
-_DEFAULT_GRID = "grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr)"
+_DEFAULT_GRID = "grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr"
+
+
+# ---------------------------------------------------------------------------
+# Layout discovery & validation
+# ---------------------------------------------------------------------------
+
+
+def get_available_layouts() -> dict[str, Any]:
+    """Return available layout templates grouped by panel count.
+
+    Primary layouts follow the ``{count}p-{description}`` naming convention
+    and are the recommended choices.  Legacy aliases are listed separately
+    but are also accepted by the renderer.
+    """
+    primary: dict[int, list[str]] = {}
+    aliases: list[str] = []
+
+    for layout_id in _GRID_TEMPLATES:
+        m = re.match(r"^(\d+)p-", layout_id)
+        if m:
+            count = int(m.group(1))
+            primary.setdefault(count, [])
+            primary[count].append(layout_id)
+        else:
+            aliases.append(layout_id)
+
+    return {
+        "primary_layouts": {
+            count: sorted(ids) for count, ids in sorted(primary.items())
+        },
+        "legacy_aliases": sorted(aliases),
+        "total_templates": len(_GRID_TEMPLATES),
+        "hint": (
+            "Use primary layouts (e.g. '3p-top-wide') for best results. "
+            "Legacy aliases are accepted but may be removed in the future."
+        ),
+    }
+
+
+def validate_layout_ids(
+    layout_ids: list[str],
+) -> tuple[list[str], dict[str, list[str]]]:
+    """Check layout IDs against the template dictionary.
+
+    Returns ``(invalid_ids, suggestions)`` where *suggestions* maps each
+    invalid ID to a list of valid alternatives.  If a numeric prefix can be
+    parsed from the invalid ID, suggestions are scoped to that panel count;
+    otherwise all primary layouts are returned.
+    """
+    valid_keys = set(_GRID_TEMPLATES)
+    invalid: list[str] = []
+    suggestions: dict[str, list[str]] = {}
+
+    for lid in layout_ids:
+        if lid in valid_keys:
+            continue
+        invalid.append(lid)
+        # Try to suggest based on leading digit (e.g. "naruto_wide_3" → 3)
+        m = re.search(r"(\d+)", lid)
+        if m:
+            count = int(m.group(1))
+            scoped = sorted(k for k in valid_keys if k.startswith(f"{count}p-"))
+            if scoped:
+                suggestions[lid] = scoped
+                continue
+        # Fall back to all primary layouts
+        suggestions[lid] = sorted(k for k in valid_keys if re.match(r"^\d+p-", k))
+
+    return invalid, suggestions
+
 
 # ---------------------------------------------------------------------------
 # Default CSS custom properties (theming)
@@ -499,7 +632,15 @@ def render_overlay_svg(overlay: dict[str, Any]) -> str:
 
 def _grid_css(layout_id: str) -> str:
     """Return inline CSS ``grid-template-columns`` declaration for a layout id."""
-    return _GRID_TEMPLATES.get(layout_id, _DEFAULT_GRID)
+    css = _GRID_TEMPLATES.get(layout_id)
+    if css is None:
+        _logger.warning(
+            "Unknown layout_id %r — falling back to default 2x2 grid. "
+            "Use get_available_layouts() to see valid IDs.",
+            layout_id,
+        )
+        return _DEFAULT_GRID
+    return css
 
 
 # ---------------------------------------------------------------------------
@@ -773,41 +914,54 @@ body {
   object-fit: cover;
 }
 
-/* ======== DRAMATIC LAYOUT MODIFIERS ========
+/* ======== PANEL SPAN MODIFIERS ========
    These use grid-column/grid-row spanning to create asymmetric,
-   overlapping, and visually dynamic page compositions.           */
+   overlapping, and visually dynamic page compositions.
+   Every layout fills the entire page — no empty space.          */
 
-/* -- Establishing shot + supporting grid -- */
+/* ---- 3-panel span rules ---- */
+/* 3p-top-wide: first panel spans full width, 2 below */
+.layout-3p_top_wide .panel-wrap:first-child { grid-column: 1 / -1; }
+/* 3p-bottom-wide: last panel spans full width, 2 above */
+.layout-3p_bottom_wide .panel-wrap:last-child { grid-column: 1 / -1; }
+/* 3p-left-dominant: first panel tall left, 2 stacked right */
+.layout-3p_left_dominant .panel-wrap:first-child { grid-row: 1 / -1; }
+/* 3p-right-dominant: second panel tall right, 2 stacked left */
+.layout-3p_right_dominant .panel-wrap:nth-child(2) { grid-row: 1 / -1; }
+/* 3p-hero-top: first panel spans full width above 2 below */
+.layout-3p_hero_top .panel-wrap:first-child { grid-column: 1 / -1; }
+/* 3p-hero-bottom: last panel spans full width below 2 above */
+.layout-3p_hero_bottom .panel-wrap:last-child { grid-column: 1 / -1; }
+
+/* ---- 4-panel span rules ---- */
+/* 4p-top-strip: first panel spans full width, 3 in grid below */
+.layout-4p_top_strip .panel-wrap:first-child { grid-column: 1 / -1; }
+/* 4p-bottom-strip: last panel spans full width, 3 in grid above */
+.layout-4p_bottom_strip .panel-wrap:last-child { grid-column: 1 / -1; }
+
+/* ---- 5-panel span rules ---- */
+/* 5p-classic: first panel spans full top row (3 cols), 2 below */
+.layout-5p_classic .panel-wrap:first-child { grid-column: 1 / -1; }
+/* 5p-hero-grid: first panel spans full width */
+.layout-5p_hero_grid .panel-wrap:first-child { grid-column: 1 / -1; }
+
+/* ---- Legacy dramatic compositions ---- */
 .layout-wide_establishing_plus_grid .panel-wrap:first-child { grid-column: 1 / -1; }
-
-/* -- Crescendo: full-width bookends around center detail -- */
 .layout-crescendo .panel-wrap:first-child { grid-column: 1 / -1; }
 .layout-crescendo .panel-wrap:last-child { grid-column: 1 / -1; }
-
-/* -- Spotlight: hero panel dominates left column -- */
 .layout-spotlight .panel-wrap:first-child { grid-row: 1 / 3; }
-
-/* -- Cliffhanger: dramatic wide bottom panel -- */
 .layout-cliffhanger .panel-wrap:last-child { grid-column: 1 / -1; }
-
-/* -- Dramatic reveal: small top row, wide reveal below -- */
 .layout-dramatic_reveal .panel-wrap:last-child { grid-column: 1 / -1; }
-
-/* -- Hero splash then grid -- */
 .layout-hero_plus_grid .panel-wrap:first-child { grid-column: 1 / -1; }
-
-/* -- T-shape: wide top + columns below -- */
 .layout-t_shape .panel-wrap:first-child { grid-column: 1 / -1; }
-
-/* -- Splash + strip footer -- */
 .layout-splash_plus_strip .panel-wrap:first-child { grid-column: 1 / -1; }
 
-/* ======== MANGA LAYOUT MODIFIERS ======== */
+/* ---- Legacy manga modifiers ---- */
 .layout-manga_action .panel-wrap:first-child { grid-row: 1 / 3; }
 .layout-manga_dramatic .panel-wrap:nth-child(2) { grid-row: 1 / 3; }
 .layout-manga_impact .panel-wrap:first-child { grid-column: 1 / -1; }
 
-/* ======== PROFESSIONAL LAYOUT MODIFIERS ======== */
+/* ---- Legacy professional modifiers ---- */
 .layout-l_shape .panel-wrap:first-child { grid-row: 1 / 3; }
 .layout-asymmetric_3 .panel-wrap:first-child { grid-row: 1 / 3; }
 .layout-diagonal_energy .panel-wrap:last-child { grid-column: 1 / -1; }

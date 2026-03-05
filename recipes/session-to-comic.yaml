@@ -1,12 +1,26 @@
 name: "session-to-comic"
 description: "Transform an Amplifier session into an illustrated comic strip with quality review, character consistency, dramatized storytelling, and AmpliVerse publisher branding"
-version: "7.5.0"
+version: "7.6.0"
 author: "amplifier-comic-strips"
 tags: ["comic", "visual-storytelling", "session-analysis", "uri-protocol"]
 
 # =============================================================================
 # CHANGELOG
 # =============================================================================
+#
+# v7.6.0 (2026-03-05):
+#   - FEAT: Add validate-storyboard recipe step (deterministic layout ID check).
+#     Runs immediately after storyboard generation, BEFORE the approval gate.
+#     Catches invalid layout IDs (e.g. agent-invented names like "naruto_wide_3")
+#     before any expensive image generation starts. Returns suggestions for valid
+#     alternatives so the reviewer can deny and fix.
+#   - FEAT: Approval gate now shows layout validation results and page_layouts.
+#   - FEAT: comic_create gains list_layouts and validate_storyboard actions.
+#     list_layouts returns all 47 templates grouped by panel count.
+#     validate_storyboard checks page_layouts array against the template dict.
+#   - FIX: assemble_comic now validates layout IDs before rendering. Invalid IDs
+#     return an error with suggestions instead of silently falling back to 2x2.
+#   - FIX: _grid_css() logs a warning on unknown layout_id fallback (defense-in-depth).
 #
 # v7.5.0 (2026-03-04):
 #   - FEAT: Add story_hints and character_hints context variables. Users can now
@@ -400,12 +414,14 @@ stages:
           - title: string (comic title)
           - subtitle: string (comic subtitle)
           - panel_count: integer (total number of panels)
+          - page_layouts: array of {page, layout, panel_count} objects (one per story page — layout IDs MUST come from comic_create list_layouts)
           - character_list: array of character objects (one entry per character to be designed)
           - panel_list: array of panel objects (one entry per panel to be generated)
           These arrays will be used by downstream foreach loops to drive character design
           and panel art generation. Each character_list entry should contain all info needed
           to design that character. Each panel_list entry should contain all info needed to
-          generate that panel's artwork.
+          generate that panel's artwork. page_layouts is validated by a downstream step —
+          invalid layout IDs will cause the pipeline to fail.
 
           Output the complete panel sequence as structured JSON.
 
@@ -416,6 +432,47 @@ stages:
         parse_json: true
         timeout: 1800  # storyboard: delegates to 2 stories agents + JSON production (~12-20 min)
 
+      # ============================================
+      # STEP 3a: VALIDATE STORYBOARD LAYOUTS
+      # Deterministic check — catches invalid layout IDs BEFORE the
+      # approval gate and BEFORE expensive image generation starts.
+      # If the storyboard-writer invented layout names that don't
+      # exist in the renderer's template dictionary, this step fails
+      # with suggestions for valid alternatives.
+      # ============================================
+      - id: "validate-storyboard"
+        agent: "comic-strips:style-curator"
+        prompt: |
+          YOUR ONLY JOB: Validate the storyboard page layouts. Do NOTHING else.
+
+          Page layouts from the storyboard:
+          {{storyboard.page_layouts}}
+
+          Call: comic_create(action='validate_storyboard', page_layouts=<the page_layouts array above>)
+
+          If validation PASSED, return ONLY: {"validation": "PASSED", "page_count": <count>}
+          If validation FAILED, return: {"validation": "FAILED", "invalid_layout_ids": <from tool>, "suggestions": <from tool>}
+        output: "storyboard_validation"
+        parse_json: true
+        timeout: 120
+
+      # ============================================
+      # STEP 3b: UPDATE ISSUE TITLE
+      # Propagate the storyboard's narrative title back to issue.json
+      # so it's persisted and available for future reuse/browsing.
+      # ============================================
+      - id: "update-issue-title"
+        agent: "comic-strips:style-curator"
+        prompt: |
+          YOUR ONLY JOB: Update the issue title to match the storyboard title. Do NOTHING else.
+
+          comic_project(action='update_issue', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', title='{{storyboard.title}}')
+
+          Return ONLY: {"updated": true, "title": "{{storyboard.title}}"}
+        output: "issue_title_update"
+        parse_json: true
+        timeout: 60
+
     # ------------------------------------------------------------------
     # APPROVAL GATE: Storyboard Review
     # This is the last cheap checkpoint before expensive image generation.
@@ -425,8 +482,7 @@ stages:
     approval:
       required: true
       prompt: |
-        Storyboard complete. Please review the character cast and narrative arc
-        before approving expensive image generation.
+        Storyboard complete. Please review before approving expensive image generation.
 
         Title: {{storyboard.title}}
         Subtitle: {{storyboard.subtitle}}
@@ -434,14 +490,17 @@ stages:
         Page count: {{storyboard.page_count}}
         Saga plan: {{storyboard.saga_plan}}
 
+        Layout validation: {{storyboard_validation.validation}}
+        Page layouts: {{storyboard.page_layouts}}
+
         Characters:
         {{storyboard.character_list}}
 
         Panels overview:
         {{storyboard.panel_list}}
 
-        Approve to proceed with character design and panel art generation.
-        Deny to stop and revise the storyboard.
+        If layout validation FAILED, DENY and fix the storyboard layouts.
+        Otherwise, approve to proceed with character design and panel art generation.
       timeout: 0
       default: "deny"
 
@@ -500,6 +559,7 @@ stages:
                        visual_traits=<visual description from character_item>,
                        distinctive_features=<identifying features from character_item>,
                        personality=<personality context from character_item>,
+                       metadata=<metadata dict from character_item if present, e.g. {"agent_id": "foundation:explorer"}>,
                        prompt=<generation prompt combining visual_traits, style, and bundle affiliation>)
 
           Return ONLY the character URI string from the comic_create response
@@ -543,7 +603,7 @@ stages:
                        name=<panel-name-slug from panel_item>,
                        prompt=<scene description from panel_item informed by style guide>,
                        character_uris=<list of URIs from {{character_uris}} whose characters appear in this panel>,
-                       size=<landscape/portrait/square as appropriate for panel_item>,
+                       size=<use panel_item.aspect_ratio if present, otherwise map panel_item.size: wide/standard->landscape, tall->portrait, square->square>,
                        camera_angle=<framing hint from panel_item>)
 
           After generating, self-review using:

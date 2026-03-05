@@ -58,7 +58,7 @@ You receive 5 inputs:
 2. **Panel URIs** (from panel-artist): List of `comic://` URIs for generated panel images
 3. **Storyboard** (from storyboard-writer): Panel sequence with dialogue, captions, sound effects, `page_break_after` markers, and emotional_beat per panel
 4. **Style guide** (from style-curator): Colors, fonts, borders, gutters, text treatment, and a **Panel Shapes** section with SVG clip-path definitions for the active style
-5. **Character URIs** (from character-designer): Character `comic://` URIs, names, roles, visual_traits, and distinctive_features for each character
+5. **Character URIs** (from character-designer): A list of `comic://` URI strings. Character-designer provides only URIs; roster data (names, roles, visual_traits, distinctive_features) is retrieved via `comic_character(action='list')` in Step 2
 
 ## Multi-Page Structure
 
@@ -124,12 +124,17 @@ Get the character roster for the character intro page:
 comic_character(action='list', project='{{project_id}}')
 ```
 
-### Step 3: Build Page Structure
+For each character, check if `metadata.agent_id` is set (e.g., `"foundation:explorer"`). When present, use the agent identity to inform:
+- **Character intro page**: Enrich the role description with the agent's specialty (e.g., "Lead Scout — deep codebase reconnaissance specialist" instead of just "Lead Scout")
+- **Dialog voice**: Characters mapped to agents should speak in a voice consistent with their agent's personality. An explorer speaks with curiosity and discovery language, an architect speaks in principles and tradeoffs, a bug-hunter speaks in hypotheses and evidence. This makes dialog feel distinctive per character rather than generic.
 
-Determine the page breakdown from the storyboard's `page_break_after` markers:
+### Step 3: Build Page Structure (Layout-First)
+
+**Use `page_layouts` from the storyboard when present.** This is the layout-first pipeline — the storyboard already picked the optimal layout for each story page based on panel count and narrative beat. Use the `layout` field from each `page_layouts` entry directly as the page's layout ID in the assembly JSON.
+
 - Page 1: Cover (always)
 - Page 2: Character intro (always)
-- Pages 3+: Group panels into story pages. Each story page gets 3-5 panels, split at `page_break_after: true` markers.
+- Pages 3+: Story pages. If `storyboard.page_layouts` exists, use it directly — each entry has `page`, `layout`, and `panel_count`. If not present (legacy storyboards), fall back to grouping panels by `page_break_after` markers and choosing layouts based on panel count per page.
 
 ### Step 4: Review Panel Compositions
 
@@ -144,6 +149,61 @@ comic_create(
 ```
 
 Use the composition feedback to make precise overlay placement decisions for that panel.
+
+### Step 4b: Text, Speech & Sound Effect Styling
+
+When building overlays, apply these conventions from professional comic lettering to make text feel like a real comic — not generic UI labels.
+
+**Balloon types — match the overlay `shape` to the voice:**
+
+| Voice Type | Overlay `shape` | Visual Style | When to Use |
+|-----------|----------------|-------------|-------------|
+| Normal speech | `oval` | Smooth rounded balloon, tapered tail to speaker's mouth | Standard dialogue |
+| Thought / internal | `cloud` | Cloud-like outline, trail of small bubbles to thinker | Inner monologue |
+| Shouting / power | `jagged` | Spiky burst balloon, larger bold text | Yelling, exclamations, breakthroughs |
+| Whisper / weak | `whisper` | Dashed or thin outline, smaller lighter text | Quiet speech, trailing off |
+| Narration / caption | `rectangular` | Rectangular box, no tail, panel edge | Narrator commentary, time/place labels |
+| Electronic / AI | `rectangular` | Angular box, jagged tail, monospace feel | Robot, system, radio voices |
+
+**Tail placement rules:**
+- Aim tail toward the speaker's **mouth**, not their chest or ear
+- Tail tip should stop a little before reaching the character
+- First speaker's balloon goes **higher/left**, response goes **lower/right** (reading order)
+- Never cross tails — if tails would cross, adjust balloon positions
+- Off-panel speakers: tail touches the **panel border** instead of a character
+
+**Text sizing and emphasis:**
+- **2-3 lines of text per balloon maximum** — generous margins between text and balloon edge
+- **Bold** for stressed words ("I *told* you")
+- **Larger text** for shouting; **smaller text** for muttering/background
+- Keep font choices consistent per voice type across all pages
+
+**Sound effects (SFX) — the `sfx` overlay type:**
+
+SFX are **designed objects, not just text.** They communicate what kind of sound, how strong, and where.
+
+| Sound Intensity | Visual Treatment |
+|----------------|-----------------|
+| Loud / explosive | Large size, heavy bold, jagged/irregular letterforms, angled across impact area |
+| Medium impact | Medium size, bold weight, slight angle |
+| Soft / ambient | Small size, lighter weight or grey, straight baseline, semi-transparent |
+
+**SFX word construction — use onomatopoeia that readers can "hear":**
+- Hard consonants (K, T, P, B) → sharp/percussive: KRAK, THUD, BLAM
+- S, SH, F, H → hissing/rushing: FWOOSH, SHHH, WHOOSH
+- Repeated letters → sustained sounds: VRRROOOM, WHOOOOSH
+- Short closed words → sudden: POP, KLIK, SNAP
+
+**SFX placement:**
+- Place near the **source of the sound** (fist, explosion, door, engine)
+- Use SFX to **lead the eye** along motion paths
+- Put SFX **behind characters** (keep acting visible) or **over low-detail areas** (sky, walls)
+- Never obscure faces or critical story information
+
+**SFX color:**
+- Foreground/focal: saturated colors (red, yellow, cyan) with contrasting outline
+- Background/ambient: muted tones or partial transparency
+- Energy/tech: neon or complementary colors to the effect
 
 ### Step 5: Build the Layout JSON
 

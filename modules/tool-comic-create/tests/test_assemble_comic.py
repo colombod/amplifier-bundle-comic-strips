@@ -88,7 +88,7 @@ async def test_assemble_comic_produces_html(service, tmp_path) -> None:
     assert "ArrowLeft" in html  # keyboard support
     assert "touchstart" in html  # touch swipe support
     assert "panel-grid" in html  # panel grid layout
-    assert "repeat(2" in html  # 2x1 grid has 2 columns
+    assert "grid-template-columns" in html  # grid layout applied
     assert "comic://" not in html  # no raw URIs in output
 
 

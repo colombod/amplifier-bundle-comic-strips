@@ -323,6 +323,38 @@ class ComicProjectService:
             "assets_by_type": type_counts,
         }
 
+    async def update_issue(
+        self,
+        project_id: str,
+        issue_id: str,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Update mutable fields on an existing issue manifest.
+
+        Only non-``None`` parameters are written.  *metadata* is **merged**
+        (not replaced) so callers can add keys without clobbering existing ones.
+
+        Returns the updated manifest dict.
+        """
+        _validate_id(project_id, "project_id")
+        _validate_id(issue_id, "issue_id")
+        lock = await self._get_lock(project_id)
+        async with lock:
+            manifest = await self._read_issue_manifest(project_id, issue_id)
+            if title is not None:
+                manifest["title"] = title
+            if description is not None:
+                manifest["description"] = description
+            if metadata is not None:
+                existing_meta = manifest.get("metadata", {})
+                existing_meta.update(metadata)
+                manifest["metadata"] = existing_meta
+            await self._write_issue_manifest(project_id, issue_id, manifest)
+        return manifest
+
     async def cleanup_issue(self, project_id: str, issue_id: str) -> dict[str, Any]:
         """Delete issue directory tree and remove from project manifest."""
         _validate_id(project_id, "project_id")
@@ -374,6 +406,7 @@ class ComicProjectService:
         backstory: str = "",
         motivations: str = "",
         personality: str = "",
+        metadata: dict[str, Any] | None = None,
         source_path: str | None = None,
         data: bytes | None = None,
     ) -> dict[str, Any]:
@@ -435,6 +468,7 @@ class ComicProjectService:
                 motivations=motivations,
                 personality=personality,
                 image_path=image_rel,
+                metadata=metadata or {},
             )
 
             # Write metadata first, then image.

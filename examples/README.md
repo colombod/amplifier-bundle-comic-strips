@@ -126,6 +126,74 @@ Use arrow keys, click the nav buttons, or tap the page dots to navigate.
 
 ---
 
+## comic-strips-bundle-creation-jjk.html
+
+**Style:** Jujutsu Kaisen (Gege Akutami manga)
+**Source:** comic-strip-bundle development sessions
+**Recipe version:** session-to-comic v7.4.0
+**Generated:** 2026-03-03
+
+### What it is
+
+A 19-panel, 3-page comic strip titled "Forging the Comic Engine" -- subtitled
+"Five hours that tempered an engine without producing a blade." Generated from
+the same Amplifier development sessions that built the comic-strips bundle, but
+rendered in the Jujutsu Kaisen manga aesthetic: high-contrast ink work, dynamic
+action poses, cursed-energy visual metaphors, and intense panel compositions.
+
+The story follows The Orchestrator -- a relentless engineer coding through
+midnight -- and three agents (The Self-Clone, The Explorer, The Session Analyst)
+through a five-hour battle against session crashes, interference, and forge
+failures. The Session Analyst's repeated defeats reveal the system's need for
+resilience, culminating in the Orchestrator cloning themselves to push through.
+
+### The exact prompt that created it
+
+From an Amplifier session with the `comic-strips` bundle active:
+
+```
+execute session-to-comic with session_file=combined-sessions.jsonl style=jujutsu-kaisen output_name=comic-strips-bundle-creation-jjk project_name=jjk-e2e
+```
+
+### Characters
+
+| Character | Role | Description |
+|-----------|------|-------------|
+| The Orchestrator | Protagonist | Relentless engineer commanding hundreds of operations, clones themselves when allies fall |
+| The Self-Clone | Specialist | A focused echo with surgical precision and a perfect delegation record |
+| The Explorer | Scout | Methodical mapper of uncharted territory, speaks in structured reports |
+| The Session Analyst | Specialist | Forensic investigator struck down three times, revealing the need for resilience |
+
+### What the output demonstrates
+
+| Feature | Detail |
+|---------|--------|
+| 11 pages, 19 panels | Cover + character intro + 3 story pages |
+| 4 characters | All AI agents rendered as JJK-style sorcerers |
+| JJK manga aesthetic | High-contrast ink, dynamic poses, cursed-energy motifs |
+| Non-rectangular panels | 5 clip-path panels for dynamic composition |
+| 21 speech bubbles | Positioned dialogue overlays |
+| Full-bleed cover | Portrait image with title overlaid |
+| AmpliVerse branding | Publisher badge on cover |
+| Compact file | 3.7 MB -- images already JPEG-compressed |
+| Self-contained | Single HTML file, all images base64-embedded, works offline |
+
+### Opening it
+
+```bash
+# macOS
+open examples/comic-strips-bundle-creation-jjk.html
+
+# Linux
+xdg-open examples/comic-strips-bundle-creation-jjk.html
+
+# or just drag the file into any browser
+```
+
+Use arrow keys, click the nav buttons, or tap the page dots to navigate.
+
+---
+
 ## ghibli-context-intelligence-comic.html
 
 **Style:** Studio Ghibli (Miyazaki watercolor)

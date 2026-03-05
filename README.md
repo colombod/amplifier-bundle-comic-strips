@@ -2,14 +2,6 @@
 
 Transform Amplifier sessions into AI-generated multi-page comic strips with consistent characters, dramatic storytelling, and AmpliVerse publisher branding.
 
-### Pipeline
-
-![Pipeline Flow](docs/diagrams/pipeline-flow.png)
-
-### Agent Model Routing
-
-![Agent Model Routing](docs/diagrams/agent-model-routing.png)
-
 ## Prerequisites
 
 - [Amplifier CLI](https://github.com/microsoft/amplifier) installed
@@ -303,11 +295,12 @@ Open in any browser. No server needed.
 
 ## Examples
 
-See [`examples/`](examples/) for three generated comics with full pipeline
+See [`examples/`](examples/) for four generated comics with full pipeline
 documentation:
 
 - **Sin City** noir (Frank Miller aesthetic, 10 panels)
 - **Jujutsu Kaisen** manga (Gege Akutami style, 19 panels)
+- **Watchmen** (rigid grid, muted palette, clinical linework, 14 panels)
 - **Studio Ghibli** watercolor (Miyazaki illustration, 34 panels)
 
 The README there includes the exact prompts that created each one.
@@ -322,3 +315,13 @@ Both are automatically included when the bundle is installed.
 ## Known Issues
 
 - **[Issue #90](https://github.com/microsoft-amplifier/amplifier-support/issues/90)**: Bridge tool module required until Amplifier providers support image output natively. The `tool-comic-image-gen` module is a temporary workaround that calls provider image APIs directly. When the kernel gains native image generation support, this module will be removed and the bundle will use mounted providers through the standard tool interface.
+
+## Diagrams
+
+### Pipeline Flow
+
+![Pipeline Flow](docs/diagrams/pipeline-flow.png)
+
+### Agent Model Routing
+
+![Agent Model Routing](docs/diagrams/agent-model-routing.png)

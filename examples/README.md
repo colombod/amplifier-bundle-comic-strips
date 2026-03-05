@@ -194,6 +194,66 @@ Use arrow keys, click the nav buttons, or tap the page dots to navigate.
 
 ---
 
+## e2e-watchmen-test.html
+
+**Style:** Watchmen (Alan Moore / Dave Gibbons)
+**Source:** comic-strip-bundle e2e test sessions
+**Recipe version:** session-to-comic v7.4.0
+**Generated:** 2026-03-03
+
+### What it is
+
+A 14-panel, 4-page comic strip titled "Genesis" -- subtitled "Five hours that
+tempered an engine without producing a blade." Generated as an end-to-end test
+of the comic pipeline, rendered in the Watchmen aesthetic: muted secondary color
+palette, rigid grid layouts, clinical linework, and restrained composition
+faithful to Dave Gibbons' style.
+
+The story follows five agents -- The Commander, The Orchestrator, The Shadow,
+The Oracle, and The Architect -- through the genesis of a system built under
+pressure. The Watchmen style enforces discipline on every visual choice: no
+sound effects, no exaggerated perspectives, no splashy layouts. Every panel is
+a measured, deliberate composition.
+
+### Characters
+
+| Character | Role | Description |
+|-----------|------|-------------|
+| The Commander | Protagonist | The lead who drives the operation forward |
+| The Orchestrator | Specialist | Coordinates the moving parts of the system |
+| The Shadow | Specialist | Works in the background, unseen but essential |
+| The Oracle | Specialist | Provides foresight and strategic guidance |
+| The Architect | Specialist | Designs the structural foundation |
+
+### What the output demonstrates
+
+| Feature | Detail |
+|---------|--------|
+| 13 pages, 14 panels | Cover + character intro + 4 story pages |
+| 5 characters | All AI agents rendered in Watchmen's restrained style |
+| Watchmen grid aesthetic | Muted palette, rigid layout, clinical linework |
+| 21 speech bubbles | Positioned dialogue overlays |
+| Full-bleed cover | Portrait image with title overlaid |
+| AmpliVerse branding | Publisher badge on cover |
+| Compact file | 3 MB (images JPEG-compressed) |
+| Self-contained | Single HTML file, all images base64-embedded, works offline |
+
+### Opening it
+
+```bash
+# macOS
+open examples/e2e-watchmen-test.html
+
+# Linux
+xdg-open examples/e2e-watchmen-test.html
+
+# or just drag the file into any browser
+```
+
+Use arrow keys, click the nav buttons, or tap the page dots to navigate.
+
+---
+
 ## ghibli-context-intelligence-comic.html
 
 **Style:** Studio Ghibli (Miyazaki watercolor)

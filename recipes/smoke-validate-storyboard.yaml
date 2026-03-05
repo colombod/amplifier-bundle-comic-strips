@@ -1,0 +1,67 @@
+name: "smoke-validate-storyboard"
+description: "Smoke test — validates layout ID checking through the full Amplifier runtime (recipe → agent → tool dispatch)"
+version: "1.0.0"
+author: "smoke-test"
+tags: ["smoke-test", "layout-validation"]
+
+# Synthetic storyboard data with a mix of valid and invalid layout IDs.
+# Expected result: validation FAILED, with naruto_wide_3 and dragon_blast_9
+# flagged as invalid and suggestions pointing to valid 3p-* and primary layouts.
+context:
+  test_page_layouts_valid:
+    - {page: 1, layout: "3p-top-wide", panel_count: 3}
+    - {page: 2, layout: "4p-grid", panel_count: 4}
+    - {page: 3, layout: "2p-split", panel_count: 2}
+  test_page_layouts_invalid:
+    - {page: 1, layout: "3p-top-wide", panel_count: 3}
+    - {page: 2, layout: "naruto_wide_3", panel_count: 3}
+    - {page: 3, layout: "cinematic_widescreen", panel_count: 6}
+    - {page: 4, layout: "dragon_blast_9", panel_count: 4}
+    - {page: 5, layout: "2p-split", panel_count: 2}
+
+stages:
+  - name: "validate-only"
+    steps:
+      # Step 1: list_layouts — verify the tool action is reachable
+      - id: "list-layouts"
+        agent: "comic-strips:style-curator"
+        prompt: |
+          YOUR ONLY JOB: Call comic_create(action='list_layouts') and return the result. Do NOTHING else.
+          Return ONLY the JSON from the tool response.
+        output: "layout_catalog"
+        parse_json: true
+        timeout: 120
+
+      # Step 2: validate with ALL VALID layout IDs — expect PASSED
+      - id: "validate-valid"
+        agent: "comic-strips:style-curator"
+        prompt: |
+          YOUR ONLY JOB: Validate these page layouts. Do NOTHING else.
+
+          Page layouts:
+          {{test_page_layouts_valid}}
+
+          Call: comic_create(action='validate_storyboard', page_layouts=<the page_layouts array above>)
+
+          If validation PASSED, return ONLY: {"validation": "PASSED", "page_count": <count>}
+          If validation FAILED, return: {"validation": "FAILED", "invalid_layout_ids": <from tool>, "suggestions": <from tool>}
+        output: "valid_result"
+        parse_json: true
+        timeout: 120
+
+      # Step 3: validate with INVALID layout IDs — expect FAILED
+      - id: "validate-invalid"
+        agent: "comic-strips:style-curator"
+        prompt: |
+          YOUR ONLY JOB: Validate these page layouts. Do NOTHING else.
+
+          Page layouts:
+          {{test_page_layouts_invalid}}
+
+          Call: comic_create(action='validate_storyboard', page_layouts=<the page_layouts array above>)
+
+          If validation PASSED, return ONLY: {"validation": "PASSED", "page_count": <count>}
+          If validation FAILED, return: {"validation": "FAILED", "invalid_layout_ids": <from tool>, "suggestions": <from tool>}
+        output: "invalid_result"
+        parse_json: true
+        timeout: 120

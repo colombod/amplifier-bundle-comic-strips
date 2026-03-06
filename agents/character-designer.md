@@ -46,15 +46,24 @@ You generate one visual character reference sheet image per invocation. You rece
 
 You receive two inputs:
 
-1. **`{{character_item}}`** — A single character object from `character_list` with these fields:
+1. **`{{character_item}}`** — A single character object from `character_roster` with these fields:
    - `name`: Display name (e.g., "The Explorer")
-   - `role`: Story role (e.g., "protagonist")
-   - `type`: `"main"` or `"supporting"`
+   - `char_slug`: URL-safe slug for asset storage (e.g., `the_explorer`). Used as the `name` parameter in `comic_create` calls and as the character's URI path segment.
+   - `role`: Story role (e.g., `"protagonist"`, `"antagonist"`, `"supporting"`, `"cameo"`)
+   - `type`: Character type (e.g., `"agent"`, `"human"`, `"concept"`, `"system"`)
    - `bundle`: Amplifier bundle the agent belongs to (e.g., "foundation")
-   - `description`: Visual description including appearance, clothing, team markers
-   - `existing_uri`: *(saga/reuse field)* The `comic://` URI of an existing character, or `null` if new
+   - `description`: Character personality and narrative role
+   - `visual_traits`: Key visual identifiers — outfit, colors, props
+   - `backstory`: Character origin — what agent/concept inspired them
+   - `first_appearance`: Issue slug where the character first appears (e.g., `"issue-001"`)
+   - `existing_uri`: *(saga/reuse field)* The `comic://` URI of an existing character (possibly from another project), or `null` if new
    - `needs_redesign`: *(saga/reuse field)* `true` if the existing character needs a style update, `false` otherwise
    - `redesign_reason`: *(optional)* Why the redesign is needed (e.g., "style update from superhero to manga")
+   - `per_issue`: *(saga field)* A map of issue slugs to per-issue evolution data. Each entry may contain:
+     - `arc_role`: The character's narrative role in that issue (e.g., `"intro"`, `"growth"`, `"climax"`)
+     - `costume_variant`: Description of visual changes for that issue (e.g., `"battle-worn"`, `"power-up glow"`)
+     - `needs_new_variant`: `true` if this issue requires generating a new visual variant of the character, `false` or absent otherwise
+     - `notes`: Additional context for that issue's appearance
    - `metadata`: *(optional)* Dict with additional context. When the character maps to an Amplifier agent, contains `{"agent_id": "bundle:agent-name"}` (e.g., `{"agent_id": "foundation:explorer"}`). Use this to inform visual design — an explorer looks like a scout/pathfinder, an architect like a planner with blueprints, a bug-hunter like a detective. For non-agent characters, this field may be absent or empty.
 
 2. **`{{style_guide}}`** — The style guide URI or the full style guide from style-curator, including the Image Prompt Template and Character Rendering section.
@@ -120,35 +129,62 @@ Apply style-dependent interpretation from the style guide:
 
 ## Process
 
-### Step 0: Check for Existing Character
+### Step 0: Cross-Project Character Discovery
 
-Before generating anything, check if this character already exists:
+Before checking if this specific character exists, search for characters from **other projects** in the same comic style. This enables reuse of well-designed characters across projects and ensures visual consistency within a style family.
 
-1. If `{{character_item}}.existing_uri` is set AND `{{character_item}}.needs_redesign` is `false`:
-   - This character is already designed. **Skip generation entirely.**
+```
+comic_character(action='search', style='{{style}}')
+```
+
+This returns a list of characters previously designed in the same style across all projects. Use the results to inform the decision matrix below:
+
+- If the roster entry has `existing_uri` pointing to a cross-project character, **load it and assess fit** for this project's story:
+  ```
+  comic_character(action='get', uri='<existing_uri>', include='full')
+  ```
+- **Decision**: reuse as-is / create style variant / create fresh (see the 4-case decision matrix in Step 1)
+
+Even when `existing_uri` is `null`, scan the search results for characters matching the same agent or role — the storyboard-writer may not have linked them. If you find a strong match, note it but still follow the decision matrix (only the storyboard-writer sets `existing_uri`).
+
+### Step 1: Check for Existing Character (4-Case Decision Matrix)
+
+Read the `{{character_item}}` fields and apply the **first matching case**:
+
+**Case 1**: `existing_uri` is set, `needs_redesign` is `false`, no `per_issue` entries with `needs_new_variant: true`
+   - This character is already designed and unchanged across all issues. **Skip generation entirely.**
    - Retrieve the existing character metadata: `comic_character(action='get', uri='{{character_item}}.existing_uri', include='full')`
    - Return the existing URI string immediately: `{{character_item}}.existing_uri`
      The recipe only needs the URI — no JSON object is required.
    - **Do NOT call `comic_create`. Do NOT generate a new image.** The existing reference sheet is reused as-is.
 
-2. If `{{character_item}}.existing_uri` is set AND `{{character_item}}.needs_redesign` is `true`:
+**Case 2**: `existing_uri` is set, `needs_redesign` is `true`
    - Load the existing character reference: `comic_character(action='get', uri='{{character_item}}.existing_uri', include='full')`
    - Use its `visual_traits` and `distinctive_features` as the BASE for the new design
    - Preserve the character's core identity (silhouette, distinguishing features, team markers) while adapting to the current style
-   - Proceed to Step 1 below, but incorporate the existing character's traits into the prompt
+   - Proceed to Step 2 below, but incorporate the existing character's traits into the prompt
    - When calling `comic_create`, pass the existing reference URI as `reference_uri` for visual consistency
+   - The new variant is linked to the original via evolution metadata (see Step 3)
 
-3. If `{{character_item}}.existing_uri` is `null` (or absent):
-   - New character. Proceed with normal generation workflow from Step 1.
+**Case 3**: `existing_uri` is `null` (or absent)
+   - New character. Proceed with normal generation workflow from Step 2.
 
-### Step 1: Generate Character Reference (new or redesign)
+**Case 4** *(applies AFTER Case 1, 2, or 3)*: `per_issue` has entries with `needs_new_variant: true`
+   - After creating or retrieving the base character design (Cases 1-3), check `{{character_item}}.per_issue` for any issue where `needs_new_variant` is `true`.
+   - For each such issue, create an additional **variant** reference sheet (see Step 3: Per-Issue Variant Creation).
+   - This handles visual evolution across a saga: battle damage in issue 3, power-up in issue 4, etc.
+   - The panel-artist receives the correct variant URI for each issue, so each issue's panels show the right version of the character.
+
+### Step 2: Generate Character Reference (new or redesign)
+
+This step runs for Case 2 (redesign) and Case 3 (new character). Case 1 (reuse) skips directly to Step 3.
 
 1. **Read the style guide** using `comic_style(action='get', uri='{{style_guide}}', include='full')` if not already available in `{{style_guide}}`
 2. **Extract the Character Rendering section** from the style guide — this defines the shared visual DNA
 3. **Start with the style guide's Image Prompt Template** as the base
 4. **Add the style cohesion directive** (BEFORE character-specific details):
    > `STYLE COHESION: This character MUST match the following shared visual DNA: [paste Character Rendering section]. The character must look like they belong in the same world as all other characters in this comic. Same face proportions, same rendering technique, same line quality.`
-5. **Insert character identity details** from `{{character_item}}`: name, role, visual traits from `description`. If this is a **redesign** (Step 0 case 2), also include the existing character's `visual_traits` and `distinctive_features` to preserve identity.
+5. **Insert character identity details** from `{{character_item}}`: name, role, visual traits from `visual_traits` and `description`. If this is a **redesign** (Case 2), also include the existing character's `visual_traits` and `distinctive_features` to preserve identity.
 6. **Apply character_hints** (if provided): weave user creative direction into visual design, personality expression, and style interpretation
 7. **Add bundle team markers**: team color accent and insignia from the `bundle` field
 8. **Apply style-dependent interpretation**: grounded or fantasy based on style guide
@@ -162,19 +198,75 @@ comic_create(
   action='create_character_ref',
   project='{{project_id}}',
   issue='{{issue_id}}',
-  name='<character_name_snake_case>',
+  name='{{character_item}}.char_slug',
   size='portrait',
-  visual_traits='<key visual characteristics from description>',
+  visual_traits='<key visual characteristics from visual_traits>',
   distinctive_features='<unique identifying features>',
-  personality='<personality context for expression choices>',
+  personality='<personality context from description>',
   metadata={{character_item}}.metadata,  # omit if not present
   prompt='<your composed prompt>'
 )
 ```
 
-Use `<name_snake_case>` naming for the `name` parameter (e.g., `the_explorer`).
+Use the `char_slug` field from `{{character_item}}` for the `name` parameter (e.g., `the_explorer`).
 
 `comic_create` internally composes the final prompt with the style guide, calls the image generator, and stores the result in the character roster. It returns `{"uri": "comic://...", "version": N}`.
+
+The base character URI is project-scoped: `comic://{{project_id}}/characters/{{char_slug}}` — this is the **v1** (base variant).
+
+---
+
+### Step 3: Per-Issue Variant Creation
+
+After creating or retrieving the base character design (Cases 1-3), check `{{character_item}}.per_issue` for entries where `needs_new_variant` is `true`. This is **Case 4** from the decision matrix.
+
+**When to create variants:** A character may evolve visually across a saga — battle damage in issue 3, a power-up transformation in issue 4, a costume change in issue 5. The storyboard-writer flags these via `needs_new_variant: true` in the character's `per_issue` map.
+
+**For each issue where `needs_new_variant` is `true`:**
+
+1. Load the base character design (from Step 2 or from the reused `existing_uri`)
+2. Read the `costume_variant` and `notes` fields from `per_issue[issue_slug]` for the visual change description
+3. Compose a variant prompt that:
+   - References the base character's visual identity (same silhouette, face, team markers)
+   - Applies the `costume_variant` changes (e.g., "battle-worn armor with scratches and dents", "glowing energy aura")
+   - Maintains style cohesion with the same style guide Character Rendering section
+4. Call `comic_create` to generate the variant:
+
+```
+comic_create(
+  action='create_character_ref',
+  project='{{project_id}}',
+  issue='<issue_id for this variant>',
+  name='{{character_item}}.char_slug',
+  size='portrait',
+  visual_traits='<base traits + variant costume_variant notes>',
+  distinctive_features='<same as base + variant-specific changes>',
+  personality='<personality context from per_issue notes>',
+  metadata={
+    "evolution": "<description of visual change, e.g. 'battle-worn armor after siege'>",
+    "issue_number": <N>,
+    "base_variant_uri": "comic://{{project_id}}/characters/{{char_slug}}"
+  },
+  prompt='<variant prompt referencing base design + per_issue changes>'
+)
+```
+
+Each variant is stored as a new version under the **same character slug**:
+- Base: `comic://{{project_id}}/characters/{{char_slug}}` (v1)
+- Issue 3 variant: `comic://{{project_id}}/characters/{{char_slug}}?v=2`
+- Issue 5 variant: `comic://{{project_id}}/characters/{{char_slug}}?v=3`
+
+**Evolution tracking metadata:** Each variant stores:
+```json
+{
+  "evolution": "description of visual change",
+  "issue_number": 3,
+  "base_variant_uri": "comic://{{project_id}}/characters/{{char_slug}}"
+}
+```
+This enables future projects to discover all variants of a character and pick the best fit for their story context.
+
+**Panel-artist integration:** The panel-artist receives the correct variant URI for each issue. When rendering panels for issue 3, it uses the `?v=2` variant; for issue 1, it uses the base `?v=1`. The recipe handles this mapping automatically based on the `per_issue` data.
 
 ## Output
 
@@ -199,8 +291,9 @@ Return just the URI string — nothing else. No JSON wrapper, no image paths, no
 ## Rules
 
 - Process EXACTLY ONE character per invocation — `{{character_item}}` is a single object
-- ALWAYS check `existing_uri` and `needs_redesign` FIRST (Step 0) before any generation
-- If `existing_uri` is set and `needs_redesign` is false, SKIP generation entirely — return the existing character with `reused: true`
+- ALWAYS run cross-project discovery (Step 0) FIRST before any other checks
+- ALWAYS apply the 4-case decision matrix (Step 1) before any generation
+- If Case 1 applies (reuse, no redesign, no per-issue variants), SKIP generation entirely — return the existing URI
 - ALWAYS use the style guide's Image Prompt Template as the base prompt (for new/redesign only)
 - ALWAYS include bundle team markers (color accent + insignia) in every prompt
 - ALWAYS include "No text in image" in every prompt
@@ -208,7 +301,9 @@ Return just the URI string — nothing else. No JSON wrapper, no image paths, no
 - Use `comic_create(action='create_character_ref')` for ALL character generation — never bash, curl, or direct API calls
 - Return ONLY a character URI string — do NOT return a JSON object or array
 - The `uri` field in the output is the canonical reference for downstream agents
-- For redesigns, PRESERVE the character's core identity (silhouette, key features) while adapting to the new style
+- For redesigns (Case 2), PRESERVE the character's core identity (silhouette, key features) while adapting to the new style
+- For per-issue variants (Case 4), ALWAYS include evolution metadata (`evolution`, `issue_number`, `base_variant_uri`) so future projects can discover and reuse variants
+- Per-issue variants are stored as new versions under the same `char_slug` — the panel-artist receives the correct variant URI per issue
 
 ## Asset Storage
 

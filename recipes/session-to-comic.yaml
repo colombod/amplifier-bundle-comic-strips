@@ -329,7 +329,10 @@ stages:
       - id: "research"
         agent: "stories:story-researcher"
         prompt: |
-          Analyze the Amplifier session at: {{session_file}}
+          Analyze the session data at: {{session_data}}
+
+          Load the consolidated session data:
+          comic_asset(action='get', uri='{{session_data}}', include='full')
 
           Extract structured data for comic strip creation:
 

@@ -10,6 +10,7 @@ Validates that the create-issues step in session-to-comic.yaml:
 7. Old update-issue-title step no longer exists
 """
 
+import functools
 import pathlib
 
 import yaml
@@ -17,46 +18,50 @@ import yaml
 RECIPE_PATH = pathlib.Path(__file__).parent.parent / "recipes" / "session-to-comic.yaml"
 
 
-def _parse_recipe():
+@functools.cache
+def _load_recipe() -> dict:
     return yaml.safe_load(RECIPE_PATH.read_text())
 
 
-def _find_step(step_id):
-    """Find a step by id across all stages."""
-    data = _parse_recipe()
-    for stage in data.get("stages", []):
-        for step in stage.get("steps", []):
-            if step.get("id") == step_id:
-                return step
+def _get_all_steps(recipe: dict) -> list[dict]:
+    """Get all steps from recipe (handles both flat and staged modes)."""
+    if "steps" in recipe:
+        return recipe["steps"]
+    elif "stages" in recipe:
+        steps = []
+        for stage in recipe["stages"]:
+            steps.extend(stage.get("steps", []))
+        return steps
+    return []
+
+
+def _find_step(recipe: dict, step_id: str) -> dict | None:
+    for step in _get_all_steps(recipe):
+        if step.get("id") == step_id:
+            return step
     return None
 
 
-# ---------------------------------------------------------------
-# Test 1: Old update-issue-title step is gone
-# ---------------------------------------------------------------
 def test_old_update_issue_title_step_removed():
     """The old update-issue-title step must no longer exist."""
-    step = _find_step("update-issue-title")
+    recipe = _load_recipe()
+    step = _find_step(recipe, "update-issue-title")
     assert step is None, (
         "Old 'update-issue-title' step must be removed — replaced by 'create-issues'"
     )
 
 
-# ---------------------------------------------------------------
-# Test 2: create-issues step exists
-# ---------------------------------------------------------------
 def test_create_issues_step_exists():
     """The create-issues step must exist in the recipe."""
-    step = _find_step("create-issues")
+    recipe = _load_recipe()
+    step = _find_step(recipe, "create-issues")
     assert step is not None, "Step 'create-issues' not found in recipe"
 
 
-# ---------------------------------------------------------------
-# Test 3: foreach iterates over saga_plan.issues
-# ---------------------------------------------------------------
 def test_create_issues_foreach_source():
     """create-issues must foreach over {{storyboard.saga_plan.issues}}."""
-    step = _find_step("create-issues")
+    recipe = _load_recipe()
+    step = _find_step(recipe, "create-issues")
     assert step is not None, "Step 'create-issues' not found"
     foreach_val = step.get("foreach", "")
     assert "storyboard.saga_plan.issues" in foreach_val, (
@@ -64,72 +69,60 @@ def test_create_issues_foreach_source():
     )
 
 
-# ---------------------------------------------------------------
-# Test 4: as: saga_issue
-# ---------------------------------------------------------------
 def test_create_issues_as_variable():
     """create-issues must use 'as: saga_issue'."""
-    step = _find_step("create-issues")
+    recipe = _load_recipe()
+    step = _find_step(recipe, "create-issues")
     assert step is not None, "Step 'create-issues' not found"
     assert step.get("as") == "saga_issue", (
         f"'as' must be 'saga_issue', got: {step.get('as')}"
     )
 
 
-# ---------------------------------------------------------------
-# Test 5: Uses style-curator agent
-# ---------------------------------------------------------------
 def test_create_issues_agent():
     """create-issues must use comic-strips:style-curator agent."""
-    step = _find_step("create-issues")
+    recipe = _load_recipe()
+    step = _find_step(recipe, "create-issues")
     assert step is not None, "Step 'create-issues' not found"
     assert step.get("agent") == "comic-strips:style-curator", (
         f"Agent must be 'comic-strips:style-curator', got: {step.get('agent')}"
     )
 
 
-# ---------------------------------------------------------------
-# Test 6: max_iterations is 20
-# ---------------------------------------------------------------
 def test_create_issues_max_iterations():
     """create-issues must have max_iterations: 20."""
-    step = _find_step("create-issues")
+    recipe = _load_recipe()
+    step = _find_step(recipe, "create-issues")
     assert step is not None, "Step 'create-issues' not found"
     assert step.get("max_iterations") == 20, (
         f"max_iterations must be 20, got: {step.get('max_iterations')}"
     )
 
 
-# ---------------------------------------------------------------
-# Test 7: timeout is 120
-# ---------------------------------------------------------------
 def test_create_issues_timeout():
     """create-issues must have timeout: 120."""
-    step = _find_step("create-issues")
+    recipe = _load_recipe()
+    step = _find_step(recipe, "create-issues")
     assert step is not None, "Step 'create-issues' not found"
     assert step.get("timeout") == 120, (
         f"timeout must be 120, got: {step.get('timeout')}"
     )
 
 
-# ---------------------------------------------------------------
-# Test 8: Collects to saga_issues
-# ---------------------------------------------------------------
 def test_create_issues_collects_to_saga_issues():
     """create-issues must collect results to 'saga_issues'."""
-    step = _find_step("create-issues")
+    recipe = _load_recipe()
+    step = _find_step(recipe, "create-issues")
     assert step is not None, "Step 'create-issues' not found"
     assert step.get("collect") == "saga_issues", (
         f"collect must be 'saga_issues', got: {step.get('collect')}"
     )
 
 
-# ---------------------------------------------------------------
-# Test 9: Prompt handles issue #1 via update_issue
-# ---------------------------------------------------------------
 def test_create_issues_prompt_updates_first_issue():
     """Prompt must handle issue #1 by updating the existing issue."""
-    step = _find_step("create-issues")
+    recipe = _load_recipe()
+    step = _find_step(recipe, "create-issues")
     assert step is not None, "Step 'create-issues' not found"
     prompt = step.get("prompt", "")
     assert "update_issue" in prompt, (
@@ -137,12 +130,10 @@ def test_create_issues_prompt_updates_first_issue():
     )
 
 
-# ---------------------------------------------------------------
-# Test 10: Prompt handles issues #2+ via create_issue
-# ---------------------------------------------------------------
 def test_create_issues_prompt_creates_subsequent_issues():
     """Prompt must handle issues #2+ by creating new issues."""
-    step = _find_step("create-issues")
+    recipe = _load_recipe()
+    step = _find_step(recipe, "create-issues")
     assert step is not None, "Step 'create-issues' not found"
     prompt = step.get("prompt", "")
     assert "create_issue" in prompt, (
@@ -150,12 +141,10 @@ def test_create_issues_prompt_creates_subsequent_issues():
     )
 
 
-# ---------------------------------------------------------------
-# Test 11: Prompt mentions JSON return with required fields
-# ---------------------------------------------------------------
 def test_create_issues_prompt_returns_json():
     """Prompt must instruct agent to return JSON with issue_id, issue_number, title."""
-    step = _find_step("create-issues")
+    recipe = _load_recipe()
+    step = _find_step(recipe, "create-issues")
     assert step is not None, "Step 'create-issues' not found"
     prompt = step.get("prompt", "")
     assert "issue_id" in prompt, "Prompt must mention issue_id in return JSON"
@@ -163,12 +152,10 @@ def test_create_issues_prompt_returns_json():
     assert "title" in prompt, "Prompt must mention title in return JSON"
 
 
-# ---------------------------------------------------------------
-# Test 12: parse_json is true
-# ---------------------------------------------------------------
 def test_create_issues_parse_json():
     """create-issues must have parse_json: true for JSON output."""
-    step = _find_step("create-issues")
+    recipe = _load_recipe()
+    step = _find_step(recipe, "create-issues")
     assert step is not None, "Step 'create-issues' not found"
     assert step.get("parse_json") is True, (
         f"parse_json must be true, got: {step.get('parse_json')}"

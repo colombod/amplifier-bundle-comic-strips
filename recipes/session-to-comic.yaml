@@ -1,12 +1,28 @@
 name: "session-to-comic"
 description: "Transform an Amplifier session into an illustrated comic strip with quality review, character consistency, dramatized storytelling, and AmpliVerse publisher branding"
-version: "7.6.0"
+version: "7.7.0"
 author: "amplifier-comic-strips"
 tags: ["comic", "visual-storytelling", "session-analysis", "uri-protocol"]
 
 # =============================================================================
 # CHANGELOG
 # =============================================================================
+#
+# v7.7.0 (2026-03-06):
+#   - FEAT: Add flexible source input. New context variable `source` accepts
+#     project names, session IDs, file paths, descriptive phrases, or any
+#     combination. The stories:story-researcher agent discovers and consolidates
+#     session data using its native tools (git/gh CLI, grep, delegation).
+#   - FEAT: Add discover-sessions step (Step 0a) between init-project and
+#     research. Resolves {{source}} to consolidated session data stored as a
+#     comic asset. Returns a comic:// URI consumed by the research step.
+#   - CHANGE: research step now consumes {{session_data}} URI from the discover
+#     step instead of reading {{session_file}} directly. Research loads
+#     pre-gathered data via comic_asset(action='get').
+#   - CHANGE: session_file context variable deprecated. Still accepted as a
+#     backward-compatible alias — if source is empty and session_file is
+#     provided, the discover step uses session_file instead.
+#   - CHANGE: init-project metadata now includes source alongside session_file.
 #
 # v7.6.0 (2026-03-05):
 #   - FEAT: Add validate-storyboard recipe step (deterministic layout ID check).

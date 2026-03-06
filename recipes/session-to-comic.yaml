@@ -606,21 +606,45 @@ stages:
         timeout: 120
 
       # ============================================
-      # STEP 3b: UPDATE ISSUE TITLE
-      # Propagate the storyboard's narrative title back to issue.json
-      # so it's persisted and available for future reuse/browsing.
+      # STEP 3b: CREATE/UPDATE SAGA ISSUES
+      # Iterate over the saga plan's issues array. Issue #1 updates the
+      # placeholder issue created during init; issues #2+ create new ones.
+      # Each iteration returns {issue_id, issue_number, title} collected
+      # into saga_issues for downstream per-issue processing.
       # ============================================
-      - id: "update-issue-title"
+      - id: "create-issues"
+        foreach: "{{storyboard.saga_plan.issues}}"
+        as: saga_issue
         agent: "comic-strips:style-curator"
+        max_iterations: 20
         prompt: |
-          YOUR ONLY JOB: Update the issue title to match the storyboard title. Do NOTHING else.
+          YOUR ONLY JOB: Create or update a single saga issue in the project. Do NOTHING else.
 
-          comic_project(action='update_issue', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', title='{{storyboard.title}}')
+          Current saga issue to process:
+          {{saga_issue}}
 
-          Return ONLY: {"updated": true, "title": "{{storyboard.title}}"}
-        output: "issue_title_update"
+          Saga metadata:
+          - Saga title: {{storyboard.title}}
+          - Style: {{style}}
+
+          RULES — read the issue_number from the saga_issue object above, then:
+
+          IF issue_number == 1 (first issue):
+            This issue was already created during project init. UPDATE it with saga metadata:
+            comic_project(action='update_issue', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', title=saga_issue.title, metadata={"saga_issue_number": 1, "saga_title": "{{storyboard.title}}", "style": "{{style}}", "created_by": "session-to-comic recipe v8.0.0"})
+
+            Return ONLY: {"issue_id": "{{project_init.issue_id}}", "issue_number": 1, "title": "<title from saga_issue>"}
+
+          IF issue_number >= 2 (subsequent issues):
+            Create a NEW issue for this saga entry:
+            comic_project(action='create_issue', project='{{project_init.project_id}}', title=saga_issue.title, metadata={"saga_issue_number": saga_issue.issue_number, "saga_title": "{{storyboard.title}}", "style": "{{style}}", "created_by": "session-to-comic recipe v8.0.0"})
+
+            Return ONLY: {"issue_id": "<issue_id from tool response>", "issue_number": <saga_issue.issue_number>, "title": "<title from saga_issue>"}
+
+          Return valid JSON with exactly these three fields: issue_id, issue_number, title.
+        collect: "saga_issues"
         parse_json: true
-        timeout: 60
+        timeout: 120
 
     # ------------------------------------------------------------------
     # APPROVAL GATE: Storyboard Review

@@ -579,25 +579,28 @@ stages:
         timeout: 1800  # saga storyboard: delegates to 2 stories agents + saga JSON production (~12-20 min)
 
       # ============================================
-      # STEP 3a: VALIDATE STORYBOARD LAYOUTS
+      # STEP 3a: VALIDATE STORYBOARD LAYOUTS (ALL SAGA ISSUES)
       # Deterministic check — catches invalid layout IDs BEFORE the
       # approval gate and BEFORE expensive image generation starts.
-      # If the storyboard-writer invented layout names that don't
-      # exist in the renderer's template dictionary, this step fails
-      # with suggestions for valid alternatives.
+      # Validates layouts across ALL issues in the saga plan, not just
+      # a single issue. Combines page_layouts from every issue and
+      # checks them in one validate_storyboard call.
       # ============================================
       - id: "validate-storyboard"
         agent: "comic-strips:style-curator"
         prompt: |
-          YOUR ONLY JOB: Validate the storyboard page layouts. Do NOTHING else.
+          YOUR ONLY JOB: Validate the storyboard page layouts across ALL saga issues. Do NOTHING else.
 
-          Page layouts from the storyboard:
-          {{storyboard.page_layouts}}
+          Saga issues from the storyboard:
+          {{storyboard.saga_plan.issues}}
 
-          Call: comic_create(action='validate_storyboard', page_layouts=<the page_layouts array above>)
+          For each issue in the list above, extract its page_layouts array.
+          Combine ALL page_layouts from ALL issues into a single flat array.
 
-          If validation PASSED, return ONLY: {"validation": "PASSED", "page_count": <count>}
-          If validation FAILED, return: {"validation": "FAILED", "invalid_layout_ids": <from tool>, "suggestions": <from tool>}
+          Call: comic_create(action='validate_storyboard', page_layouts=<combined page_layouts from all issues>)
+
+          If validation PASSED, return ONLY: {"validation": "PASSED", "total_issues": <number of issues>, "total_pages": <sum of all pages across all issues>}
+          If validation FAILED, return: {"validation": "FAILED", "invalid_layout_ids": <from tool>, "suggestions": <from tool>, "failed_issues": <list of issue numbers with invalid layouts>}
         output: "storyboard_validation"
         parse_json: true
         timeout: 120

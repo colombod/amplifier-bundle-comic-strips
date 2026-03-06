@@ -70,7 +70,7 @@ def _stage_index_of_step(recipe: dict, step_id: str) -> int:
 
 
 # ============================================
-# AC1: Recipe version is 5.0.0 or later
+# Version gate
 # ============================================
 
 
@@ -83,7 +83,7 @@ def test_version_is_5_or_later():
 
 
 # ============================================
-# AC2: generate-panels and generate-cover run in parallel
+# Sub-recipe delegation (panels + cover moved to issue-art.yaml in v8)
 # ============================================
 
 
@@ -109,7 +109,7 @@ def test_parallel_art_generation():
 
 
 # ============================================
-# AC3: Storyboard approval gate
+# Storyboard approval gate
 # ============================================
 
 
@@ -168,7 +168,7 @@ def test_character_foreach_is_after_storyboard_approval():
 
 
 # ============================================
-# AC4: Model requirements in step context
+# Step agent and sub-recipe placement
 # ============================================
 
 
@@ -216,7 +216,7 @@ def test_generate_cover_requirements():
 
 
 # ============================================
-# AC6: Composition depends on both parallel steps
+# Composition in sub-recipe (fork-join moved to issue-art.yaml in v8)
 # ============================================
 
 
@@ -239,7 +239,7 @@ def test_composition_depends_on_both_parallel_steps():
 
 
 # ============================================
-# AC7: Storyboard step prompt references stories delegation
+# Storyboard step prompt references stories delegation
 # ============================================
 
 
@@ -255,12 +255,12 @@ def test_storyboard_step_mentions_delegation():
 
 
 # ============================================
-# V5: Foreach structure validation
+# Foreach structure validation
 # ============================================
 
 
-class TestRecipeV5ForeachStructure:
-    """Validate the v5 foreach loop structure introduced in session-to-comic v5.0.0."""
+class TestForeachStructure:
+    """Validate foreach loop structure for character design and per-issue art generation."""
 
     @pytest.fixture
     def recipe(self) -> dict:
@@ -335,12 +335,12 @@ class TestRecipeV5ForeachStructure:
 
 
 # ============================================
-# V5: Runtime-correctness properties (C1 + C2)
+# Runtime-correctness properties
 # ============================================
 
 
-class TestRecipeV5RuntimeCorrectness:
-    """Validate runtime-correctness properties added in C1 and C2.
+class TestRuntimeCorrectness:
+    """Validate runtime-correctness properties.
 
     These properties prevent silent failures:
     - parse_json: true enables dot-notation access to storyboard fields

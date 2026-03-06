@@ -273,7 +273,7 @@ stages:
         prompt: |
           YOUR ONLY JOB: Call comic_project to create an issue, then return the result as JSON. Do NOTHING else.
 
-          comic_project(action='create_issue', project='{{project_name}}', title='{{issue_title}}', metadata={"session_file": "{{session_file}}", "style": "{{style}}", "created_by": "session-to-comic recipe v7.4.0", "saga_issue": "{{saga_issue}}", "previous_issue_id": "{{previous_issue_id}}"})
+          comic_project(action='create_issue', project='{{project_name}}', title='{{issue_title}}', metadata={"source": "{{source}}", "session_file": "{{session_file}}", "style": "{{style}}", "created_by": "session-to-comic recipe v7.7.0", "saga_issue": "{{saga_issue}}", "previous_issue_id": "{{previous_issue_id}}"})
 
           If project_name is empty, use "comic-project". If issue_title is empty, use "Comic Strip".
 

@@ -236,11 +236,13 @@ tags: ["comic", "visual-storytelling", "session-analysis", "uri-protocol"]
 #
 
 # Usage:
-#   amplifier run "execute session-to-comic with session_file=~/.amplifier/sessions/2026-02-27/events.jsonl style=superhero"
-#   amplifier run "execute session-to-comic with session_file=./my-session.jsonl style=manga output_name=my-comic"
+#   amplifier run "execute session-to-comic with source=comic-strip-bundle style=superhero"
+#   amplifier run "execute session-to-comic with source=./my-session.jsonl style=manga output_name=my-comic"
+#   amplifier run "execute session-to-comic with session_file=./events.jsonl style=naruto"  # (deprecated, still works)
 
 context:
-  session_file: ""        # Required: path to events.jsonl session file or session ID
+  source: ""              # Required: project name, session ID(s), file path(s), or descriptive phrase
+  session_file: ""        # Deprecated: backward-compatible alias for source (single file path)
   style: "superhero"      # 28 styles: manga, superhero, indie, newspaper, ligne-claire, retro-americana, sin-city, watchmen, berserk, cuphead, ghibli, attack-on-titan, spider-man, x-men, solo-leveling, gundam, transformers, tatsunoko, witchblade, dylan-dog, tex-willer, disney-classic, bendy, hellraiser, naruto, jujutsu-kaisen, one-piece, go-nagai — or any custom description
   output_name: ""         # Optional: custom output filename (defaults to comic-{timestamp})
   project_name: ""        # Optional: project name (defaults to "comic-project")

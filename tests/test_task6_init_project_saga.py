@@ -20,10 +20,6 @@ def _load_recipe() -> dict:
     return yaml.safe_load(RECIPE_PATH.read_text())
 
 
-def _read_recipe_text() -> str:
-    return RECIPE_PATH.read_text()
-
-
 def _get_all_steps(recipe: dict) -> list[dict]:
     """Get all steps from recipe (handles both flat and staged modes)."""
     if "steps" in recipe:

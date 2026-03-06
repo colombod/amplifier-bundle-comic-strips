@@ -65,10 +65,9 @@ def test_edge_chain_includes_discover_sessions():
     # Old chain should not exist
     # Check that "init -> research" without discover_sessions isn't present
     # (but it IS present as part of the longer chain, so we check for exact old line)
-    assert (
-        "init -> research -> style_curation" not in content
-        or "init -> discover_sessions -> research -> style_curation" in content
-    ), "Old direct init->research chain should be replaced"
+    assert "init -> research -> style_curation" not in content, (
+        "Old direct init->research chain should be replaced"
+    )
 
 
 # --- Step 5: discover_data annotation ---

@@ -268,6 +268,7 @@ context:
   max_characters: ""      # Optional: max characters to design (default 5-6). User can steer e.g. "3" or "8".
   max_pages: ""           # Optional: max story pages per issue (default 5). Increase for epic arcs.
   panels_per_page: ""     # Optional: panels per page range (default "3-6"). Use "2-4" for cinematic, "4-6" for dense.
+  max_issues: "5"         # Optional: max issues in a saga (default 5). Controls how many issues the saga planner creates.
   story_hints: ""         # Optional: creative direction for the narrative (e.g. "emphasize the human feedback loop", "focus on the collaboration between agents", "make it feel like an underdog victory story")
   character_hints: ""     # Optional: creative direction for character design (e.g. "make the protagonist look battle-worn", "give characters expressive body language", "emphasize team uniforms")
   content_policy_notes: "" # Accumulated moderation lessons — populated at runtime when image generation hits content policy blocks. Visible to all art-generation agents so they preemptively avoid blocked patterns.

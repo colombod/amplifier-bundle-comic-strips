@@ -106,3 +106,42 @@ def test_context_has_both_source_and_session_file():
                 found_session_file = True
     assert found_source, "'source:' not found in context block"
     assert found_session_file, "'session_file:' not found in context block"
+
+
+def test_max_issues_exists_in_context_block():
+    """max_issues: "5" must exist in the context block with appropriate comment."""
+    lines = _read_recipe_lines()
+    in_context = False
+    for line in lines:
+        if line.strip() == "context:":
+            in_context = True
+            continue
+        if in_context:
+            stripped = line.strip()
+            # End of context block when we hit a non-indented non-comment line
+            if stripped and not stripped.startswith("#") and not line.startswith(" "):
+                break
+            if stripped.startswith("max_issues:"):
+                assert '"5"' in stripped, (
+                    f"max_issues should have default value '5', got: {stripped!r}"
+                )
+                assert "default 5" in line, (
+                    f"max_issues should mention 'default 5' in comment, got: {line!r}"
+                )
+                return  # Found it
+    raise AssertionError("'max_issues:' not found in context block")
+
+
+def test_max_issues_follows_panels_per_page():
+    """max_issues must appear on the line immediately after panels_per_page."""
+    lines = _read_recipe_lines()
+    panels_idx = None
+    for i, line in enumerate(lines):
+        if line.strip().startswith("panels_per_page:"):
+            panels_idx = i
+            break
+    assert panels_idx is not None, "'panels_per_page:' not found in recipe"
+    next_line = lines[panels_idx + 1].strip()
+    assert next_line.startswith("max_issues:"), (
+        f"Expected 'max_issues:' after 'panels_per_page:', got: {next_line!r}"
+    )

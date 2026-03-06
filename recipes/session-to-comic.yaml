@@ -284,6 +284,46 @@ stages:
         timeout: 120  # init-project: single tool call + return
 
       # ============================================
+      # STEP 0a: DISCOVER SESSIONS - Source Resolution
+      # Translates the user's flexible {{source}} input
+      # (project name, session IDs, file paths, or
+      # descriptive phrase) into consolidated session data.
+      # The researcher discovers data using its native tools
+      # — not hardcoded paths.
+      # ============================================
+      - id: "discover-sessions"
+        agent: "stories:story-researcher"
+        prompt: |
+          You are given a source describing what to research: {{source}}
+          Legacy session file (if provided): {{session_file}}
+
+          If source is provided, use it. If source is empty but session_file is provided, use session_file instead.
+          If BOTH are empty, STOP and return an error: {"error": "No source or session_file provided. One is required."}
+
+          The source could be any of these — inspect the string and figure out which:
+          - A project name (e.g. "comic-strip-bundle")
+          - A directory path to a project
+          - A single session file path (e.g. path/to/events.jsonl)
+          - A session ID or comma-separated list of session IDs
+          - A descriptive phrase (e.g. "the context-intelligence project")
+
+          YOUR JOB: Discover and gather the relevant Amplifier session data — agent activity,
+          tool usage, key moments, outcomes, and metrics. Use your tools freely: bash (git log,
+          gh CLI, find, ls), grep, read_file, and delegation to foundation:explorer for deep
+          exploration. Synthesize across multiple sessions if the source spans more than one.
+
+          DO NOT extract comic-specific structures (characters, panel moments, narrative arcs).
+          That is the research step's job. You are purely "find the data and consolidate it."
+
+          Store the consolidated research material using:
+          comic_asset(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', type='research', name='session-discovery', content=<your consolidated session data>)
+
+          Return ONLY the URI string from the store response. Your entire output should be just the URI, e.g.:
+          comic://my-project/issues/issue-001/research/session-discovery?v=1
+        output: "session_data"
+        timeout: 600  # discover-sessions: exploration + consolidation (~5-8 min)
+
+      # ============================================
       # STEP 1: RESEARCH - Data Extraction
       # ============================================
       - id: "research"

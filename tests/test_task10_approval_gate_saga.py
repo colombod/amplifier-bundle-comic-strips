@@ -57,8 +57,12 @@ def test_approval_gate_required():
 def test_approval_gate_timeout_and_default():
     """Approval gate must have timeout: 0 and default: deny."""
     approval = _get_approval()
-    assert approval.get("timeout") == 0, f"Expected timeout: 0, got {approval.get('timeout')}"
-    assert approval.get("default") == "deny", f"Expected default: deny, got {approval.get('default')}"
+    assert approval.get("timeout") == 0, (
+        f"Expected timeout: 0, got {approval.get('timeout')}"
+    )
+    assert approval.get("default") == "deny", (
+        f"Expected default: deny, got {approval.get('default')}"
+    )
 
 
 # ---------------------------------------------------------------
@@ -76,7 +80,9 @@ def test_prompt_contains_saga_title():
 def test_prompt_contains_subtitle():
     """Prompt must display {{storyboard.subtitle}}."""
     prompt = _get_approval_prompt()
-    assert "{{storyboard.subtitle}}" in prompt, "Prompt must contain {{storyboard.subtitle}}"
+    assert "{{storyboard.subtitle}}" in prompt, (
+        "Prompt must contain {{storyboard.subtitle}}"
+    )
 
 
 # ---------------------------------------------------------------

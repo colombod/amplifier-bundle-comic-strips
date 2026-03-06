@@ -171,6 +171,8 @@ stages:
 
           Cover URI:
           {{cover_results}}
+          If cover_results is "COVER_GENERATION_FAILED", omit the cover page from the layout
+          and proceed with panel assembly only. Do not fail the composition.
 
           Storyboard (for dialogue, captions, sound effects per panel):
           {{issue_storyboard}}

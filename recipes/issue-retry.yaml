@@ -1,0 +1,233 @@
+name: "issue-retry"
+description: "Surgical single-issue retry — reloads existing storyboard, characters, and style guide from the asset store, then regenerates panels, cover, and final composition for one failed saga issue."
+version: "1.0.0"
+author: "amplifier-comic-strips"
+tags: ["comic", "retry", "saga", "recovery"]
+
+# Context variables for standalone retry invocation:
+#   project_id          — comic project identifier (required)
+#   issue_id            — issue identifier within the project (required)
+#   style               — style name, e.g. "manga", "superhero" (required)
+#   output_name         — output filename for the assembled comic (optional)
+#   content_policy_notes — accumulated moderation lessons from earlier attempts (optional)
+
+context:
+  project_id: ""
+  issue_id: ""
+  style: ""
+  output_name: ""
+  content_policy_notes: ""
+
+stages:
+  - name: "issue-retry-generation"
+    steps:
+      # ============================================
+      # STEP 0: LOAD EXISTING ASSETS
+      # Retrieves the storyboard, character URIs, and
+      # style guide URI from the asset store so the
+      # retry can proceed without parent-passed context.
+      # ============================================
+      - id: "load-existing-assets"
+        agent: "comic-strips:style-curator"
+        prompt: |
+          Project tracking: project_id={{project_id}}, issue_id={{issue_id}}, style={{style}}
+
+          Load the existing assets for this issue from the asset store so we can retry
+          art generation. You need to retrieve three things:
+
+          1. The STORYBOARD for this issue — load it using:
+             comic_asset(action='get', project='{{project_id}}', issue='{{issue_id}}', type='storyboard')
+
+          2. The CHARACTER LIST — retrieve all character URIs for this project:
+             comic_asset(action='list', project='{{project_id}}', type='character')
+
+          3. The STYLE GUIDE — load the style guide URI:
+             comic_style(action='get_uri', project='{{project_id}}', style='{{style}}')
+
+          Return a JSON object with EXACTLY this structure:
+          {
+            "storyboard": <the full storyboard object including panel_list, title, subtitle, etc.>,
+            "character_uris": <list of comic:// URI strings for all designed characters>,
+            "style_uri": <comic:// URI string for the style guide>,
+            "issue_id": "{{issue_id}}",
+            "project_id": "{{project_id}}"
+          }
+
+          Return ONLY the JSON object — no markdown fences, no explanation.
+        output: "existing_assets"
+        parse_json: true
+        timeout: 300
+
+      # ============================================
+      # STEP 1: PANEL ART GENERATION (foreach per panel)
+      # Iterates over each panel in the loaded storyboard,
+      # generating artwork with self-review and retry.
+      # ============================================
+      - id: "generate-panels"
+        foreach: "{{existing_assets.storyboard.panel_list}}"
+        as: panel_item
+        agent: "comic-strips:panel-artist"
+        parallel: 2
+        max_iterations: 60
+        retry:
+          max_attempts: 2
+          initial_delay: 5
+        prompt: |
+          Project tracking: project_id={{project_id}}, issue_id={{issue_id}}, style={{style}}
+
+          Generate the artwork for a single comic panel using comic_create.
+
+          Panel to generate:
+          {{panel_item}}
+
+          Character URIs (for visual consistency — pass these directly to comic_create):
+          {{existing_assets.character_uris}}
+
+          Style Guide URI: {{existing_assets.style_uri}}
+          Load the style guide using: comic_style(action='get', uri='{{existing_assets.style_uri}}')
+
+          Call:
+          comic_create(action='create_panel',
+                       project='{{project_id}}',
+                       issue='{{issue_id}}',
+                       name=<panel-name-slug from panel_item>,
+                       prompt=<scene description from panel_item informed by style guide>,
+                       character_uris=<list of URIs from {{existing_assets.character_uris}} whose characters appear in this panel>,
+                       size=<use panel_item.aspect_ratio if present, otherwise map panel_item.size: wide/standard->landscape, tall->portrait, square->square>,
+                       camera_angle=<framing hint from panel_item>)
+
+          After generating, self-review using:
+          comic_create(action='review_asset',
+                       uri=<returned panel URI>,
+                       prompt="Are faces visible and unobstructed? Is there a clear focal point? Does it tell the story visually? Does it match the style?",
+                       reference_uris=<character URIs from existing_assets.character_uris for consistency check>)
+
+          If the review fails (passed=false), regenerate with an adjusted prompt (max 3 attempts).
+
+          Return ONLY the panel URI string from the final successful comic_create response
+          (e.g., "comic://proj/issues/issue-001/panels/panel_03").
+          Do NOT return JSON objects, image paths, or base64 data.
+
+          Content Policy Notes (accumulated from earlier attempts):
+          {{content_policy_notes}}
+          If content_policy_notes is non-empty, these are LESSONS FROM MODERATION BLOCKS
+          on earlier images in this same comic. Apply them to ALL your prompts immediately.
+          Do not repeat patterns that were already blocked.
+        collect: "panel_results"
+        timeout: 600
+
+      # ============================================
+      # STEP 2: COVER ART GENERATION
+      # Runs in PARALLEL with panels (no dependencies).
+      # Generates cover art with self-review and retry.
+      # ============================================
+      - id: "generate-cover"
+        agent: "comic-strips:cover-artist"
+        depends_on: []
+        retry:
+          max_attempts: 2
+          initial_delay: 5
+        prompt: |
+          Project tracking: project_id={{project_id}}, issue_id={{issue_id}}, style={{style}}
+
+          You are generating cover art for this issue using comic_create.
+
+          Style Guide URI: {{existing_assets.style_uri}}
+          Load the style guide using: comic_style(action='get', uri='{{existing_assets.style_uri}}')
+
+          Storyboard (for cover concept — title, theme, key characters):
+          {{existing_assets.storyboard}}
+
+          Character URIs (pass featured characters directly to comic_create):
+          {{existing_assets.character_uris}}
+
+          Call:
+          comic_create(action='create_cover',
+                       project='{{project_id}}',
+                       issue='{{issue_id}}',
+                       prompt=<dramatic cover concept: main characters, pose, setting, tone>,
+                       character_uris=<list of featured character URIs from {{existing_assets.character_uris}}>,
+                       title='{{existing_assets.storyboard.title}}',
+                       subtitle='{{existing_assets.storyboard.subtitle}}')
+
+          After generating, self-review using:
+          comic_create(action='review_asset',
+                       uri=<returned cover URI>,
+                       prompt="Are main characters in a dramatic pose with faces visible? Is the composition striking? Does it match the style?",
+                       reference_uris=<character URIs from {{existing_assets.character_uris}}>)
+
+          If the review fails (passed=false), regenerate with an adjusted prompt (max 3 attempts).
+
+          Return ONLY the cover URI string from the final successful comic_create response
+          (e.g., "comic://proj/issues/issue-001/covers/cover").
+          Do NOT return HTML, base64 data, or image paths.
+
+          Content Policy Notes (from earlier pipeline attempts):
+          {{content_policy_notes}}
+          If content_policy_notes is non-empty, these are LESSONS FROM EARLIER MODERATION BLOCKS.
+          Apply them to your prompt immediately — do not repeat blocked patterns.
+
+          IMPORTANT: If cover generation fails after all attempts (including moderation blocks),
+          return ONLY the text "COVER_GENERATION_FAILED" — do not return a URI.
+        output: "cover_results"
+        timeout: 600
+
+      # ============================================
+      # STEP 3: COMPOSITION — Final Assembly
+      # Assembles the complete comic strip HTML from
+      # panel URIs, cover URI, storyboard, and style.
+      # ============================================
+      - id: "composition"
+        agent: "comic-strips:strip-compositor"
+        depends_on: ["generate-panels", "generate-cover"]
+        prompt: |
+          Project tracking: project_id={{project_id}}, issue_id={{issue_id}}, style={{style}}
+
+          Assemble the final comic strip HTML from URIs using comic_create.
+
+          Panel URIs (in order):
+          {{panel_results}}
+
+          Cover URI:
+          {{cover_results}}
+          If cover_results is "COVER_GENERATION_FAILED", omit the cover page from the layout
+          and proceed with panel assembly only. Do not fail the composition.
+
+          Storyboard (for dialogue, captions, sound effects per panel):
+          {{existing_assets.storyboard}}
+
+          Style Guide URI: {{existing_assets.style_uri}}
+          Load layout conventions using: comic_style(action='get', uri='{{existing_assets.style_uri}}')
+
+          Output filename: {{output_name}}
+
+          WORKFLOW:
+          1. Load the style guide to understand layout conventions, bubble styles, and page structure.
+          2. For each panel URI in {{panel_results}}, call:
+             comic_create(action='review_asset', uri=<panel_uri>,
+                          prompt="Describe character positions, negative space, and focal points for text overlay placement.")
+             Use the visual descriptions to make precise text overlay placement decisions.
+          3. Build a layout object mapping each panel URI to its storyboard dialogue, captions,
+             and sound effects. Use overlay coordinates (0-100% of panel dimensions) informed by
+             the visual composition analysis.
+          4. Call:
+             comic_create(action='assemble_comic',
+                          project='{{project_id}}',
+                          issue='{{issue_id}}',
+                          output_path=<output filename>,
+                          style_uri='{{existing_assets.style_uri}}',
+                          layout={
+                            "title": "{{existing_assets.storyboard.title}}",
+                            "cover": {"uri": "{{cover_results}}", "title": "{{existing_assets.storyboard.title}}",
+                                      "subtitle": "{{existing_assets.storyboard.subtitle}}", "branding": "AmpliVerse"},
+                            "pages": [<pages with panel URIs, shapes, and text overlays>]
+                          })
+
+          The tool handles all base64 encoding, SVG bubble rendering, and HTML assembly internally.
+          Do NOT fetch image bytes or call base64 encoding tools.
+
+          Do NOT delete intermediate files. All assets are managed by the asset manager.
+
+          Content Policy Notes: {{content_policy_notes}}
+        output: "final_output"
+        timeout: 2400

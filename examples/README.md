@@ -480,3 +480,71 @@ xdg-open examples/naruto-layout-validation-e2e.html
 ```
 
 Use arrow keys, click the nav buttons, or tap the page dots to navigate.
+
+---
+
+## Saga Mode (v8.0.0)
+
+Starting with v8.0.0, the `session-to-comic` recipe automatically plans
+**multi-issue sagas** when the source material warrants it. One run analyzes
+your source, plans a complete narrative arc across multiple issues, and produces
+one self-contained HTML file per issue -- with shared characters, narrative
+continuity, and per-issue story arcs.
+
+### New context variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `max_issues` | `5` | Maximum number of issues the saga planner can create. The planner may produce fewer if the material fits a shorter arc. |
+| `source` | (required) | Flexible input -- project name, session IDs, file paths, descriptive phrases, or any combination. The researcher discovers and consolidates session data automatically. |
+
+All existing variables (`style`, `output_name`, `project_name`, `max_pages`,
+`max_characters`, `panels_per_page`, `story_hints`, `character_hints`) continue
+to work as before. `max_pages` and `panels_per_page` apply **per issue**.
+
+### Invocation examples
+
+```
+# Multi-issue saga from a project name
+execute session-to-comic with source=comic-strip-bundle style=transformers max_issues=3
+
+# Saga with character and story hints
+execute session-to-comic with source="the context-intelligence project" style=ghibli max_issues=5 max_pages=8 story_hints="emphasize the iterative debugging journey" character_hints="nature spirits in Ghibli tradition"
+
+# Single issue (saga with max_issues=1 produces one issue)
+execute session-to-comic with source=./events.jsonl style=sin-city max_issues=1
+```
+
+The recipe pauses at an approval gate after the saga storyboard is complete.
+You review the full saga plan -- all issues, character roster, narrative arcs,
+and layout validation -- before any image generation begins.
+
+### What the output looks like
+
+The saga produces multiple files: `issue-001.html`, `issue-002.html`, etc. --
+one self-contained HTML per issue.
+
+| Feature | Detail |
+|---------|--------|
+| One HTML per issue | Each `issue-NNN.html` is fully self-contained with base64-embedded images |
+| Cover + cast page | Every issue has its own cover and character introduction page |
+| "Previously in..." recap | Issues 2+ open with a recap page summarizing the previous issue's cliffhanger |
+| "To Be Continued..." teaser | All issues except the last end with a teaser for the next issue |
+| Shared characters | Characters persist across all issues with the same visual reference sheets |
+| Character evolution | Characters can evolve visually across issues -- battle damage, power-ups, costume changes |
+| Self-contained arcs | Each issue has a beginning, middle, and cliffhanger (or resolution for the finale) |
+
+### Retrying a failed issue
+
+If an issue's art generation fails (content policy block, timeout, etc.), you
+can retry just that issue without re-running the entire saga. The retry recipe
+reloads the existing storyboard, characters, and style guide from the asset
+store:
+
+```
+# If an issue's art generation failed, retry just that issue:
+execute issue-retry with project_id=my-project issue_id=issue-002
+```
+
+The retry recipe accepts `project_id`, `issue_id`, and `style` as required
+context variables, plus optional `output_name` and `content_policy_notes`.

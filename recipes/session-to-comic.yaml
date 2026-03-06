@@ -288,11 +288,11 @@ stages:
       - id: "init-project"
         agent: "comic-strips:style-curator"
         prompt: |
-          YOUR ONLY JOB: Call comic_project to create an issue, then return the result as JSON. Do NOTHING else.
+          YOUR ONLY JOB: Create a project and a placeholder first issue, then return the result as JSON. Do NOTHING else.
 
-          comic_project(action='create_issue', project='{{project_name}}', title='{{issue_title}}', metadata={"source": "{{source}}", "session_file": "{{session_file}}", "style": "{{style}}", "created_by": "session-to-comic recipe v7.7.0", "saga_issue": "{{saga_issue}}", "previous_issue_id": "{{previous_issue_id}}"})
+          comic_project(action='create_issue', project='{{project_name}}', title='{{issue_title}}', metadata={"source": "{{source}}", "session_file": "{{session_file}}", "style": "{{style}}", "created_by": "session-to-comic recipe v8.0.0", "max_issues": "{{max_issues}}"})
 
-          If project_name is empty, use "comic-project". If issue_title is empty, use "Comic Strip".
+          If project_name is empty, use "comic-project". If issue_title is empty, use "Saga Planning".
 
           Return ONLY the JSON from the tool response: {"project_id": "<value>", "issue_id": "<value>"}
           Do NOT read files, do NOT curate styles, do NOT do anything else. Just call the tool and return.
@@ -331,6 +331,13 @@ stages:
 
           DO NOT extract comic-specific structures (characters, panel moments, narrative arcs).
           That is the research step's job. You are purely "find the data and consolidate it."
+
+          SMART PROJECT NAMING: If the project_name is empty or equal to "comic-project" (the default),
+          propose a meaningful project name based on the content you discovered. Analyze the session
+          themes, project names, repository names, or key topics to craft a short, descriptive slug
+          (e.g. "context-intelligence-saga", "auth-refactor-chronicles"). Store your suggestion under
+          a "suggested_project_name" field in the research output. If the user already provided a
+          meaningful project_name (i.e. not empty and not "comic-project"), skip this step.
 
           Store the consolidated research material using:
           comic_asset(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', type='research', name='session-discovery', content=<your consolidated session data>)

@@ -655,25 +655,29 @@ stages:
     approval:
       required: true
       prompt: |
-        Storyboard complete. Please review before approving expensive image generation.
+        Saga storyboard complete. Please review before approving expensive image generation.
 
-        Title: {{storyboard.title}}
+        Saga title: {{storyboard.title}}
         Subtitle: {{storyboard.subtitle}}
-        Panel count: {{storyboard.panel_count}}
-        Page count: {{storyboard.page_count}}
-        Saga plan: {{storyboard.saga_plan}}
+        Total issues: {{storyboard.saga_plan.total_issues}}
+        Max issues budget: {{max_issues}}
+
+        Arc summary:
+        {{storyboard.saga_plan.arc_summary}}
 
         Layout validation: {{storyboard_validation.validation}}
-        Page layouts: {{storyboard.page_layouts}}
 
-        Characters:
-        {{storyboard.character_list}}
+        All planned issues:
+        {{storyboard.saga_plan.issues}}
 
-        Panels overview:
-        {{storyboard.panel_list}}
+        Character roster:
+        {{storyboard.character_roster}}
+
+        Created issues:
+        {{saga_issues}}
 
         If layout validation FAILED, DENY and fix the storyboard layouts.
-        Otherwise, approve to proceed with character design and panel art generation.
+        Otherwise, approve to proceed with character design and per-issue art generation.
       timeout: 0
       default: "deny"
 

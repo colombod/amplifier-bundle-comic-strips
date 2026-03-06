@@ -1,13 +1,6 @@
 """Tests for recipe improvements for session-to-comic.
-Updated for v5: foreach loop structure validation added.
 
-Acceptance criteria verified:
-  AC1: Recipe version is 5.0.0 or later
-  AC2: generate-panels and generate-cover run in parallel
-  AC3: Storyboard approval gate exists between storyboard and character-design
-  AC4: Model requirements present in character-design, generate-panels, generate-cover
-  AC5: Recipe validates against schema (tested via result-validator separately)
-  AC6: Composition step depends on both parallel steps completing
+Updated through v8: saga stages, sub-recipe delegation, URI protocol.
 """
 
 import functools
@@ -19,7 +12,7 @@ from pathlib import Path
 RECIPE_PATH = Path(__file__).parent.parent / "recipes" / "session-to-comic.yaml"
 
 
-@functools.cache
+@functools.lru_cache(maxsize=1)
 def _load_recipe() -> dict:
     """Load and parse the recipe YAML once (cached across all callers)."""
     return yaml.safe_load(RECIPE_PATH.read_text())

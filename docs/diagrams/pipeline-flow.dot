@@ -13,17 +13,18 @@ digraph pipeline {
 
   // Title
   labelloc="t";
-  label=<<B><FONT POINT-SIZE="16">Comic Generation Pipeline v7.6.0</FONT></B>>;
+  label=<<B><FONT POINT-SIZE="16">Comic Generation Pipeline v7.7.0</FONT></B>>;
   labeljust="c";
 
   // Input
   input [
     label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
-      <TR><TD><B>events.jsonl</B></TD></TR>
-      <TR><TD><FONT POINT-SIZE="9" COLOR="#666666">Amplifier session log</FONT></TD></TR>
+      <TR><TD><B>{{source}}</B></TD></TR>
+      <TR><TD><FONT POINT-SIZE="9" COLOR="#666666">project name, session ID(s),</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="9" COLOR="#666666">file path(s), or description</FONT></TD></TR>
     </TABLE>>,
     shape=note, style="filled", fillcolor="#E8F4FD", color="#90CAF9",
-    width=2.0
+    width=2.2
   ];
 
   // Stage 1 cluster
@@ -40,6 +41,16 @@ digraph pipeline {
       </TABLE>>,
       shape=box, style="rounded,filled", fillcolor="#E3F2FD", color="#90CAF9",
       width=2.2
+    ];
+
+    discover_sessions [
+      label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
+        <TR><TD><B>0a. Discover Sessions</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#1565C0">stories:story-researcher</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8" COLOR="#666666">resolves {{source}} to session data</FONT></TD></TR>
+      </TABLE>>,
+      shape=box, style="rounded,filled", fillcolor="#E3F2FD", color="#90CAF9",
+      width=2.4
     ];
 
     research [
@@ -97,10 +108,19 @@ digraph pipeline {
       width=2.6
     ];
 
-    init -> research -> style_curation -> storyboard -> validate_storyboard -> update_title [color="#90CAF9"];
+    init -> discover_sessions -> research -> style_curation -> storyboard -> validate_storyboard -> update_title [color="#90CAF9"];
   }
 
   // Data flow annotations (between stages)
+  // Data flow annotation (discover step)
+  discover_data [
+    label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
+      <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32"><B>Session discovery:</B></FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32">{{source}} → discover-sessions → {{session_data}} URI</FONT></TD></TR>
+    </TABLE>>,
+    shape=none, margin=0
+  ];
+
   storyboard_data [
     label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
       <TR><TD><FONT POINT-SIZE="8" COLOR="#2E7D32"><B>Storyboard outputs:</B></FONT></TD></TR>

@@ -26,13 +26,13 @@ From an Amplifier session with the `comic-strips` bundle active:
 amplifier tool invoke recipes \
   operation=execute \
   recipe_path=amplifier-bundle-comic-strips/recipes/session-to-comic.yaml \
-  context='{"session_file": "combined-sessions.jsonl", "style": "sin-city", "output_name": "sin-city-comic", "project_name": "sin-city-e2e"}'
+  context='{"source": "comic-strip-bundle", "style": "sin-city", "output_name": "sin-city-comic", "project_name": "sin-city-e2e"}'
 ```
 
 Or conversationally in a session:
 
 ```
-execute session-to-comic with session_file=combined-sessions.jsonl style=sin-city output_name=sin-city-comic project_name=sin-city-e2e
+execute session-to-comic with source=comic-strip-bundle style=sin-city output_name=sin-city-comic project_name=sin-city-e2e
 ```
 
 The recipe pauses at an approval gate after the storyboard is complete. Review
@@ -152,7 +152,7 @@ resilience, culminating in the Orchestrator cloning themselves to push through.
 From an Amplifier session with the `comic-strips` bundle active:
 
 ```
-execute session-to-comic with session_file=combined-sessions.jsonl style=jujutsu-kaisen output_name=comic-strips-bundle-creation-jjk project_name=jjk-e2e
+execute session-to-comic with source=comic-strip-bundle style=jujutsu-kaisen output_name=comic-strips-bundle-creation-jjk project_name=jjk-e2e
 ```
 
 ### Characters
@@ -295,7 +295,7 @@ From an Amplifier session with the `comic-strips` bundle active:
 
 ```
 execute session-to-comic with \
-  session_file=~/.amplifier/projects/-home-dicolomb-context-intelligence-second-pass/sessions/59cb8e3f-48a2-422a-867d-f78a98b2a75b/events.jsonl \
+  source="the context-intelligence-second-pass project" \
   style=ghibli \
   output_name=ghibli-context-intelligence-comic \
   project_name=ghibli-context-intelligence \
@@ -442,7 +442,7 @@ Run inside a container with the `comic-strips` bundle active:
 amplifier tool invoke recipes \
   operation=execute \
   recipe_path=@comic-strips:recipes/session-to-comic.yaml \
-  context='{"session_file": "/workspace/test-session.jsonl", "style": "naruto", "output_name": "e2e-layout-test", "project_name": "e2e-layout-validation", "max_pages": "3", "max_characters": "4"}'
+  context='{"source": "/workspace/test-session.jsonl", "style": "naruto", "output_name": "e2e-layout-test", "project_name": "e2e-layout-validation", "max_pages": "3", "max_characters": "4"}'
 ```
 
 ### Characters

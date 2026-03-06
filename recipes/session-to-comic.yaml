@@ -1,12 +1,21 @@
 name: "session-to-comic"
 description: "Transform an Amplifier session into an illustrated comic strip with quality review, character consistency, dramatized storytelling, and AmpliVerse publisher branding"
-version: "7.7.0"
+version: "8.0.0"
 author: "amplifier-comic-strips"
 tags: ["comic", "visual-storytelling", "session-analysis", "uri-protocol"]
 
 # =============================================================================
 # CHANGELOG
 # =============================================================================
+#
+# v8.0.0 (2026-03-06):
+#   - FEAT: Restructure init-project for saga support. Creates project +
+#     placeholder first issue instead of project + issue. Metadata uses
+#     max_issues instead of saga_issue/previous_issue_id. Default issue
+#     title changed from 'Comic Strip' to 'Saga Planning'.
+#   - FEAT: Smart project naming in discover-sessions. When project_name is
+#     empty or default 'comic-project', proposes a meaningful name based on
+#     discovered content, stored as 'suggested_project_name' in research output.
 #
 # v7.7.0 (2026-03-06):
 #   - FEAT: Add flexible source input. New context variable `source` accepts
@@ -703,7 +712,7 @@ stages:
         agent: "comic-strips:cover-artist"
         depends_on: ["design-characters"]
         retry:
-          max_attempts: 2
+          max_attempts: 6
           initial_delay: 5
         prompt: |
           Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}, style={{style}}
@@ -734,7 +743,7 @@ stages:
                        prompt="Are main characters in a dramatic pose with faces visible? Is the composition striking? Does it match the style?",
                        reference_uris=<character URIs from {{character_uris}}>)
 
-          If the review fails (passed=false), regenerate with an adjusted prompt (max 3 attempts).
+          If the review fails (passed=false), regenerate with an adjusted prompt (max 6 attempts).
 
           Return ONLY the cover URI string from the final successful comic_create response
           (e.g., "comic://proj/issues/issue-001/covers/cover").

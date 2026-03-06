@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
+from amplifier_module_comic_assets import ComicCharacterTool
 from amplifier_module_comic_assets.service import ComicProjectService
 
 # ---------------------------------------------------------------------------
@@ -184,3 +187,65 @@ async def test_search_characters_returns_uri_and_traits(
     assert "version" in r
     assert "metadata" in r
     assert r["name"] == "Ranger"
+
+
+# ===========================================================================
+# ComicCharacterTool — search action integration
+# ===========================================================================
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_character_tool_search_action(
+    service: ComicProjectService,
+) -> None:
+    """ComicCharacterTool dispatches 'search' and passes style to the service."""
+    pid, iid = await _new_issue(service, "tool_search_proj", "I1")
+
+    await service.store_character(pid, iid, "Ninja", "manga", data=_PNG, **_CHAR_META)
+    await service.store_character(
+        pid, iid, "Painter", "watercolor", data=_PNG, **_CHAR_META
+    )
+
+    tool = ComicCharacterTool(service)
+    result = await tool.execute({"action": "search", "style": "manga"})
+    assert result.success is True
+    data = json.loads(result.output)
+    names = {r["name"] for r in data}
+    assert "Ninja" in names
+    assert "Painter" not in names
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_character_tool_search_with_metadata_filter(
+    service: ComicProjectService,
+) -> None:
+    """ComicCharacterTool dispatches 'search' and passes metadata_filter to the service."""
+    pid, iid = await _new_issue(service, "tool_meta_search_proj", "I1")
+
+    await service.store_character(
+        pid,
+        iid,
+        "EliteAgent",
+        "manga",
+        data=_PNG,
+        metadata={"rank": "elite"},
+        **_CHAR_META,
+    )
+    await service.store_character(
+        pid,
+        iid,
+        "Rookie",
+        "manga",
+        data=_PNG,
+        **_CHAR_META,
+    )
+
+    tool = ComicCharacterTool(service)
+    result = await tool.execute(
+        {"action": "search", "metadata_filter": {"rank": "elite"}}
+    )
+    assert result.success is True
+    data = json.loads(result.output)
+    names = {r["name"] for r in data}
+    assert "EliteAgent" in names
+    assert "Rookie" not in names

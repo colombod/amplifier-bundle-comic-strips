@@ -344,6 +344,7 @@ class ComicCharacterTool:
                         "list",
                         "list_versions",
                         "update_metadata",
+                        "search",
                     ],
                 },
                 "project": {
@@ -436,6 +437,10 @@ class ComicCharacterTool:
                 "metadata": {
                     "type": "object",
                     "description": "Arbitrary metadata dict (for store and update_metadata). On store, attached to the new character. On update_metadata, merged into existing.",
+                },
+                "metadata_filter": {
+                    "type": "object",
+                    "description": "Filter characters by metadata key/value pairs. Only characters whose metadata contains all specified entries are returned. Used with the search action.",
                 },
                 "uri": {
                     "type": "string",
@@ -565,12 +570,21 @@ class ComicCharacterTool:
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
+        async def _search() -> ToolResult:
+            result = await self._service.search_characters(
+                style=params.get("style"),
+                metadata_filter=params.get("metadata_filter"),
+                project_id=params.get("project"),
+            )
+            return _ok(result)
+
         dispatch: dict[str, Any] = {
             "store": _store,
             "get": _get,
             "list": _list,
             "list_versions": _list_versions,
             "update_metadata": _update_metadata,
+            "search": _search,
         }
 
         handler = dispatch.get(action)  # type: ignore[arg-type]

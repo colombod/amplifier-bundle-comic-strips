@@ -700,6 +700,97 @@ class ComicProjectService:
             await self._storage.write_text(metadata_rel, json.dumps(meta, indent=2))
         return meta
 
+    async def search_characters(
+        self,
+        *,
+        style: str | None = None,
+        metadata_filter: dict[str, Any] | None = None,
+        project_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Search for characters across all projects (or a single project).
+
+        Walks ``projects/*/characters/`` directories, reads each character's
+        metadata, filters by *style* slug and optional *metadata_filter* fields,
+        picks the latest version dir per (character, style), and returns a list
+        of matches with URIs, visual traits, metadata, and originating project.
+        """
+        style_slug = slugify(style) if style is not None else None
+
+        # Determine which projects to scan.
+        if project_id is not None:
+            project_ids = [project_id]
+        else:
+            ws = await self._read_workspace()
+            project_ids = list(ws.get("projects", []))
+
+        results: list[dict[str, Any]] = []
+
+        for pid in project_ids:
+            try:
+                manifest = await self._read_project_manifest(pid)
+            except FileNotFoundError:
+                continue
+            char_slugs: list[str] = manifest.get("characters", [])
+
+            for char_slug in char_slugs:
+                char_base_dir = f"projects/{pid}/characters/{char_slug}"
+                version_dirs = await self._storage.list_dir(char_base_dir)
+                if not version_dirs:
+                    continue
+
+                # Group by style → pick latest version per style.
+                style_latest: dict[str, tuple[int, str]] = {}
+                for d in version_dirs:
+                    idx = d.rfind("_v")
+                    if idx == -1:
+                        continue
+                    s_part = d[:idx]
+                    v_part = d[idx + 2 :]
+                    if not v_part.isdigit():
+                        continue
+                    ver = int(v_part)
+                    if s_part not in style_latest or ver > style_latest[s_part][0]:
+                        style_latest[s_part] = (ver, d)
+
+                for s_slug, (ver, dirname) in style_latest.items():
+                    # Filter by style slug if requested.
+                    if style_slug is not None and s_slug != style_slug:
+                        continue
+
+                    meta_path = f"{char_base_dir}/{dirname}/metadata.json"
+                    try:
+                        meta_text = await self._storage.read_text(meta_path)
+                        meta = json.loads(meta_text)
+                    except (FileNotFoundError, json.JSONDecodeError):
+                        continue
+
+                    # Filter by metadata fields if requested.
+                    if metadata_filter is not None:
+                        char_meta = meta.get("metadata", {})
+                        if not all(
+                            char_meta.get(k) == v for k, v in metadata_filter.items()
+                        ):
+                            continue
+
+                    uri = ComicURI.for_character(pid, char_slug, version=ver)
+                    results.append(
+                        {
+                            "name": meta.get("name", char_slug),
+                            "char_slug": char_slug,
+                            "style": meta.get("style", s_slug),
+                            "version": ver,
+                            "visual_traits": meta.get("visual_traits", ""),
+                            "distinctive_features": meta.get(
+                                "distinctive_features", ""
+                            ),
+                            "metadata": meta.get("metadata", {}),
+                            "originating_project": pid,
+                            "uri": str(uri),
+                        }
+                    )
+
+        return results
+
     # ------------------------------------------------------------------
     # Assets
     # ------------------------------------------------------------------

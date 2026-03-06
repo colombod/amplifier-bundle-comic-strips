@@ -157,20 +157,31 @@ The final comic output must meet these requirements:
 
 ## Cross-Agent Data Flow
 
-The comic creation pipeline passes data between agents in seven stages:
+The comic creation pipeline is a 3-stage saga pipeline. Characters and styles are **project-scoped** (shared across all saga issues). Panels, covers, storyboards, and other assets are **issue-scoped** (bound to a specific issue).
 
-0. **Session Discovery** *(new in v7.7.0)* - The `discover-sessions` step receives a flexible `{{source}}` input — a project name, session ID(s), file path(s), or descriptive phrase. The `stories:story-researcher` agent discovers and consolidates the relevant Amplifier session data using its native tools (git/gh CLI, grep, `read_file`, delegation to `foundation:explorer`). It stores the consolidated material as a comic asset and returns a `comic://` URI (`{{session_data}}`). This decouples the pipeline from Amplifier's internal storage layout — the researcher explores creatively rather than following hardcoded paths.
-1. **Research JSON** - The story-researcher agent loads the consolidated session data via `comic_asset(action='get', uri='{{session_data}}')` and extracts structured research JSON containing session events, metrics, and narrative arcs for comic creation.
-2. **Style URI** *(project-scoped)* - The style-curator agent stores a structured style guide and returns a project-scoped `comic://` URI (e.g., `comic://proj/styles/manga`). Styles are shared across all issues of a project. All downstream agents retrieve the style via `comic_style(action='get')`.
-3. **Storyboard + Character URIs** *(storyboard is issue-scoped; characters are project-scoped)* - The storyboard-writer agent calls `comic_create(action='list_layouts')` to discover valid layout IDs, then generates a storyboard with panel sequence, dialogue, camera angles, page layout structure, page breaks, and a `character_list` defining the cast. It stores the storyboard at an issue-scoped URI (e.g., `comic://proj/issues/issue-001/storyboards/storyboard`). The `character_list` is then fed to character-designer, which creates a project-scoped character URI for each character (e.g., `comic://proj/characters/the-explorer`). These project-scoped URIs act as cast bindings — they tie the visual reference to the character across any panel or issue.
-4. **Layout Validation** *(deterministic checkpoint)* - After storyboard generation, a `validate-storyboard` step calls `comic_create(action='validate_storyboard')` to check all `page_layouts` layout IDs against the renderer's template dictionary. Invalid IDs are rejected with suggestions before any image generation starts. The validation result is shown in the approval gate so the human reviewer can see whether layouts are valid.
-5. **Panel URIs** *(issue-scoped)* - The panel-artist agent renders each panel via `comic_create(action='create_panel')` and returns an issue-scoped `comic://` URI per panel (e.g., `comic://proj/issues/issue-001/panels/panel_01`). No image bytes flow through recipe context.
-6. **Cover URI** *(issue-scoped)* - The cover-artist agent produces the cover via `comic_create(action='create_cover')` and returns an issue-scoped `comic://` URI (e.g., `comic://proj/issues/issue-001/covers/cover`). No image bytes flow through recipe context.
+### Stage 1 — Saga Planning (text-only, cheap)
 
-**Characters and styles are project-scoped** — defined once, shared across all issues.
-**Panels, covers, storyboards, and other assets are issue-scoped** — each issue has its own set.
+0. **Session Discovery** — The researcher receives flexible `{{source}}` input (project name, session ID(s), file path(s), or descriptive phrase). It discovers and consolidates session data using its native tools (git/gh CLI, grep, `read_file`, delegation), stores the consolidated material as a comic asset, and returns a `comic://` URI.
+1. **Research** — The researcher loads discovered session data via the asset URI and extracts comic-specific structures: characters, key moments, narrative arcs, and metrics.
+2. **Style Curation** — The style-curator loads a style pack and stores it as a versioned, project-scoped asset (e.g., `comic://proj/styles/manga`).
+3. **Saga Storyboard** — The storyboard-writer produces the full saga plan: an `issues[]` array with per-issue panel specs and scoped character lists, a `character_roster[]` with per-issue evolution maps, cross-project character search via `comic_character(action='search')`, and smart project naming.
+4. **Layout Validation** — Validates all layout IDs across ALL issues in the saga against the renderer's template dictionary. Invalid IDs are rejected with suggestions before any image generation starts.
+5. **Issue Creation** — Foreach over saga issues, creates `issue-001`, `issue-002`, etc. as issue-scoped asset containers.
+6. **APPROVAL GATE** — Shows the saga arc, all issue summaries, the full character roster, and layout validation status for human review.
 
-All recipe context variables carry URIs and text metadata only. Total recipe state is approximately 1 KB.
+### Stage 2 — Character Design (image gen, shared)
+
+7. **Character Design** — Foreach over `character_roster[]`: cross-project discovery of existing characters, per-issue variant creation (v1, v2, v3 for visual evolution across issues), and evolution tracking in asset metadata. Characters are project-scoped — designed once, reused across all issues.
+
+### Stage 3 — Per-Issue Art Generation (image gen, per issue)
+
+Foreach issue in the saga:
+
+8. **Panel Art** — Foreach panel in the issue, rendered via `comic_create(action='create_panel')` with issue-specific character variant URIs. Returns issue-scoped `comic://` URIs per panel.
+9. **Cover Art** — Cover generated via `comic_create(action='create_cover')` with issue-scoped characters. Returns an issue-scoped `comic://` URI.
+10. **Composition** — The strip-compositor assembles the final issue: includes a recap page for issues 2+, a cliffhanger teaser for all issues except the last, and produces a separate HTML file per issue via `assemble_comic`.
+
+All recipe context variables carry URIs and text metadata only. No image bytes flow through recipe context. Total recipe state is approximately 1 KB.
 
 ## Image Generation Rules
 

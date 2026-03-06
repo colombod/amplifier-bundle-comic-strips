@@ -81,5 +81,7 @@ def test_discover_data_annotation_exists():
 def test_discover_data_annotation_content():
     content = _read_dot()
     assert "Session discovery:" in content
+    # "discover-sessions" (hyphenated) only appears in the annotation node,
+    # not in the node id discover_sessions (underscored).
     assert "discover-sessions" in content
     assert "{{session_data}} URI" in content

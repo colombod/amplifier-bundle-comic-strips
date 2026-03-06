@@ -337,7 +337,7 @@ stages:
           Return ONLY the URI string from the store response. Your entire output should be just the URI, e.g.:
           comic://my-project/issues/issue-001/research/session-discovery?v=1
         output: "session_data"
-        timeout: 600  # discover-sessions: exploration + consolidation (~5-8 min)
+        timeout: 1800  # discover-sessions: exploration + consolidation (large projects may take 15-20 min)
 
       # ============================================
       # STEP 1: RESEARCH - Data Extraction

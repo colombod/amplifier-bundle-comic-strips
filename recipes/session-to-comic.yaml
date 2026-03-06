@@ -435,12 +435,12 @@ stages:
         timeout: 300  # style-curation: load style pack + store (~2-3 min)
 
       # ============================================
-      # STEP 3: STORYBOARD
+      # STEP 3: SAGA STORYBOARD
       # ============================================
       - id: "storyboard"
         agent: "comic-strips:storyboard-writer"
         prompt: |
-          Create a panel-by-panel storyboard for this comic strip.
+          Create a multi-issue saga storyboard from the session research data.
 
           Research Data URI: {{research_data}}
           Load the research data:
@@ -466,11 +466,40 @@ stages:
             more panels showing human-agent interaction. Hints like "underdog story" mean the
             challenge/struggle sections get more dramatic weight.
 
-          **Phase 2 — Translate to Comic:**
-          Take the narrative prose from Phase 1 and translate it into comic panels.
-          **Character budget:** Default 5-6 total (4 main + 1-2 supporting).
-          {{max_characters}} — if the user specified a number, use that instead.
-          Do NOT include every agent mentioned — curate the most interesting cast.
+          **Phase 2 — Translate Narrative into Multi-Issue Saga:**
+          Take the narrative prose from Phase 1 and translate it into a multi-issue saga plan.
+
+          **Cross-Project Character Discovery:**
+          Before creating new characters, search for existing characters in the same style:
+          comic_character(action='search', style='{{style}}')
+          Reuse existing characters where they match agents/roles from the research data.
+          For reused characters, set `existing_uri` to their comic:// URI and `needs_redesign`
+          to false (or true if the style has changed significantly).
+
+          **Smart Project Naming:**
+          If the project_name is empty or equal to "comic-project", propose a meaningful
+          project name based on the narrative content. Store as `suggested_project_name`
+          in the output JSON.
+
+          **MANDATORY: Call list_layouts before assigning any page layouts.**
+          comic_create(action='list_layouts')
+          All layout IDs in page_layouts MUST come from the list_layouts response.
+          Do NOT invent layout names. Invalid layout IDs will cause the pipeline to fail.
+
+          **SAGA BUDGET (defaults — user can override via recipe params):**
+          - max_issues: {{max_issues}} (default: 5 if empty. Total issues in the saga.)
+          - max_characters: {{max_characters}} (default: 5-6 if empty. 4 main + 1-2 supporting.)
+          - max_pages: {{max_pages}} (default: 5 if empty). Per issue, plus 1 cover + 1 cast page.
+          - panels_per_page: {{panels_per_page}} (default: 3-6 if empty. Some pages can use 2 for big dramatic moments.)
+
+          **SAGA PLANNING RULES:**
+          - Each issue must have a self-contained arc (beginning, middle, cliffhanger or resolution).
+          - Issues 2+ must open with a brief recap of the previous issue's cliffhanger.
+          - Maintain a shared character roster across all issues — the same characters persist.
+          - Plan character evolution across issues: characters grow, change, gain scars or
+            new abilities as the saga progresses. Track this in the per_issue field of
+            each character_roster entry.
+          - The final issue resolves the overarching saga arc.
 
           All dialogue must be natural, dramatized character speech. NO raw session data
           (UUIDs, file paths, file sizes, token counts, raw error messages) in speech bubbles.
@@ -478,37 +507,76 @@ stages:
 
           Set page breaks every 2-3 panels, after dramatic beats.
 
-          **ISSUE BUDGET (defaults — user can override via recipe params):**
-          - Max characters: {{max_characters}} (default: 5-6 if empty. 4 main + 1-2 supporting.)
-          - Story pages: {{max_pages}} (default: 5 if empty). Plus 1 cover + 1 cast page.
-          - Panels per page: {{panels_per_page}} (default: 3-6 if empty. Some pages can use 2 for big dramatic moments.)
-          - Include `page_count` in your output JSON.
-          - If the narrative needs more panels than pages x max-panels-per-page, plan a saga:
-            add a `saga_plan` field and produce only issue #1's storyboard.
+          CRITICAL OUTPUT REQUIREMENT — Your JSON output MUST include these top-level fields:
 
-          Break the story into panels following the style guide's conventions.
+          {
+            "title": "<saga title>",
+            "subtitle": "<saga subtitle>",
+            "suggested_project_name": "<slug if project_name was empty/default, else omit>",
+            "saga_plan": {
+              "total_issues": <integer>,
+              "arc_summary": "<one-paragraph overview of the full saga arc>",
+              "issues": [
+                {
+                  "issue_number": 1,
+                  "title": "<issue title>",
+                  "character_list": [ ... ],
+                  "panel_list": [ ... ],
+                  "page_layouts": [ {"page": 1, "layout": "<valid layout_id>", "panel_count": <n>} ],
+                  "page_count": <integer>,
+                  "panel_count": <integer>,
+                  "cliffhanger": "<how this issue ends — teaser for next>",
+                  "recap": null
+                },
+                {
+                  "issue_number": 2,
+                  "title": "<issue title>",
+                  "character_list": [ ... ],
+                  "panel_list": [ ... ],
+                  "page_layouts": [ ... ],
+                  "page_count": <integer>,
+                  "panel_count": <integer>,
+                  "cliffhanger": "<cliffhanger or null for final issue>",
+                  "recap": "<recap of issue 1 ending>"
+                }
+              ]
+            },
+            "character_roster": [
+              {
+                "name": "<display name>",
+                "char_slug": "<url-safe slug>",
+                "role": "<protagonist | antagonist | supporting | cameo>",
+                "type": "<agent | human | concept | system>",
+                "bundle": "<originating bundle, e.g. foundation>",
+                "first_appearance": "issue-001",
+                "existing_uri": "<comic:// URI if reused from another project, else null>",
+                "needs_redesign": false,
+                "visual_traits": "<key visual identifiers — outfit, colors, props>",
+                "description": "<character personality and narrative role>",
+                "backstory": "<character origin — what agent/concept inspired them>",
+                "metadata": { "agent_name": "...", "activity_rank": 1 },
+                "per_issue": {
+                  "issue-001": { "arc_role": "intro", "costume_variant": null, "notes": "..." },
+                  "issue-002": { "arc_role": "growth", "costume_variant": "battle-worn", "notes": "..." }
+                }
+              }
+            ]
+          }
 
-          CRITICAL OUTPUT REQUIREMENT: Your JSON output MUST include these top-level fields:
-          - title: string (comic title)
-          - subtitle: string (comic subtitle)
-          - panel_count: integer (total number of panels)
-          - page_layouts: array of {page, layout, panel_count} objects (one per story page — layout IDs MUST come from comic_create list_layouts)
-          - character_list: array of character objects (one entry per character to be designed)
-          - panel_list: array of panel objects (one entry per panel to be generated)
-          These arrays will be used by downstream foreach loops to drive character design
-          and panel art generation. Each character_list entry should contain all info needed
-          to design that character. Each panel_list entry should contain all info needed to
-          generate that panel's artwork. page_layouts is validated by a downstream step —
-          invalid layout IDs will cause the pipeline to fail.
+          The saga_plan.issues[] array drives downstream per-issue processing.
+          Each issue's character_list and panel_list are used by foreach loops for
+          character design and panel art generation. page_layouts is validated by a
+          downstream step — invalid layout IDs will cause the pipeline to fail.
+          The character_roster[] provides the shared roster with per_issue evolution maps.
 
-          Output the complete panel sequence as structured JSON.
+          Output the complete saga plan as structured JSON.
 
           Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}
-          After producing the storyboard JSON, store it using:
-          comic_asset(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', type='storyboard', name='storyboard', content=<your storyboard output>)
+          After producing the saga storyboard JSON, store it using:
+          comic_asset(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', type='storyboard', name='storyboard', content=<your saga storyboard output>)
         output: "storyboard"
         parse_json: true
-        timeout: 1800  # storyboard: delegates to 2 stories agents + JSON production (~12-20 min)
+        timeout: 1800  # saga storyboard: delegates to 2 stories agents + saga JSON production (~12-20 min)
 
       # ============================================
       # STEP 3a: VALIDATE STORYBOARD LAYOUTS

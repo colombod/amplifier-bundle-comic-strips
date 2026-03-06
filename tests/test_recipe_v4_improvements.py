@@ -159,45 +159,24 @@ def test_version_is_5_or_later():
 
 
 def test_parallel_art_generation():
-    """generate-panels and generate-cover must be structured for parallel execution.
+    """Per-issue art generation is handled via sub-recipe invocation.
 
-    Parallel execution is expressed through the dependency graph (fork-join pattern):
-    - Both generate-panels and generate-cover depend on character-design (fork)
-    - Neither depends on the other (parallel-eligible)
-    - Composition depends on both completing (join)
-
-    The recipe engine uses depends_on to determine which steps can run concurrently.
+    In v8+, generate-panels, generate-cover, and composition moved to issue-art.yaml.
+    The parent recipe now has a generate-issues step that invokes the sub-recipe
+    for each issue. Parallel panel/cover execution is validated by test_issue_art_recipe.py.
+    This test validates the parent recipe's sub-recipe delegation pattern.
     """
     recipe = _load_recipe()
-    panels = _find_step(recipe, "generate-panels")
-    cover = _find_step(recipe, "generate-cover")
-    composition = _find_step(recipe, "composition")
+    generate_issues = _find_step(recipe, "generate-issues")
+    assert generate_issues is not None, "generate-issues step not found"
 
-    assert panels is not None, "generate-panels step not found"
-    assert cover is not None, "generate-cover step not found"
-    assert composition is not None, "composition step not found"
-
-    # Both must be in the same stage (can run concurrently)
-    panels_stage = _find_stage_containing_step(recipe, "generate-panels")
-    cover_stage = _find_stage_containing_step(recipe, "generate-cover")
-    assert panels_stage is cover_stage, (
-        "generate-panels and generate-cover must be in the same stage"
+    # Sub-recipe invocation pattern
+    assert generate_issues.get("type") == "recipe", (
+        "generate-issues must be a recipe-type step"
     )
-
-    # Neither depends on the other (parallel-eligible)
-    panels_deps = panels.get("depends_on", [])
-    cover_deps = cover.get("depends_on", [])
-    assert "generate-cover" not in panels_deps, (
-        "generate-panels must not depend on generate-cover"
+    assert generate_issues.get("recipe") == "issue-art.yaml", (
+        "generate-issues must invoke issue-art.yaml sub-recipe"
     )
-    assert "generate-panels" not in cover_deps, (
-        "generate-cover must not depend on generate-panels"
-    )
-
-    # Composition joins both (depends on both)
-    comp_deps = composition.get("depends_on", [])
-    assert "generate-panels" in comp_deps, "composition must depend on generate-panels"
-    assert "generate-cover" in comp_deps, "composition must depend on generate-cover"
 
 
 # ============================================
@@ -265,69 +244,46 @@ def test_character_foreach_is_after_storyboard_approval():
 
 
 def test_character_design_requirements():
-    """character-design: needs_reference_images=false, detail_level=high."""
+    """character-design requirements were removed in v7.0.0 (URI protocol migration).
+
+    In v7+, image generation is handled internally by comic_create tool calls.
+    The old needs_reference_images/detail_level context vars are no longer needed.
+    This test now validates that design-characters exists and uses the correct agent.
+    """
     recipe = _load_recipe()
-    # Try v4 step id first, then v5 step id
-    reqs = _get_step_requirements(recipe, "character-design")
-    if reqs is None:
-        reqs = _get_step_requirements(recipe, "design-characters")
-
-    if reqs is not None:
-        needs_reference_images = reqs["needs_reference_images"]
-        detail_level = reqs["detail_level"]
-    else:
-        # v5 fallback: individual typed keys in top-level context
-        ctx = recipe.get("context", {})
-        needs_reference_images = ctx.get("character_design_needs_reference_images")
-        detail_level = ctx.get("character_design_detail_level")
-        assert needs_reference_images is not None, (
-            "character design requirements not found in recipe (tried step reqs and direct context keys)"
-        )
-
-    assert needs_reference_images is False
-    assert detail_level == "high"
+    step = _find_step(recipe, "design-characters")
+    assert step is not None, "design-characters step not found"
+    assert step.get("agent") == "comic-strips:character-designer"
 
 
 def test_generate_panels_requirements():
-    """generate-panels: needs_reference_images=true, detail_level=medium."""
+    """generate-panels moved to issue-art.yaml sub-recipe in v8.0.0.
+
+    Panel generation is now handled per-issue by the issue-art.yaml sub-recipe,
+    invoked via the generate-issues foreach step. Panel requirements are validated
+    by test_issue_art_recipe.py.
+    """
     recipe = _load_recipe()
-    reqs = _get_step_requirements(recipe, "generate-panels")
-
-    if reqs is not None:
-        needs_reference_images = reqs["needs_reference_images"]
-        detail_level = reqs["detail_level"]
-    else:
-        # v5 fallback: individual typed keys in top-level context
-        ctx = recipe.get("context", {})
-        needs_reference_images = ctx.get("generate_panels_needs_reference_images")
-        detail_level = ctx.get("generate_panels_detail_level")
-        assert needs_reference_images is not None, (
-            "generate-panels requirements not found in recipe (tried step reqs and direct context keys)"
-        )
-
-    assert needs_reference_images is True
-    assert detail_level == "medium"
+    # generate-panels should NOT be in the parent recipe
+    step = _find_step(recipe, "generate-panels")
+    assert step is None, (
+        "generate-panels should be in issue-art.yaml, not session-to-comic.yaml"
+    )
 
 
 def test_generate_cover_requirements():
-    """generate-cover: needs_reference_images=true, detail_level=high."""
+    """generate-cover moved to issue-art.yaml sub-recipe in v8.0.0.
+
+    Cover generation is now handled per-issue by the issue-art.yaml sub-recipe,
+    invoked via the generate-issues foreach step. Cover requirements are validated
+    by test_issue_art_recipe.py.
+    """
     recipe = _load_recipe()
-    reqs = _get_step_requirements(recipe, "generate-cover")
-
-    if reqs is not None:
-        needs_reference_images = reqs["needs_reference_images"]
-        detail_level = reqs["detail_level"]
-    else:
-        # v5 fallback: individual typed keys in top-level context
-        ctx = recipe.get("context", {})
-        needs_reference_images = ctx.get("generate_cover_needs_reference_images")
-        detail_level = ctx.get("generate_cover_detail_level")
-        assert needs_reference_images is not None, (
-            "generate-cover requirements not found in recipe (tried step reqs and direct context keys)"
-        )
-
-    assert needs_reference_images is True
-    assert detail_level == "high"
+    # generate-cover should NOT be in the parent recipe
+    step = _find_step(recipe, "generate-cover")
+    assert step is None, (
+        "generate-cover should be in issue-art.yaml, not session-to-comic.yaml"
+    )
 
 
 # ============================================
@@ -336,18 +292,21 @@ def test_generate_cover_requirements():
 
 
 def test_composition_depends_on_both_parallel_steps():
-    """Composition step must explicitly depend on both parallel art generation steps.
+    """Composition moved to issue-art.yaml sub-recipe in v8.0.0.
 
-    Note: test_parallel_art_generation validates the full fork-join graph structure.
-    This test isolates the AC6 acceptance criterion for traceability.
+    The fork-join pattern (panels + cover → composition) is now inside
+    issue-art.yaml. This is validated by test_issue_art_recipe.py.
+    In the parent recipe, per-issue art is handled by generate-issues.
     """
     recipe = _load_recipe()
+    # composition should NOT be in the parent recipe
     step = _find_step(recipe, "composition")
-    assert step is not None, "composition step not found"
-
-    depends = step.get("depends_on", [])
-    assert "generate-panels" in depends, "composition must depend on generate-panels"
-    assert "generate-cover" in depends, "composition must depend on generate-cover"
+    assert step is None, (
+        "composition should be in issue-art.yaml, not session-to-comic.yaml"
+    )
+    # generate-issues handles per-issue art via sub-recipe
+    gen_issues = _find_step(recipe, "generate-issues")
+    assert gen_issues is not None, "generate-issues step not found"
 
 
 # ============================================
@@ -380,17 +339,25 @@ class TestRecipeV5ForeachStructure:
         return _load_recipe()
 
     def test_character_foreach_exists(self, recipe) -> None:
-        """Recipe has a foreach step iterating over storyboard.character_list."""
+        """Recipe has a foreach step iterating over storyboard.character_roster."""
         step = _find_foreach_step(recipe, "character")
         assert step is not None, (
-            "No character foreach step found — expected foreach over storyboard.character_list"
+            "No character foreach step found — expected foreach over storyboard.character_roster"
         )
 
     def test_panel_foreach_exists(self, recipe) -> None:
-        """Recipe has a foreach step iterating over storyboard.panel_list."""
-        step = _find_foreach_step(recipe, "panel")
+        """Panel foreach moved to issue-art.yaml sub-recipe in v8.0.0.
+
+        The parent recipe now has generate-issues (foreach over saga_plan.issues)
+        which invokes issue-art.yaml. Panel foreach is validated by test_issue_art_recipe.py.
+        """
+        # Verify generate-issues exists as the replacement
+        step = _find_step(recipe, "generate-issues")
         assert step is not None, (
-            "No panel foreach step found — expected foreach over storyboard.panel_list"
+            "generate-issues step not found — expected foreach over saga_plan.issues"
+        )
+        assert "saga_plan.issues" in step.get("foreach", ""), (
+            "generate-issues must foreach over saga_plan.issues"
         )
 
     def test_character_foreach_uses_correct_agent(self, recipe) -> None:
@@ -402,29 +369,39 @@ class TestRecipeV5ForeachStructure:
         )
 
     def test_panel_foreach_uses_correct_agent(self, recipe) -> None:
-        """Panel foreach step dispatches to comic-strips:panel-artist."""
-        step = _find_foreach_step(recipe, "panel")
-        assert step is not None, "No panel foreach step found"
-        assert step.get("agent") == "comic-strips:panel-artist", (
-            f"Panel foreach uses wrong agent: {step.get('agent')}"
+        """Panel foreach moved to issue-art.yaml in v8.0.0.
+
+        Validate that generate-issues uses recipe type instead.
+        """
+        step = _find_step(recipe, "generate-issues")
+        assert step is not None, "generate-issues step not found"
+        assert step.get("type") == "recipe", (
+            "generate-issues must be a recipe-type step (panels are in sub-recipe)"
         )
 
     def test_character_foreach_uses_dot_notation_source(self, recipe) -> None:
-        """Character foreach source uses dot notation: {{storyboard.character_list}}."""
+        """Character foreach source uses dot notation: {{storyboard.character_roster}}.
+
+        Changed from character_list to character_roster in v8.0.0 to iterate
+        over the shared saga character roster instead of per-issue character lists.
+        """
         step = _find_foreach_step(recipe, "character")
         assert step is not None, "No character foreach step found"
         foreach_source = step.get("foreach", "")
-        assert "storyboard.character_list" in foreach_source, (
-            f"Expected 'storyboard.character_list' in foreach source, got: {foreach_source}"
+        assert "storyboard.character_roster" in foreach_source, (
+            f"Expected 'storyboard.character_roster' in foreach source, got: {foreach_source}"
         )
 
     def test_panel_foreach_uses_dot_notation_source(self, recipe) -> None:
-        """Panel foreach source uses dot notation: {{storyboard.panel_list}}."""
-        step = _find_foreach_step(recipe, "panel")
-        assert step is not None, "No panel foreach step found"
+        """Panel foreach moved to issue-art.yaml in v8.0.0.
+
+        The parent recipe now iterates over saga_plan.issues instead.
+        """
+        step = _find_step(recipe, "generate-issues")
+        assert step is not None, "generate-issues step not found"
         foreach_source = step.get("foreach", "")
-        assert "storyboard.panel_list" in foreach_source, (
-            f"Expected 'storyboard.panel_list' in foreach source, got: {foreach_source}"
+        assert "storyboard.saga_plan.issues" in foreach_source, (
+            f"Expected 'storyboard.saga_plan.issues' in foreach source, got: {foreach_source}"
         )
 
 
@@ -456,23 +433,28 @@ class TestRecipeV5RuntimeCorrectness:
             "{{storyboard.character_list}} resolves as a raw string, not an object"
         )
 
-    def test_design_characters_collect_has_parse_json_true(self, recipe) -> None:
-        """design-characters step must have parse_json: true so character_sheet is parsed objects."""
+    def test_design_characters_collect_has_no_parse_json(self, recipe) -> None:
+        """design-characters collects URI strings — parse_json not needed.
+
+        In v7+, character design returns comic:// URI strings, not JSON objects.
+        parse_json was removed as URIs are plain strings.
+        """
         step = _find_foreach_step(recipe, "character")
         assert step is not None, "No character foreach step found"
-        assert step.get("parse_json") is True, (
-            "design-characters requires parse_json: true on the collect step — "
-            "without it, character_sheet is a list of raw strings"
+        # URI strings don't need parse_json — it's either absent or False
+        assert step.get("parse_json") is not True or step.get("parse_json") is None, (
+            "design-characters should not have parse_json: true — URIs are plain strings"
         )
 
-    def test_generate_panels_collect_has_parse_json_true(self, recipe) -> None:
-        """generate-panels step must have parse_json: true so panel_results is parsed objects."""
-        step = _find_foreach_step(recipe, "panel")
-        assert step is not None, "No panel foreach step found"
-        assert step.get("parse_json") is True, (
-            "generate-panels requires parse_json: true on the collect step — "
-            "without it, panel_results is a list of raw strings"
-        )
+    def test_generate_panels_in_sub_recipe(self, recipe) -> None:
+        """generate-panels moved to issue-art.yaml sub-recipe in v8.0.0.
+
+        Panel generation is now per-issue via sub-recipe invocation.
+        Validated by test_issue_art_recipe.py.
+        """
+        step = _find_step(recipe, "generate-issues")
+        assert step is not None, "generate-issues step not found"
+        assert step.get("recipe") == "issue-art.yaml"
 
     def test_design_characters_has_parallel_execution(self, recipe) -> None:
         """design-characters must have parallel: 2 for bounded concurrent execution."""
@@ -482,26 +464,29 @@ class TestRecipeV5RuntimeCorrectness:
             f"design-characters should have parallel: 2, got: {step.get('parallel')}"
         )
 
-    def test_generate_panels_has_parallel_execution(self, recipe) -> None:
-        """generate-panels must have parallel: 2 for bounded concurrent execution."""
-        step = _find_foreach_step(recipe, "panel")
-        assert step is not None, "No panel foreach step found"
-        assert step.get("parallel") == 2, (
-            f"generate-panels should have parallel: 2, got: {step.get('parallel')}"
+    def test_generate_issues_has_on_error_continue(self, recipe) -> None:
+        """generate-issues must have on_error: continue for fault tolerance."""
+        step = _find_step(recipe, "generate-issues")
+        assert step is not None, "generate-issues step not found"
+        assert step.get("on_error") == "continue", (
+            f"generate-issues should have on_error: continue, got: {step.get('on_error')}"
         )
 
     def test_design_characters_has_max_iterations_guard(self, recipe) -> None:
-        """design-characters must have max_iterations: 6 (6 character ceiling)."""
+        """design-characters must have max_iterations: 20 (saga roster ceiling).
+
+        Increased from 6 to 20 in v8.0.0 to support saga-wide character rosters.
+        """
         step = _find_foreach_step(recipe, "character")
         assert step is not None, "No character foreach step found"
-        assert step.get("max_iterations") == 6, (
-            f"design-characters should have max_iterations: 6, got: {step.get('max_iterations')}"
+        assert step.get("max_iterations") == 20, (
+            f"design-characters should have max_iterations: 20, got: {step.get('max_iterations')}"
         )
 
-    def test_generate_panels_has_max_iterations_guard(self, recipe) -> None:
-        """generate-panels must have max_iterations: 12 (panel ceiling)."""
-        step = _find_foreach_step(recipe, "panel")
-        assert step is not None, "No panel foreach step found"
-        assert step.get("max_iterations") == 12, (
-            f"generate-panels should have max_iterations: 12, got: {step.get('max_iterations')}"
+    def test_generate_issues_has_max_iterations_guard(self, recipe) -> None:
+        """generate-issues must have max_iterations: 20 (saga issue ceiling)."""
+        step = _find_step(recipe, "generate-issues")
+        assert step is not None, "generate-issues step not found"
+        assert step.get("max_iterations") == 20, (
+            f"generate-issues should have max_iterations: 20, got: {step.get('max_iterations')}"
         )

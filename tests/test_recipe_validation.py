@@ -159,14 +159,22 @@ def test_session_file_locations():
 # Test 8: Each step has required fields
 # ---------------------------------------------------------------
 def test_steps_have_required_fields():
-    """Every step must have id, agent, prompt, and output (or collect for foreach)."""
+    """Every step must have id, and output (or collect for foreach).
+
+    Agent steps require 'agent' and 'prompt'.
+    Recipe-type steps require 'type: recipe' and 'recipe' instead.
+    """
     data = _parse_recipe()
     for stage in data.get("stages", []):
         for step in stage.get("steps", []):
             sid = step.get("id", "<unknown>")
             assert "id" in step, f"Step missing 'id' in stage '{stage.get('name')}'"
-            assert "agent" in step, f"Step '{sid}' missing 'agent'"
-            assert "prompt" in step, f"Step '{sid}' missing 'prompt'"
+            if step.get("type") == "recipe":
+                # Recipe-type steps have recipe path instead of agent/prompt
+                assert "recipe" in step, f"Recipe step '{sid}' missing 'recipe'"
+            else:
+                assert "agent" in step, f"Step '{sid}' missing 'agent'"
+                assert "prompt" in step, f"Step '{sid}' missing 'prompt'"
             has_output = "output" in step or "collect" in step
             assert has_output, f"Step '{sid}' missing both 'output' and 'collect'"
 

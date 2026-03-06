@@ -27,6 +27,7 @@ RECIPE_PATH = pathlib.Path(__file__).parent.parent / "recipes" / "session-to-com
 
 @functools.cache
 def _load_recipe() -> dict:
+    """Load and cache the session-to-comic recipe YAML."""
     return yaml.safe_load(RECIPE_PATH.read_text())
 
 

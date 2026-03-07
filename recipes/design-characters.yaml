@@ -188,11 +188,16 @@ steps:
                    project='{{project_id}}',
                    issue='issue-001',
                    name=<character_item.char_slug>,
+                   style='{{loaded_storyboard.style_name}}',
                    visual_traits=<visual_traits from character_item>,
                    distinctive_features=<identifying features from character_item>,
                    personality=<description from character_item>,
                    metadata=<metadata dict from character_item if present>,
                    prompt=<generation prompt combining visual_traits, style, and bundle affiliation>)
+
+      CRITICAL: You MUST pass style='{{loaded_storyboard.style_name}}' to comic_create.
+      If you omit it, the character is stored under style "default" and future runs
+      cannot find it during deduplication, causing the v=2, v=3, v=4 accumulation bug.
 
       PER-ISSUE VARIANTS:
       After handling the base design (via any workflow above), check character_item.per_issue

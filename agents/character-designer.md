@@ -215,6 +215,7 @@ comic_create(
   project='{{project_id}}',
   issue='{{issue_id}}',
   name='{{character_item}}.char_slug',
+  style='{{style}}',
   size='portrait',
   visual_traits='<key visual characteristics from visual_traits>',
   distinctive_features='<unique identifying features>',
@@ -222,6 +223,11 @@ comic_create(
   metadata={{character_item}}.metadata,  # omit if not present
   prompt='<your composed prompt>'
 )
+```
+
+**CRITICAL**: You MUST pass `style='{{style}}'` to `comic_create`. If you omit it, the character
+is stored under style `"default"` and future runs cannot find it during project-local deduplication
+(Step 0.5), causing the v=2, v=3, v=4 accumulation bug.
 ```
 
 Use the `char_slug` field from `{{character_item}}` for the `name` parameter (e.g., `the_explorer`).

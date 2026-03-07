@@ -1,0 +1,73 @@
+# =============================================================================
+# TEST: Sub-recipe invocation via type: recipe
+# =============================================================================
+#
+# Purpose: Validate that the recipe engine can resolve and load a sibling
+#          sub-recipe (issue-art.yaml) via relative path when invoked with
+#          type: recipe. This mirrors the exact pattern used by
+#          session-to-comic.yaml's "generate-issues" step (lines 834-853).
+#
+# Success criteria:
+#   - The engine finds and loads issue-art.yaml (no "Sub-recipe not found")
+#   - Execution enters the sub-recipe's agent steps (may fail on missing
+#     comic assets — that's expected and still proves path resolution works)
+#
+# Usage:
+#   amplifier tool invoke recipes operation=execute \
+#     recipe_path=@comic-strips:recipes/test-sub-recipe-call.yaml
+# =============================================================================
+
+name: "test-sub-recipe-call"
+description: "Minimal smoke test proving type:recipe sub-recipe path resolution works. Step 1 emits dummy project context; Step 2 invokes issue-art.yaml as a sub-recipe."
+version: "1.0.0"
+tags: ["test", "sub-recipe", "path-resolution"]
+
+steps:
+  # ============================================
+  # STEP 1: Mock project init
+  # Simulates the output of init-project by returning a JSON object
+  # with project_id and issue_id that Step 2 will reference.
+  # ============================================
+  - id: "mock-init"
+    agent: "foundation:zen-architect"
+    mode: "ANALYZE"
+    parse_json: true
+    timeout: 60
+    prompt: |
+      Return ONLY this exact JSON object, nothing else — no markdown fences,
+      no explanation, just the raw JSON:
+
+      {"project_id": "test-project", "issue_id": "issue-001"}
+    output: "project_init"
+
+  # ============================================
+  # STEP 2: Invoke issue-art.yaml sub-recipe
+  # Mirrors the generate-issues step from session-to-comic.yaml (lines 834-853)
+  # but without foreach/as/collect — single invocation with dummy values.
+  # The sub-recipe will likely fail inside its agent steps (no real comic
+  # assets exist), but if we get past "Sub-recipe not found" into actual
+  # agent execution, that proves path resolution works.
+  # ============================================
+  - id: "invoke-issue-art"
+    type: recipe
+    recipe: "issue-art.yaml"
+    on_error: continue
+    timeout: 300
+    context:
+      project_id: "{{project_init.project_id}}"
+      issue_id: "{{project_init.issue_id}}"
+      issue_number: "1"
+      issue_storyboard:
+        title: "Test Issue"
+        subtitle: "Sub-recipe path resolution test"
+        panel_list: []
+        panel_count: 0
+        page_layouts: []
+        character_list: []
+      character_uris: []
+      style_uri: ""
+      style: "manga"
+      output_name: "test-sub-recipe-output"
+      saga_context: {}
+      content_policy_notes: ""
+    output: "issue_result"

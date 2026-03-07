@@ -595,6 +595,16 @@ class ComicCreateTool:
             if not gen_result.success:
                 return _error(f"Image generation failed: {gen_result.output}")
 
+            # Build provenance metadata so downstream can detect staleness.
+            built_from: dict[str, Any] = {
+                **(params.get("built_from") or {}),
+                "style": params.get("style", "default"),
+            }
+            char_metadata: dict[str, Any] = {
+                **(params.get("metadata") or {}),
+                "built_from": built_from,
+            }
+
             # Store the character via the service (copies the file before we exit the with block)
             store_result = await self._resolve_service().store_character(
                 project,
@@ -610,7 +620,7 @@ class ComicCreateTool:
                 backstory=params.get("backstory", ""),
                 motivations=params.get("motivations", ""),
                 personality=params.get("personality", ""),
-                metadata=params.get("metadata"),
+                metadata=char_metadata,
                 source_path=output_path,
             )
 
@@ -704,6 +714,12 @@ class ComicCreateTool:
             if not gen_result.success:
                 return _moderation_or_error(gen_result, "panel", raw_prompt)
 
+            # Build provenance metadata so downstream can detect staleness.
+            built_from: dict[str, Any] = {
+                **(params.get("built_from") or {}),
+                "character_uris": list(character_uris),
+            }
+
             store_result = await self._resolve_service().store_asset(
                 project,
                 issue,
@@ -714,6 +730,7 @@ class ComicCreateTool:
                     "prompt": raw_prompt,
                     "safe_prompt": safe_prompt,
                     "camera_angle": params.get("camera_angle", ""),
+                    "built_from": built_from,
                 },
             )
 
@@ -783,6 +800,12 @@ class ComicCreateTool:
             if not gen_result.success:
                 return _moderation_or_error(gen_result, "cover", raw_prompt)
 
+            # Build provenance metadata so downstream can detect staleness.
+            built_from: dict[str, Any] = {
+                **(params.get("built_from") or {}),
+                "character_uris": list(character_uris),
+            }
+
             store_result = await self._resolve_service().store_asset(
                 project,
                 issue,
@@ -794,6 +817,7 @@ class ComicCreateTool:
                     "subtitle": params.get("subtitle", ""),
                     "prompt": raw_prompt,
                     "safe_prompt": safe_prompt,
+                    "built_from": built_from,
                 },
             )
 
@@ -1267,10 +1291,26 @@ class ComicCreateTool:
             lambda: Path(output_path).write_text(html, encoding="utf-8")
         )
 
+        # Build provenance metadata from the layout URIs actually used.
+        panel_uris: list[str] = []
+        for page in layout.get("pages", []):
+            for panel in page.get("panels", []):
+                uri = panel.get("uri", "")
+                if uri:
+                    panel_uris.append(uri)
+        cover_uri = (layout.get("cover") or {}).get("uri", "")
+
+        built_from: dict[str, Any] = {
+            **(params.get("built_from") or {}),
+            "panel_uris": panel_uris,
+            "cover_uri": cover_uri,
+        }
+
         result = {
             "output_path": output_path,
             "pages": page_count,
             "images_embedded": images_embedded,
+            "built_from": built_from,
         }
         if warnings:
             result["warnings"] = warnings

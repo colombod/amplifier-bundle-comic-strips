@@ -1,12 +1,20 @@
 name: "session-to-comic"
 description: "Transform an Amplifier session into an illustrated comic strip with quality review, character consistency, dramatized storytelling, and AmpliVerse publisher branding"
-version: "8.0.0"
+version: "8.1.0"
 author: "amplifier-comic-strips"
 tags: ["comic", "visual-storytelling", "session-analysis", "uri-protocol"]
 
 # =============================================================================
 # CHANGELOG
 # =============================================================================
+#
+# v8.1.0 (2026-03-07):
+#   - FEAT: Add lookup-existing-characters step (Step 2a) between style-curation
+#     and storyboard in Stage 1. Makes character discovery deterministic: a single
+#     comic_character(action='search', style=...) call runs before the storyboard
+#     writer, and the results are passed as {{existing_characters}} into the
+#     storyboard prompt. The storyboard-writer no longer needs to search itself —
+#     it receives a pre-populated list and maps existing URIs directly.
 #
 # v8.0.0 (2026-03-06):
 #   - FEAT: Restructure init-project for saga support. Creates project +
@@ -435,6 +443,24 @@ stages:
         timeout: 300  # style-curation: load style pack + store (~2-3 min)
 
       # ============================================
+      # STEP 2a: LOOKUP EXISTING CHARACTERS
+      # Deterministic character search so the storyboard
+      # knows which characters already exist in this style.
+      # ============================================
+      - id: "lookup-existing-characters"
+        agent: "comic-strips:style-curator"
+        prompt: |
+          YOUR ONLY JOB: Search for existing characters in this comic style. Do NOTHING else.
+
+          Call: comic_character(action='search', style='{{style}}')
+
+          Return the FULL search results as JSON. If no characters are found, return [].
+          Do NOT create characters. Do NOT read files. Just call the search tool and return the results.
+        output: "existing_characters"
+        parse_json: true
+        timeout: 120  # lookup-existing-characters: single tool call
+
+      # ============================================
       # STEP 3: SAGA STORYBOARD
       # ============================================
       - id: "storyboard"
@@ -469,9 +495,18 @@ stages:
           **Phase 2 — Translate Narrative into Multi-Issue Saga:**
           Take the narrative prose from Phase 1 and translate it into a multi-issue saga plan.
 
+          **Known existing characters (from previous runs and other projects):**
+          {{existing_characters}}
+
+          For EVERY character in this list that matches an agent/role from the research data,
+          include them in the character_roster with:
+            existing_uri: "<the URI from the search results>"
+            needs_redesign: false
+          Only create NEW character entries (existing_uri: null) for agents that have NO match.
+
           **Cross-Project Character Discovery:**
-          Before creating new characters, search for existing characters in the same style:
-          comic_character(action='search', style='{{style}}')
+          The search has already been performed above — do NOT call comic_character(action='search') again.
+          Use the existing_characters list above to drive reuse decisions.
           Reuse existing characters where they match agents/roles from the research data.
           For reused characters, set `existing_uri` to their comic:// URI and `needs_redesign`
           to false (or true if the style has changed significantly).

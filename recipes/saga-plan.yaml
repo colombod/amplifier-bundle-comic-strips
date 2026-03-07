@@ -400,11 +400,34 @@ stages:
           Output the complete saga plan as structured JSON.
 
           Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}
-          After producing the saga storyboard JSON, store it using:
-          comic_asset(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', type='storyboard', name='storyboard', content=<your saga storyboard output>)
+
+          IMPORTANT: Return ONLY the structured saga plan JSON object. Do NOT attempt to store it
+          yourself — the next recipe step handles storage deterministically.
         output: "storyboard"
         parse_json: true
         timeout: 1800  # saga storyboard: delegates to 2 stories agents + saga JSON production (~12-20 min)
+
+      # ============================================
+      # STEP 4-store: PERSIST STORYBOARD TO ASSET STORE
+      # Deterministic store — never trust an agent step
+      # to reliably call a tool. This step takes the
+      # storyboard JSON from the agent output and stores
+      # it as a comic:// asset so downstream composable
+      # recipes (design-characters, issue-art, issue-compose)
+      # can read it independently.
+      # ============================================
+      - id: "store-storyboard"
+        condition: "{{storyboard_check.proceed}} == 'true'"
+        agent: "comic-strips:style-curator"
+        prompt: |
+          YOUR ONLY JOB: Store the storyboard JSON to the asset store. Do NOTHING else.
+
+          Call exactly this:
+          comic_asset(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', type='storyboard', name='storyboard', content={{storyboard}})
+
+          Return ONLY the URI string from the store response (e.g. "comic://project/issues/issue-001/storyboards/storyboard?v=1").
+        output: "storyboard_uri"
+        timeout: 120
 
       # ============================================
       # STEP 4a: VALIDATE STORYBOARD LAYOUTS

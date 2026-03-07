@@ -1,6 +1,6 @@
 name: "session-to-comic"
 description: "Transform an Amplifier session into an illustrated comic strip with quality review, character consistency, dramatized storytelling, and AmpliVerse publisher branding"
-version: "8.1.0"
+version: "9.0.0"
 author: "amplifier-comic-strips"
 tags: ["comic", "visual-storytelling", "session-analysis", "uri-protocol"]
 
@@ -8,265 +8,46 @@ tags: ["comic", "visual-storytelling", "session-analysis", "uri-protocol"]
 # CHANGELOG
 # =============================================================================
 #
+# v9.0.0 (2026-03-07):
+#   - BREAKING CHANGE: Refactored from 853-line monolith (3 stages, inline
+#     agent steps) to thin orchestrator (flat mode, 3 sub-recipe calls).
+#     Composable sub-recipes:
+#       1. saga-plan.yaml         — discover, research, style, storyboard,
+#          validate, create issues, approval gate
+#       2. design-characters.yaml — load storyboard from asset store, character
+#          reuse/dedup, foreach design loop
+#       3. issue-art.yaml         — per-issue panels, cover, composition
+#   - CHANGE: Switched from staged mode (stages + inline approval gates) to
+#     flat mode (steps). The approval gate now lives inside saga-plan.yaml.
+#   - CHANGE: All agent prompts moved into sub-recipes. Orchestrator contains
+#     only type: recipe steps and context wiring.
+#   - NEW: Added `force` context variable (default "false") for regeneration
+#     control — passed through to saga-plan and design-characters.
+#   - NEW: Added recursion config (max_depth: 3, max_total_steps: 200) for
+#     composed sub-recipe execution safety.
+#   - COMPAT: Same top-level context variables as v8.x. saga_issue and
+#     previous_issue_id retained for backward compatibility (unused by
+#     sub-recipes).
+#
 # v8.1.0 (2026-03-07):
-#   - FEAT: Add lookup-existing-characters step (Step 2a) between style-curation
-#     and storyboard in Stage 1. Makes character discovery deterministic: a single
-#     comic_character(action='search', style=...) call runs before the storyboard
-#     writer, and the results are passed as {{existing_characters}} into the
-#     storyboard prompt. The storyboard-writer no longer needs to search itself —
-#     it receives a pre-populated list and maps existing URIs directly.
+#   - FEAT: Add lookup-existing-characters step between style-curation and
+#     storyboard. Character discovery is now deterministic.
 #
 # v8.0.0 (2026-03-06):
-#   - FEAT: Restructure init-project for saga support. Creates project +
-#     placeholder first issue instead of project + issue. Metadata uses
-#     max_issues instead of saga_issue/previous_issue_id. Default issue
-#     title changed from 'Comic Strip' to 'Saga Planning'.
-#   - FEAT: Smart project naming in discover-sessions. When project_name is
-#     empty or default 'comic-project', proposes a meaningful name based on
-#     discovered content, stored as 'suggested_project_name' in research output.
+#   - FEAT: Restructure init-project for saga support. Smart project naming.
 #
 # v7.7.0 (2026-03-06):
-#   - FEAT: Add flexible source input. New context variable `source` accepts
-#     project names, session IDs, file paths, descriptive phrases, or any
-#     combination. The stories:story-researcher agent discovers and consolidates
-#     session data using its native tools (git/gh CLI, grep, delegation).
-#   - FEAT: Add discover-sessions step (Step 0a) between init-project and
-#     research. Resolves {{source}} to consolidated session data stored as a
-#     comic asset. Returns a comic:// URI consumed by the research step.
-#   - CHANGE: research step now consumes {{session_data}} URI from the discover
-#     step instead of reading {{session_file}} directly. Research loads
-#     pre-gathered data via comic_asset(action='get').
-#   - CHANGE: session_file context variable deprecated. Still accepted as a
-#     backward-compatible alias — if source is empty and session_file is
-#     provided, the discover step uses session_file instead.
-#   - CHANGE: init-project metadata now includes source alongside session_file.
+#   - FEAT: Flexible source input; discover-sessions step.
 #
 # v7.6.0 (2026-03-05):
-#   - FEAT: Add validate-storyboard recipe step (deterministic layout ID check).
-#     Runs immediately after storyboard generation, BEFORE the approval gate.
-#     Catches invalid layout IDs (e.g. agent-invented names like "naruto_wide_3")
-#     before any expensive image generation starts. Returns suggestions for valid
-#     alternatives so the reviewer can deny and fix.
-#   - FEAT: Approval gate now shows layout validation results and page_layouts.
-#   - FEAT: comic_create gains list_layouts and validate_storyboard actions.
-#     list_layouts returns all 47 templates grouped by panel count.
-#     validate_storyboard checks page_layouts array against the template dict.
-#   - FIX: assemble_comic now validates layout IDs before rendering. Invalid IDs
-#     return an error with suggestions instead of silently falling back to 2x2.
-#   - FIX: _grid_css() logs a warning on unknown layout_id fallback (defense-in-depth).
+#   - FEAT: Storyboard layout validation; validate_storyboard action.
 #
 # v7.5.0 (2026-03-04):
-#   - FEAT: Add story_hints and character_hints context variables. Users can now
-#     pass creative direction hints (e.g. "emphasize the human feedback loop",
-#     "make the protagonist look like a weary traveler") that flow through the
-#     recipe to storyboard-writer and character-designer respectively.
-#   - FEAT: storyboard-writer now receives and applies story_hints to narrative
-#     arc selection, tone, and panel emphasis during both Phase 1 and Phase 2.
-#   - FEAT: character-designer now receives and applies character_hints to visual
-#     design, personality expression, and style interpretation.
-#   - FIX: Character style cohesion — character-designer now includes an explicit
-#     "style cohesion directive" in every prompt referencing the style guide's
-#     Character Rendering section. All characters in an issue must share the same
-#     visual DNA (face proportions, rendering technique, line quality) so they
-#     look like they belong in the same world. Previously characters could drift
-#     into different sub-styles (e.g. some Ghibli characters looking modern while
-#     others looked classic).
-#   - FIX: style-curator predefined styles table expanded from 6 to all 28 named
-#     style packs. Previously only manga/superhero/indie/newspaper/ligne-claire/
-#     retro-americana had explicit read_file mappings; the other 22 (sin-city,
-#     ghibli, watchmen, etc.) fell through to custom generation, ignoring their
-#     authored style pack files.
+#   - FEAT: story_hints and character_hints context variables.
 #
-# v7.4.0 (2026-03-03):
-#   - FIX: Enforce no-speech-bubbles at code level — _create_panel and
-#     _create_cover now append "Do not include any text, speech bubbles..."
-#     to every image generation prompt as a safety net (agents should also
-#     include this, but code-level enforcement guarantees it).
-#   - FIX: Cover now uses portrait ratio (1024x1536) instead of landscape
-#     (1536x1024) — matches comic book cover proportions.
-#   - FIX: All pages now use consistent 2:3 aspect-ratio container sizing.
-#     Cover image fills page with object-fit:cover. Panels fill grid cells.
-#     No more inconsistent page heights.
-#   - FIX: Expanded _GRID_TEMPLATES from 15 to 47 layouts including manga
-#     styles (manga_3_panel, manga_dynamic_2, etc.), professional comic
-#     layouts (cinematic_widescreen, dramatic_reveal, hero_plus_grid, etc.),
-#     and superhero/western layouts. Unknown layout IDs no longer silently
-#     fall back to a boring 1fr 1fr grid.
-#   - FEAT: Issue creation now accepts optional metadata dict for storing
-#     generation trigger info (session_file, style, saga context). Enables
-#     auditing, re-running, and benchmarking of comic generation runs.
-#   - FEAT: Image resize/compression utility — images exceeding 4MB are
-#     automatically resized before being sent to vision LLM APIs. Uses
-#     progressive strategy: JPEG re-encode → scale down → quality reduction.
-#     Requires Pillow (best-effort: original bytes used if unavailable).
-#   - CHANGE: init-project step now passes generation trigger metadata
-#     (session_file, style, saga context) to create_issue.
-#
-# v7.3.0 (2026-03-02):
-#   - FIX: Store research as asset, flow only the URI through recipe context.
-#     ROOT CAUSE: {{research_data}} carried the full session analysis (~500K+
-#     tokens) through every downstream step. By panel iteration 4, context
-#     reached 1.9M tokens.
-#   - CHANGE: research step now stores research JSON via comic_asset and
-#     returns ONLY the URI string (e.g. comic://proj/issues/i/research/session-analysis).
-#     {{research_data}} in all downstream steps is now a ~70-byte URI, not a
-#     full JSON blob.
-#   - CHANGE: storyboard step retrieves research on demand:
-#     comic_asset(action='get', uri='{{research_data}}', include='full')
-#   - CHANGE: style-curation step no longer receives {{research_data}} — style
-#     selection is driven by the {{style}} parameter, not raw research content.
-#   - CHANGE: generate-cover step no longer receives {{research_data}} — cover
-#     title and theme come from {{storyboard.title}} / {{storyboard.subtitle}}.
-#   - CHANGE: storyboard-writer agent updated: retrieves research via URI in
-#     Step 0 before delegating to stories agents; scene descriptions capped at
-#     2-3 sentences; camera angles must be a single term; dialogue is exact
-#     spoken lines only (no stage directions).
-#   - NOTE: {{storyboard}} remains a parsed JSON object (parse_json: true) for
-#     foreach loop access. Storyboard JSON is a compact spec (~5-15 KB for
-#     8 panels) — no URI indirection needed.
-#
-# v7.2.0 (2026-03-02):
-#   - FIX: Remove rate_limit step-level field (not in schema) from design-characters
-#     and generate-panels foreach steps. Concurrency is already bounded by parallel: 2.
-#   - FIX: Change retry.delay to retry.initial_delay (correct schema field name) in
-#     design-characters, generate-panels, and generate-cover steps.
-#   - RENAME: character_sheet collect variable renamed to character_uris throughout.
-#     More self-documenting since it holds a list of comic:// URI strings, not a sheet.
-#
-# v7.1.0 (2026-03-02) (WP-6):
-#   - CHANGE: All comic:// URI examples updated to v2 scoped format.
-#     Characters and styles are now project-scoped (no issue segment):
-#       "comic://proj/characters/explorer"  (was "comic://proj/issue/character/explorer")
-#       "comic://proj/styles/manga"          (was "comic://proj/issue/style/manga")
-#     Panels, covers, and other per-issue assets are now issue-scoped with plural
-#     collection names and an explicit `issues/` path segment:
-#       "comic://proj/issues/issue-001/panels/panel_03"
-#       "comic://proj/issues/issue-001/covers/cover"
-#   - NOTE: No runtime behavior change — this version documents the v2 URI format
-#     already implemented in the underlying tools (WP-1 through WP-4).
-#
-# v7.0.0 (2026-03-02) (WP-10):
-#   - FEAT: Switch to URI-based context variables throughout. All recipe state
-#     now carries comic:// URIs and text metadata only — no binary data, no
-#     base64 blobs, no file paths in recipe context.
-#   - CHANGE: {{character_sheet}} is now a list of character URI strings
-#     (e.g. "comic://proj/characters/explorer"), replacing the old list
-#     of parsed JSON objects containing image paths.
-#   - CHANGE: {{panel_results}} is now a list of panel URI strings, replacing
-#     the old list of parsed image-path JSON objects.
-#   - CHANGE: {{cover_results}} is now a single cover URI string (~60 bytes),
-#     replacing the old ~2 MB HTML blob with embedded base64 cover image.
-#   - CHANGE: {{style_guide}} is now a style URI string, replacing the old
-#     full style-guide text. Downstream agents load content via comic_style.
-#   - NOTE: {{storyboard}} remains a parsed JSON object — the recipe engine
-#     foreach loops that drive character design and panel generation require
-#     dot-notation access to storyboard.character_list and storyboard.panel_list.
-#   - CHANGE: design-characters and generate-panels steps now use
-#     comic_create(action='create_character_ref') and
-#     comic_create(action='create_panel') respectively. generate_image is no
-#     longer referenced in agent instructions.
-#   - CHANGE: generate-cover step uses comic_create(action='create_cover') and
-#     comic_create(action='review_asset') for self-review. No more base64 HTML
-#     assembly in agent context.
-#   - CHANGE: composition step is significantly simplified — receives URI list
-#     for panels, a single cover URI, and storyboard metadata. Calls
-#     comic_create(action='assemble_comic') with a structured layout object.
-#     All binary encoding is internal to the tool.
-#   - REMOVED: generate_image-specific context variables
-#     (character_design_needs_reference_images, character_design_detail_level,
-#     generate_panels_needs_reference_images, generate_panels_detail_level,
-#     generate_cover_needs_reference_images, generate_cover_detail_level).
-#   - REMOVED: parse_json: true from design-characters and generate-panels
-#     collect steps (URIs are plain strings, not JSON objects).
-#
-# v6.1.0 (WP-6):
-#   - FEAT: Add retry (max_attempts: 2, delay: 5s) to all three image-generation
-#     steps (design-characters, generate-panels, generate-cover) so transient
-#     provider failures are automatically retried before the recipe aborts.
-#   - FEAT: Add rate_limit (max_per_minute: 10) to the two foreach steps
-#     (design-characters, generate-panels) to prevent image-generation API
-#     rate-limit errors when running with parallel: 2 across many iterations.
-#
-# v6.0.0 (2026-03-03):
-#   - FEAT: Integrate comic asset manager (tool-comic-assets) for all asset tracking.
-#     All agents now store and retrieve assets through comic_project, comic_character,
-#     comic_asset, and comic_style tools instead of direct filesystem operations.
-#   - FEAT: Add init-project step that creates project and issue for asset tracking.
-#     project_id and issue_id flow through recipe context to all downstream steps.
-#   - FEAT: Character designs stored as composite domain objects (metadata + images)
-#     in the project roster, versioned by style, reusable across issues.
-#   - FEAT: Style guides stored and retrievable across projects.
-#   - FEAT: Review feedback stored as version metadata on panels, covers, characters.
-#   - CHANGE: strip-compositor no longer deletes intermediate files. All assets
-#     persist in managed storage. Cleanup is an explicit user-approved operation.
-#   - CHANGE: bash tool removed from cover-artist. Base64 encoding handled by
-#     asset manager's format='data_uri' retrieval.
-#
-# v5.0.3 (2026-03-01):
-#   - BUGFIX: Remove unsupported Jinja2 filter `| length` from approval gate prompt.
-#     ROOT CAUSE: substitute_variables() does not support Jinja2 filter syntax;
-#     `{{storyboard.character_list | length}}` was rendered as literal text instead
-#     of being substituted. Replaced with plain "Characters:" heading — the list
-#     itself follows on the next line so reviewers see the count implicitly.
-#   - IMPROVEMENT: Move parallel:/max_iterations: to after agent: in both foreach
-#     steps (design-characters, generate-panels). Field order now reads naturally
-#     as: what to loop → what agent → how to execute.
-#
-# v5.0.2 (2026-03-01):
-#   - FIX: Add parse_json: true to design-characters and generate-panels collect
-#     steps so character_sheet and panel_results are parsed objects, not raw strings.
-#   - FIX: Replace {{storyboard}} in approval gate with named field references
-#     for human-readable review output.
-#   - FEAT: Add parallel: 2 to both foreach steps for bounded concurrent execution.
-#   - FEAT: Add max_iterations: 6 (characters) and 12 (panels) as hard guards
-#     against runaway loops in the expensive art-generation stage.
-#
-# v5.0.1 (2026-03-01):
-#   - FIX: Add parse_json: true to storyboard step so output is parsed as
-#     a JSON object, enabling dot-notation access to character_list and panel_list.
-#   - FIX: Change foreach sources from {{character_list}}/{{panel_list}} to
-#     {{storyboard.character_list}}/{{storyboard.panel_list}} (dot notation).
-#   - FIX: Change item_variable: to as: in both foreach steps (correct schema field).
-#
-# v5.0.0 (2026-03-01):
-#   - FEAT: Replace monolithic character-design step with foreach loop.
-#     The storyboard-writer now emits character_list and panel_list arrays.
-#     character-designer is invoked once per character via foreach, collecting
-#     results into character_sheet.
-#   - FEAT: Replace monolithic generate-panels step with foreach loop.
-#     panel-artist is invoked once per panel via foreach, collecting
-#     results into panel_results.
-#   - This enables parallel/incremental image generation and better
-#     error isolation per character/panel.
-#
-# v4.0.4 (2026-02-28):
-#   - FIX: Flatten requirements further to individual typed keys instead of
-#     packed comma-separated strings. Each requirement is now its own context
-#     variable with proper YAML types (bool/string) instead of a single
-#     string like "needs_reference_images=false, detail_level=high".
-#     This gives agents direct access to typed values via template vars.
-#
-# v4.0.3 (2026-02-28):
-#   - FIX: Flatten nested context dicts to avoid recipe engine runtime crash.
-#     The recipe engine's substitute_variables() converts nested dicts to
-#     strings before prompt substitution. When a prompt references
-#     {{requirements.character_design}}, the engine first stringifies the
-#     parent "requirements" dict, then tries .get("character_design") on
-#     the resulting string → 'str' object has no attribute 'get'.
-#     WORKAROUND: Replace nested requirements dict with flat string vars
-#     (character_design_requirements, panel_generation_requirements,
-#     cover_generation_requirements) and update prompt references.
-#     Filed engine bug as amplifier-support#91 for proper staged recipe
-#     validation.
-#
-# v4.0.0-v4.0.2: Prior iterations exploring nested vs flat context.
-#   See amplifier-support#91 for full history.
-#
-# v4.0.0:
-#   - Initial v4 staged recipe with approval gate between storyboard review
-#     and expensive art generation. Two stages: research-and-storyboard
-#     (text-only, cheap) and art-generation (image generation, expensive).
-#
+# v7.0.0–v7.4.0: URI-based context, research-as-asset, schema fixes.
+# v4.0.0–v6.1.0: Staged recipe, asset manager, foreach loops, retries.
+# Full changelog for v4.0.0–v7.4.0 available in git history.
 
 # Usage:
 #   amplifier run "execute session-to-comic with source=comic-strip-bundle style=superhero"
@@ -276,578 +57,95 @@ tags: ["comic", "visual-storytelling", "session-analysis", "uri-protocol"]
 context:
   source: ""              # Required: project name, session ID(s), file path(s), or descriptive phrase
   session_file: ""        # Deprecated: backward-compatible alias for source (single file path)
-  style: "superhero"      # 28 styles: manga, superhero, indie, newspaper, ligne-claire, retro-americana, sin-city, watchmen, berserk, cuphead, ghibli, attack-on-titan, spider-man, x-men, solo-leveling, gundam, transformers, tatsunoko, witchblade, dylan-dog, tex-willer, disney-classic, bendy, hellraiser, naruto, jujutsu-kaisen, one-piece, go-nagai — or any custom description
+  style: "superhero"      # 28 named styles (manga, superhero, indie, newspaper, ligne-claire, retro-americana, sin-city, watchmen, berserk, cuphead, ghibli, attack-on-titan, spider-man, x-men, solo-leveling, gundam, transformers, tatsunoko, witchblade, dylan-dog, tex-willer, disney-classic, bendy, hellraiser, naruto, jujutsu-kaisen, one-piece, go-nagai) — or any custom description
   output_name: ""         # Optional: custom output filename (defaults to comic-{timestamp})
   project_name: ""        # Optional: project name (defaults to "comic-project")
-  issue_title: ""         # Optional: issue title (defaults to comic title from research)
-  saga_issue: ""          # Optional: saga issue number (2, 3, ...). Empty = issue 1 or standalone.
-  previous_issue_id: ""   # Optional: issue ID of previous saga issue (for continuity).
-  max_characters: ""      # Optional: max characters to design (default 5-6). User can steer e.g. "3" or "8".
-  max_pages: ""           # Optional: max story pages per issue (default 5). Increase for epic arcs.
-  panels_per_page: ""     # Optional: panels per page range (default "3-6"). Use "2-4" for cinematic, "4-6" for dense.
-  max_issues: "5"         # Optional: max issues in a saga (default 5). Controls how many issues the saga planner creates.
-  story_hints: ""         # Optional: creative direction for the narrative (e.g. "emphasize the human feedback loop", "focus on the collaboration between agents", "make it feel like an underdog victory story")
-  character_hints: ""     # Optional: creative direction for character design (e.g. "make the protagonist look battle-worn", "give characters expressive body language", "emphasize team uniforms")
-  content_policy_notes: "" # Accumulated moderation lessons — populated at runtime when image generation hits content policy blocks. Visible to all art-generation agents so they preemptively avoid blocked patterns.
+  issue_title: ""         # Optional: first issue title (defaults to "Saga Planning")
+  force: "false"          # Optional: force regeneration of existing storyboard/characters ("true" to regenerate)
+  saga_issue: ""          # Legacy: retained for backward compatibility (unused by sub-recipes)
+  previous_issue_id: ""   # Legacy: retained for backward compatibility (unused by sub-recipes)
+  max_characters: ""      # Optional: max characters to design (default 5-6)
+  max_pages: ""           # Optional: max story pages per issue (default 5)
+  panels_per_page: ""     # Optional: panels per page range (default "3-6")
+  max_issues: "5"         # Optional: max issues in a saga (default 5)
+  story_hints: ""         # Optional: creative direction for the narrative
+  character_hints: ""     # Optional: creative direction for character design
+  content_policy_notes: "" # Accumulated moderation lessons — populated at runtime
 
-stages:
+recursion:
+  max_depth: 3
+  max_total_steps: 200
+
+steps:
   # ==========================================================================
-  # STAGE 1: RESEARCH & STORYBOARD
-  # Cheap text-only steps: extract data, curate style, write storyboard.
-  # Approval gate at the end lets the user review character cast and narrative
-  # arc before committing to expensive image generation.
+  # STEP 1: SAGA PLANNING
+  # Delegates to saga-plan.yaml: check-existing, init-project, discover
+  # sessions, research, style-curation, character lookup, storyboard,
+  # validation, issue creation, and an internal approval gate.
+  # Output: sub-recipe's full final context dict containing project_init,
+  # storyboard, style_guide, saga_issues, etc.
   # ==========================================================================
-  - name: "research-and-storyboard"
-    steps:
-      # ============================================
-      # STEP 0: INIT PROJECT - Asset Manager Setup
-      # ============================================
-      - id: "init-project"
-        agent: "comic-strips:style-curator"
-        prompt: |
-          YOUR ONLY JOB: Create a project and a placeholder first issue, then return the result as JSON. Do NOTHING else.
-
-          comic_project(action='create_issue', project='{{project_name}}', title='{{issue_title}}', metadata={"source": "{{source}}", "session_file": "{{session_file}}", "style": "{{style}}", "created_by": "session-to-comic recipe v8.0.0", "max_issues": "{{max_issues}}"})
-
-          If project_name is empty, use "comic-project". If issue_title is empty, use "Saga Planning".
-
-          Return ONLY the JSON from the tool response: {"project_id": "<value>", "issue_id": "<value>"}
-          Do NOT read files, do NOT curate styles, do NOT do anything else. Just call the tool and return.
-        output: "project_init"
-        parse_json: true
-        timeout: 120  # init-project: single tool call + return
-
-      # ============================================
-      # STEP 0a: DISCOVER SESSIONS - Source Resolution
-      # Translates the user's flexible {{source}} input
-      # (project name, session IDs, file paths, or
-      # descriptive phrase) into consolidated session data.
-      # The researcher discovers data using its native tools
-      # — not hardcoded paths.
-      # ============================================
-      - id: "discover-sessions"
-        agent: "stories:story-researcher"
-        prompt: |
-          You are given a source describing what to research: {{source}}
-          Legacy session file (if provided): {{session_file}}
-
-          If source is provided, use it. If source is empty but session_file is provided, use session_file instead.
-          If BOTH are empty, STOP and return an error: {"error": "No source or session_file provided. One is required."}
-
-          The source could be any of these — inspect the string and figure out which:
-          - A project name (e.g. "comic-strip-bundle")
-          - A directory path to a project
-          - A single session file path (e.g. path/to/events.jsonl)
-          - A session ID or comma-separated list of session IDs
-          - A descriptive phrase (e.g. "the context-intelligence project")
-
-          YOUR JOB: Discover and gather the relevant Amplifier session data — agent activity,
-          tool usage, key moments, outcomes, and metrics. Use your tools freely: bash (git log,
-          gh CLI, find, ls), grep, read_file, and delegation to foundation:explorer for deep
-          exploration. Synthesize across multiple sessions if the source spans more than one.
-
-          DO NOT extract comic-specific structures (characters, panel moments, narrative arcs).
-          That is the research step's job. You are purely "find the data and consolidate it."
-
-          SMART PROJECT NAMING: If the project_name is empty or equal to "comic-project" (the default),
-          propose a meaningful project name based on the content you discovered. Analyze the session
-          themes, project names, repository names, or key topics to craft a short, descriptive slug
-          (e.g. "context-intelligence-saga", "auth-refactor-chronicles"). Store your suggestion under
-          a "suggested_project_name" field in the research output. If the user already provided a
-          meaningful project_name (i.e. not empty and not "comic-project"), skip this step.
-
-          Store the consolidated research material using:
-          comic_asset(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', type='research', name='session-discovery', content=<your consolidated session data>)
-
-          Return ONLY the URI string from the store response. Your entire output should be just the URI, e.g.:
-          comic://my-project/issues/issue-001/research/session-discovery?v=1
-        output: "session_data"
-        timeout: 1800  # discover-sessions: exploration + consolidation (large projects may take 15-20 min)
-
-      # ============================================
-      # STEP 1: RESEARCH - Data Extraction
-      # ============================================
-      - id: "research"
-        agent: "stories:story-researcher"
-        prompt: |
-          Analyze the session data at: {{session_data}}
-
-          Load the consolidated session data:
-          comic_asset(action='get', uri='{{session_data}}', include='full')
-
-          Extract structured data for comic strip creation:
-
-          **Session Metadata:**
-          - Session ID, duration, date
-          - Agents used and their roles
-          - Tools called and frequency
-          - Number of user interactions
-
-          **Agent Activity Analysis (CRITICAL for character selection):**
-          - Rank each agent by activity level: count tool calls, delegations sent, delegations received
-          - Identify which bundle each agent belongs to (e.g., foundation:explorer -> foundation bundle)
-          - Map bundle memberships so the storyboard writer can assign team affiliations
-          - Flag the top 3-4 most active agents and note their key contributions
-
-          **Key Moments (for comic panels):**
-          - The initial challenge or goal (what started the session?)
-          - Breakthrough moments (problems solved, discoveries made)
-          - Agent collaboration highlights (which agents worked together?)
-          - The final outcome or deliverable
-          - Any dramatic failures or unexpected turns
-
-          **Characters:**
-          - Map each agent to a character with a brief visual description
-          - Identify the "protagonist" (main agent driving the story)
-          - Identify any "antagonists" (bugs, errors, blockers)
-
-          **Metrics:**
-          - Quantified achievements (files created, tests passed, etc.)
-          - Session duration and effort indicators
-
-          Produce structured JSON with: title, subtitle, timeline, key_moments, characters, metrics, outcome.
-
-          Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}
-
-          Store the research JSON using:
-          comic_asset(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', type='research', name='session-analysis', content=<your structured research JSON>)
-
-          Then return ONLY the URI string from the store response. Do not return the full research content.
-          Your entire output should be just the URI string, e.g.:
-          comic://e2e-real-test/issues/issue-001/research/session-analysis?v=1
-        output: "research_data"
-        timeout: 900  # research: session analysis + store asset (~8-12 min for large sessions)
-
-      # ============================================
-      # STEP 2: STYLE CURATION
-      # ============================================
-      - id: "style-curation"
-        agent: "comic-strips:style-curator"
-        prompt: |
-          Define the visual style for this comic strip.
-
-          Style requested: {{style}}
-
-          If "{{style}}" matches a predefined style name (manga, superhero, indie, newspaper, ligne-claire, retro-americana), load the corresponding style pack and adapt it for this specific story.
-
-          If it's a custom description, interpret it and generate a complete style guide.
-
-          Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}, style={{style}}
-          Store the completed style guide using:
-          comic_style(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', name='{{style}}', definition=<your style guide output>)
-
-          Return ONLY the style URI from the comic_style response (e.g., "comic://proj/styles/manga").
-          Do NOT return the full style guide text — just the URI string.
-          Downstream agents will load the style guide content via comic_style(action='get', uri=<uri>) when needed.
-        output: "style_guide"
-        timeout: 300  # style-curation: load style pack + store (~2-3 min)
-
-      # ============================================
-      # STEP 2a: LOOKUP EXISTING CHARACTERS
-      # Deterministic character search so the storyboard
-      # knows which characters already exist in this style.
-      # ============================================
-      - id: "lookup-existing-characters"
-        agent: "comic-strips:style-curator"
-        prompt: |
-          YOUR ONLY JOB: Search for existing characters in this comic style. Do NOTHING else.
-
-          Call: comic_character(action='search', style='{{style}}')
-
-          Return the FULL search results as JSON. If no characters are found, return [].
-          Do NOT create characters. Do NOT read files. Just call the search tool and return the results.
-        output: "existing_characters"
-        parse_json: true
-        timeout: 120  # lookup-existing-characters: single tool call
-
-      # ============================================
-      # STEP 3: SAGA STORYBOARD
-      # ============================================
-      - id: "storyboard"
-        agent: "comic-strips:storyboard-writer"
-        prompt: |
-          Create a multi-issue saga storyboard from the session research data.
-
-          Research Data URI: {{research_data}}
-          Load the research data:
-          comic_asset(action='get', uri='{{research_data}}', include='full')
-
-          Style Guide URI: {{style_guide}}
-          Load the style guide content using: comic_style(action='get', uri='{{style_guide}}')
-
-          IMPORTANT: You are a TWO-PHASE agent.
-
-          **Phase 1 — Delegate Narrative Creation:**
-          First, delegate to stories:content-strategist with the research data to select
-          the best narrative arc (problem/solution/impact, journey/discovery, etc.).
-          Then delegate to stories:case-study-writer with the arc and research data to
-          generate Challenge → Approach → Results narrative prose.
-
-          **Story Hints from User (apply these throughout):**
-          {{story_hints}}
-          If story_hints is non-empty, weave these creative directions into BOTH phases:
-          - In Phase 1: pass them to the stories agents as tone/emphasis guidance
-          - In Phase 2: use them to guide which moments get panels, which characters get focus,
-            and what emotional beats are emphasized. Hints like "emphasize human feedback" mean
-            more panels showing human-agent interaction. Hints like "underdog story" mean the
-            challenge/struggle sections get more dramatic weight.
-
-          **Phase 2 — Translate Narrative into Multi-Issue Saga:**
-          Take the narrative prose from Phase 1 and translate it into a multi-issue saga plan.
-
-          **Known existing characters (from previous runs and other projects):**
-          {{existing_characters}}
-
-          For EVERY character in this list that matches an agent/role from the research data,
-          include them in the character_roster with:
-            existing_uri: "<the URI from the search results>"
-            needs_redesign: false
-          Only create NEW character entries (existing_uri: null) for agents that have NO match.
-
-          **Cross-Project Character Discovery:**
-          The search has already been performed above — do NOT call comic_character(action='search') again.
-          Use the existing_characters list above to drive reuse decisions.
-          Reuse existing characters where they match agents/roles from the research data.
-          For reused characters, set `existing_uri` to their comic:// URI and `needs_redesign`
-          to false (or true if the style has changed significantly).
-
-          **Smart Project Naming:**
-          If the project_name is empty or equal to "comic-project", propose a meaningful
-          project name based on the narrative content. Store as `suggested_project_name`
-          in the output JSON.
-
-          **MANDATORY: Call list_layouts before assigning any page layouts.**
-          comic_create(action='list_layouts')
-          All layout IDs in page_layouts MUST come from the list_layouts response.
-          Do NOT invent layout names. Invalid layout IDs will cause the pipeline to fail.
-
-          **SAGA BUDGET (defaults — user can override via recipe params):**
-          - max_issues: {{max_issues}} (default: 5 if empty. Total issues in the saga.)
-          - max_characters: {{max_characters}} (default: 5-6 if empty. 4 main + 1-2 supporting.)
-          - max_pages: {{max_pages}} (default: 5 if empty). Per issue, plus 1 cover + 1 cast page.
-          - panels_per_page: {{panels_per_page}} (default: 3-6 if empty. Some pages can use 2 for big dramatic moments.)
-
-          **SAGA PLANNING RULES:**
-          - Each issue must have a self-contained arc (beginning, middle, cliffhanger or resolution).
-          - Issues 2+ must open with a brief recap of the previous issue's cliffhanger.
-          - Maintain a shared character roster across all issues — the same characters persist.
-          - Plan character evolution across issues: characters grow, change, gain scars or
-            new abilities as the saga progresses. Track this in the per_issue field of
-            each character_roster entry.
-          - The final issue resolves the overarching saga arc.
-
-          All dialogue must be natural, dramatized character speech. NO raw session data
-          (UUIDs, file paths, file sizes, token counts, raw error messages) in speech bubbles.
-          Use caption boxes for factual anchors. Technical events become visual metaphors.
-
-          Set page breaks every 2-3 panels, after dramatic beats.
-
-          CRITICAL OUTPUT REQUIREMENT — Your JSON output MUST include these top-level fields:
-
-          {
-            "title": "<saga title>",
-            "subtitle": "<saga subtitle>",
-            "suggested_project_name": "<slug if project_name was empty/default, else omit>",
-            "saga_plan": {
-              "total_issues": <integer>,
-              "arc_summary": "<one-paragraph overview of the full saga arc>",
-              "issues": [
-                {
-                  "issue_number": 1,
-                  "title": "<issue title>",
-                  "character_list": [ ... ],
-                  "panel_list": [ ... ],
-                  "page_layouts": [ {"page": 1, "layout": "<valid layout_id>", "panel_count": <n>} ],
-                  "page_count": <integer>,
-                  "panel_count": <integer>,
-                  "cliffhanger": "<how this issue ends — teaser for next>",
-                  "recap": null
-                },
-                {
-                  "issue_number": 2,
-                  "title": "<issue title>",
-                  "character_list": [ ... ],
-                  "panel_list": [ ... ],
-                  "page_layouts": [ ... ],
-                  "page_count": <integer>,
-                  "panel_count": <integer>,
-                  "cliffhanger": "<cliffhanger or null for final issue>",
-                  "recap": "<recap of issue 1 ending>"
-                }
-              ]
-            },
-            "character_roster": [
-              {
-                "name": "<display name>",
-                "char_slug": "<url-safe slug>",
-                "role": "<protagonist | antagonist | supporting | cameo>",
-                "type": "<agent | human | concept | system>",
-                "bundle": "<originating bundle, e.g. foundation>",
-                "first_appearance": "issue-001",
-                "existing_uri": "<comic:// URI if reused from another project, else null>",
-                "needs_redesign": false,
-                "visual_traits": "<key visual identifiers — outfit, colors, props>",
-                "description": "<character personality and narrative role>",
-                "backstory": "<character origin — what agent/concept inspired them>",
-                "metadata": { "agent_name": "...", "activity_rank": 1 },
-                "per_issue": {
-                  "issue-001": { "arc_role": "intro", "costume_variant": null, "notes": "..." },
-                  "issue-002": { "arc_role": "growth", "costume_variant": "battle-worn", "notes": "..." }
-                }
-              }
-            ]
-          }
-
-          The saga_plan.issues[] array drives downstream per-issue processing.
-          Each issue's character_list and panel_list are used by foreach loops for
-          character design and panel art generation. page_layouts is validated by a
-          downstream step — invalid layout IDs will cause the pipeline to fail.
-          The character_roster[] provides the shared roster with per_issue evolution maps.
-
-          Output the complete saga plan as structured JSON.
-
-          Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}
-          After producing the saga storyboard JSON, store it using:
-          comic_asset(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', type='storyboard', name='storyboard', content=<your saga storyboard output>)
-        output: "storyboard"
-        parse_json: true
-        timeout: 1800  # saga storyboard: delegates to 2 stories agents + saga JSON production (~12-20 min)
-
-      # ============================================
-      # STEP 3a: VALIDATE STORYBOARD LAYOUTS (ALL SAGA ISSUES)
-      # Deterministic check — catches invalid layout IDs BEFORE the
-      # approval gate and BEFORE expensive image generation starts.
-      # Validates layouts across ALL issues in the saga plan, not just
-      # a single issue. Combines page_layouts from every issue and
-      # checks them in one validate_storyboard call.
-      # ============================================
-      - id: "validate-storyboard"
-        agent: "comic-strips:style-curator"
-        prompt: |
-          YOUR ONLY JOB: Validate the storyboard page layouts across ALL saga issues. Do NOTHING else.
-
-          Saga issues from the storyboard:
-          {{storyboard.saga_plan.issues}}
-
-          For each issue in the list above, extract its page_layouts array.
-          Combine ALL page_layouts from ALL issues into a single flat array.
-
-          Call: comic_create(action='validate_storyboard', page_layouts=<combined page_layouts from all issues>)
-
-          If validation PASSED, return ONLY: {"validation": "PASSED", "total_issues": <number of issues>, "total_pages": <sum of all pages across all issues>}
-          If validation FAILED, return: {"validation": "FAILED", "invalid_layout_ids": <from tool>, "suggestions": <from tool>, "failed_issues": <list of issue numbers with invalid layouts>}
-        output: "storyboard_validation"
-        parse_json: true
-        timeout: 120
-
-      # ============================================
-      # STEP 3b: CREATE/UPDATE SAGA ISSUES
-      # Iterate over the saga plan's issues array. Issue #1 updates the
-      # placeholder issue created during init; issues #2+ create new ones.
-      # Each iteration returns {issue_id, issue_number, title} collected
-      # into saga_issues for downstream per-issue processing.
-      # ============================================
-      - id: "create-issues"
-        foreach: "{{storyboard.saga_plan.issues}}"
-        as: saga_issue
-        agent: "comic-strips:style-curator"
-        max_iterations: 20
-        prompt: |
-          YOUR ONLY JOB: Create or update a single saga issue in the project. Do NOTHING else.
-
-          Current saga issue to process:
-          {{saga_issue}}
-
-          Saga metadata:
-          - Saga title: {{storyboard.title}}
-          - Style: {{style}}
-
-          RULES — read the issue_number from the saga_issue object above, then:
-
-          IF issue_number == 1 (first issue):
-            This issue was already created during project init. UPDATE it with saga metadata:
-            comic_project(action='update_issue', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', title=saga_issue.title, metadata={"saga_issue_number": 1, "saga_title": "{{storyboard.title}}", "style": "{{style}}", "created_by": "session-to-comic recipe v8.0.0"})
-
-            Return ONLY: {"issue_id": "{{project_init.issue_id}}", "issue_number": 1, "title": "<title from saga_issue>"}
-
-          IF issue_number >= 2 (subsequent issues):
-            Create a NEW issue for this saga entry:
-            comic_project(action='create_issue', project='{{project_init.project_id}}', title=saga_issue.title, metadata={"saga_issue_number": saga_issue.issue_number, "saga_title": "{{storyboard.title}}", "style": "{{style}}", "created_by": "session-to-comic recipe v8.0.0"})
-
-            Return ONLY: {"issue_id": "<issue_id from tool response>", "issue_number": <saga_issue.issue_number>, "title": "<title from saga_issue>"}
-
-          Return valid JSON with exactly these three fields: issue_id, issue_number, title.
-        collect: "saga_issues"
-        parse_json: true
-        timeout: 120
-
-    # ------------------------------------------------------------------
-    # APPROVAL GATE: Storyboard Review
-    # This is the last cheap checkpoint before expensive image generation.
-    # The user can review the character cast and narrative arc, then
-    # approve to proceed or deny to stop and revise.
-    # ------------------------------------------------------------------
-    approval:
-      required: true
-      prompt: |
-        Saga storyboard complete. Please review before approving expensive image generation.
-
-        Saga title: {{storyboard.title}}
-        Subtitle: {{storyboard.subtitle}}
-        Total issues: {{storyboard.saga_plan.total_issues}}
-        Max issues budget: {{max_issues}}
-
-        Arc summary:
-        {{storyboard.saga_plan.arc_summary}}
-
-        Layout validation: {{storyboard_validation.validation}}
-
-        All planned issues:
-        {{storyboard.saga_plan.issues}}
-
-        Character roster:
-        {{storyboard.character_roster}}
-
-        Created issues:
-        {{saga_issues}}
-
-        If layout validation FAILED, DENY and fix the storyboard layouts.
-        Otherwise, approve to proceed with character design and per-issue art generation.
-      timeout: 0
-      default: "deny"
+  - id: "saga-plan"
+    type: "recipe"
+    recipe: "saga-plan.yaml"
+    context:
+      source: "{{source}}"
+      session_file: "{{session_file}}"
+      style: "{{style}}"
+      project_name: "{{project_name}}"
+      issue_title: "{{issue_title}}"
+      force: "{{force}}"
+      max_characters: "{{max_characters}}"
+      max_pages: "{{max_pages}}"
+      panels_per_page: "{{panels_per_page}}"
+      max_issues: "{{max_issues}}"
+      story_hints: "{{story_hints}}"
+      character_hints: "{{character_hints}}"
+      content_policy_notes: "{{content_policy_notes}}"
+    output: "saga_plan_result"
+    timeout: 7200  # includes approval gate wait time
 
   # ==========================================================================
-  # STAGE 2: CHARACTER DESIGN
-  # Design character reference sheets from the shared roster. Handles three
-  # workflows: reuse existing character, redesign with style update, or
-  # create new character from scratch. Per-issue variants are generated
-  # when the character roster indicates variant needs.
+  # STEP 2: CHARACTER DESIGN
+  # Delegates to design-characters.yaml: loads storyboard + style from the
+  # asset store (no need to pass style_guide directly), searches for existing
+  # characters, foreach design loop with deduplication.
+  # Output: sub-recipe's full final context dict containing character_uris.
   # ==========================================================================
-  - name: "character-design"
-    steps:
-      # ============================================
-      # STEP 4: CHARACTER DESIGN - Reference Sheets (foreach per character)
-      # Iterates over the shared character_roster (not per-issue character_list).
-      # Each character is designed once at the project level, then per-issue
-      # variants are created as needed.
-      # ============================================
-      - id: "design-characters"
-        foreach: "{{storyboard.character_roster}}"
-        as: character_item
-        agent: "comic-strips:character-designer"
-        parallel: 2
-        max_iterations: 20
-        retry:
-          max_attempts: 2
-          initial_delay: 5
-        prompt: |
-          Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}, style={{style}}
-
-          Design a character reference sheet for this single character using comic_create.
-
-          Character to design:
-          {{character_item}}
-
-          Style Guide URI: {{style_guide}}
-          Load the style guide using: comic_style(action='get', uri='{{style_guide}}')
-
-          Character Hints from User (apply to visual design):
-          {{character_hints}}
-          If character_hints is non-empty, weave these creative directions into the character's
-          visual design, personality expression, and style interpretation. For example, hints like
-          "battle-worn appearance" should influence clothing details and expression; hints like
-          "expressive body language" should influence the reference pose.
-
-          STYLE COHESION (CRITICAL): All characters in this issue MUST share the same visual DNA
-          from the style guide's Character Rendering section. Load the style guide and extract the
-          character rendering rules. Every character prompt MUST include these shared traits
-          (e.g., for Ghibli: round open faces, large expressive eyes, naturalistic proportions,
-          watercolor rendering). Characters that don't match the style's visual DNA will look
-          like they're from different comics — this is a FAILURE.
-
-          Design this character with bundle-affiliation visual markers — characters from the
-          same bundle share team colors, insignia, or uniform elements.
-
-          THREE WORKFLOWS — read the character_item fields and choose ONE:
-
-          WORKFLOW A — REUSE EXISTING CHARACTER:
-          If character_item.existing_uri is non-null AND character_item.needs_redesign is false,
-          this character already has a design from a previous project. Skip generation entirely.
-          Return the existing_uri as-is — no image generation needed.
-
-          WORKFLOW B — REDESIGN WITH STYLE UPDATE:
-          If character_item.existing_uri is non-null AND character_item.needs_redesign is true,
-          the character exists but needs a style refresh. Load the existing design:
-          comic_asset(action='get', uri=character_item.existing_uri)
-          Then create a NEW reference sheet that preserves the character's identity (key visual
-          traits, silhouette, distinguishing features) while updating the rendering style to
-          match the current style guide. Call comic_create with the existing design as reference.
-
-          WORKFLOW C — CREATE NEW CHARACTER:
-          If character_item.existing_uri is null, this is a brand new character. Create a full
-          reference sheet from scratch based on the character_item fields.
-
-          Call:
-          comic_create(action='create_character_ref',
-                       project='{{project_init.project_id}}',
-                       issue='{{project_init.issue_id}}',
-                       name=<character_item.char_slug>,
-                       visual_traits=<visual_traits from character_item>,
-                       distinctive_features=<identifying features from character_item>,
-                       personality=<description from character_item>,
-                       metadata=<metadata dict from character_item if present>,
-                       prompt=<generation prompt combining visual_traits, style, and bundle affiliation>)
-
-          PER-ISSUE VARIANTS:
-          After creating the base design, check character_item.per_issue for entries where
-          needs_new_variant is true (e.g., a battle-worn costume in issue 3, or a power-up
-          transformation). For each such variant, generate an additional reference sheet:
-          comic_create(action='create_character_ref',
-                       project='{{project_init.project_id}}',
-                       issue=<issue_id for that variant>,
-                       name=<char_slug>-<issue_slug>,
-                       visual_traits=<base traits + variant costume_variant notes>,
-                       prompt=<variant prompt referencing base design + per_issue changes>)
-
-          Return ONLY the base character URI string from the comic_create response
-          (e.g., "comic://proj/characters/the-explorer").
-          Do NOT return JSON objects, image paths, or base64 data.
-        collect: "character_uris"
-        timeout: 600  # per character: generate + store + optional variants (~3-5 min each)
+  - id: "design-characters"
+    type: "recipe"
+    recipe: "design-characters.yaml"
+    context:
+      project_id: "{{saga_plan_result.project_init.project_id}}"
+      style: "{{style}}"
+      force: "{{force}}"
+    output: "design_result"
+    timeout: 7200  # full roster design (~10-30 min)
 
   # ==========================================================================
-  # STAGE 3: PER-ISSUE ART GENERATION
-  # Iterate over each issue in the saga plan, invoking the issue-art.yaml
-  # sub-recipe for each. Each sub-recipe execution generates panels, cover,
-  # and assembles the final comic strip HTML for one issue.
-  # on_error: continue ensures that a failure in one issue does not block
-  # the remaining issues from being generated.
+  # STEP 3: PER-ISSUE ART GENERATION
+  # Iterates over each issue from the saga plan, invoking issue-art.yaml for
+  # each. Each sub-recipe generates panels, cover, and assembles the final
+  # comic strip HTML for one issue.
+  # on_error: continue — a failure in one issue does not block the rest.
   # ==========================================================================
-  - name: "per-issue-art"
-    steps:
-      # ============================================
-      # STEP 5: PER-ISSUE ART — Sub-recipe invocation (foreach per issue)
-      # Each iteration spawns a full issue-art.yaml execution for one issue,
-      # passing in the issue storyboard, character URIs, style, and saga
-      # context. Results are collected into issue_results.
-      # ============================================
-      - id: "generate-issues"
-        foreach: "{{storyboard.saga_plan.issues}}"
-        as: current_issue
-        type: recipe
-        recipe: "issue-art.yaml"
-        on_error: continue
-        max_iterations: 20
-        timeout: 7200  # per issue: panels + cover + composition (~60-120 min each)
-        context:
-          project_id: "{{project_init.project_id}}"
-          issue_id: "{{current_issue.issue_id}}"
-          issue_number: "{{current_issue.issue_number}}"
-          issue_storyboard: "{{current_issue}}"
-          character_uris: "{{character_uris}}"
-          style_uri: "{{style_guide}}"
-          style: "{{style}}"
-          output_name: "{{output_name}}-issue-{{current_issue.issue_number}}"
-          saga_context: "{{storyboard.saga_plan}}"
-          content_policy_notes: "{{content_policy_notes}}"
-        collect: "issue_results"
+  - id: "generate-issues"
+    foreach: "{{saga_plan_result.storyboard.saga_plan.issues}}"
+    as: current_issue
+    type: "recipe"
+    recipe: "issue-art.yaml"
+    on_error: "continue"
+    max_iterations: 20
+    timeout: 7200  # per issue: panels + cover + composition (~60-120 min)
+    context:
+      project_id: "{{saga_plan_result.project_init.project_id}}"
+      issue_id: "{{current_issue.issue_id}}"
+      issue_number: "{{current_issue.issue_number}}"
+      issue_storyboard: "{{current_issue}}"
+      character_uris: "{{design_result.character_uris}}"
+      style_uri: "{{saga_plan_result.style_guide}}"
+      style: "{{style}}"
+      output_name: "{{output_name}}-issue-{{current_issue.issue_number}}"
+      saga_context: "{{saga_plan_result.storyboard.saga_plan}}"
+      content_policy_notes: "{{content_policy_notes}}"
+    collect: "issue_results"

@@ -1,0 +1,212 @@
+name: "design-characters"
+description: "Standalone character design — loads storyboard and style from the comic:// asset store, searches for existing characters, and generates reference sheets for missing roster entries. Skips characters that already exist unless force=true."
+version: "1.0.0"
+author: "amplifier-comic-strips"
+tags: ["comic", "character-design", "composable", "asset-store"]
+
+# =============================================================================
+# CHANGELOG
+# =============================================================================
+#
+# v1.0.0 (2026-03-07):
+#   - NEW: Extracted Stage 2 (character-design) from session-to-comic v8.1.0
+#     as a standalone composable recipe.
+#   - FEAT: Reads storyboard and style guide from the comic:// asset store
+#     instead of receiving them via recipe context. Independently runnable
+#     after saga-plan.yaml has stored a storyboard.
+#   - FEAT: Character deduplication by default — if a character with the same
+#     slug + same style already exists in the project, generation is skipped
+#     (no new version created). Only generates for missing roster entries or
+#     per_issue variants with needs_new_variant=true. Set force=true to
+#     regenerate all characters.
+#   - FEAT: Style auto-detection — if style context variable is empty, loads
+#     the style name from the project's stored style guide.
+
+# Usage:
+#   amplifier run "execute design-characters with project_id=my-saga-project"
+#   amplifier run "execute design-characters with project_id=my-saga style=manga"
+#   amplifier run "execute design-characters with project_id=my-saga force=true"
+
+context:
+  project_id: ""            # Required: comic project identifier (from saga-plan output or asset store)
+  style: ""                 # Optional: style name — if empty, reads from the project's stored style guide
+  force: "false"            # Regenerate all characters even if they already exist unless "false"
+
+steps:
+  # ============================================
+  # STEP 1: LOAD STORYBOARD FROM ASSET STORE
+  # Loads the saga storyboard from the planning
+  # issue (issue-001), extracts character_roster
+  # and resolves the style guide URI. Fails with
+  # a clear message if no storyboard is found.
+  # ============================================
+  - id: "load-storyboard"
+    agent: "comic-strips:style-curator"
+    prompt: |
+      YOUR ONLY JOB: Load the saga storyboard and style guide from the asset store. Do NOTHING else.
+
+      Project ID: {{project_id}}
+      Style override: {{style}}
+
+      1. Load the storyboard:
+         comic_asset(action='get', project='{{project_id}}', issue='issue-001', type='storyboard', name='storyboard', include='full')
+
+         If the tool returns an error or no storyboard is found, STOP and return ONLY:
+         {"error": "No storyboard found for project '{{project_id}}'. Run saga-plan.yaml first to generate a saga storyboard."}
+
+      2. Determine the style and load the style guide URI:
+         - If "{{style}}" is non-empty, use it as the style name.
+         - If "{{style}}" is empty, list style guides for the project:
+           comic_style(action='list', project='{{project_id}}')
+           Use the name of the first/latest style guide found.
+         - Load the style guide:
+           comic_style(action='get', project='{{project_id}}', name='<resolved style name>')
+           Extract the style URI from the response.
+
+      3. Extract the character_roster from the storyboard content.
+
+      Return a JSON object with EXACTLY this structure:
+      {
+        "character_roster": <character_roster array from the storyboard>,
+        "style_uri": "<comic:// URI for the style guide>",
+        "style_name": "<resolved style name>",
+        "title": "<saga title from storyboard>",
+        "project_id": "{{project_id}}"
+      }
+
+      Return ONLY the JSON object — no markdown fences, no explanation.
+    output: "loaded_storyboard"
+    parse_json: true
+    timeout: 300  # load-storyboard: asset store reads (~2-3 min)
+
+  # ============================================
+  # STEP 2: LOAD EXISTING CHARACTERS
+  # Searches the project for characters that already
+  # exist in this style. Results drive the skip/reuse
+  # logic in the design step.
+  # ============================================
+  - id: "load-existing-characters"
+    agent: "comic-strips:style-curator"
+    prompt: |
+      YOUR ONLY JOB: Search for existing characters in this project and style. Do NOTHING else.
+
+      Project ID: {{project_id}}
+      Style: {{loaded_storyboard.style_name}}
+
+      Call: comic_character(action='list', project='{{project_id}}')
+
+      Filter the results to characters matching style '{{loaded_storyboard.style_name}}'.
+
+      For each character found, include: name, char_slug, style, URI, version.
+
+      Return the FULL results as a JSON array. If no characters are found, return [].
+      Do NOT create characters. Do NOT read files. Just search and return.
+    output: "existing_characters"
+    parse_json: true
+    timeout: 120  # load-existing-characters: single search call
+
+  # ============================================
+  # STEP 3: DESIGN CHARACTERS (foreach per character)
+  # Iterates over the character_roster from the loaded
+  # storyboard. For each character:
+  #   - SKIP if already exists in project (same slug +
+  #     style) and force != "true"
+  #   - REUSE if existing_uri is set and needs_redesign
+  #     is false
+  #   - REDESIGN if existing_uri is set and needs_redesign
+  #     is true
+  #   - CREATE NEW if no match found
+  # Per-issue variants with needs_new_variant=true are
+  # always generated.
+  # ============================================
+  - id: "design-characters"
+    foreach: "{{loaded_storyboard.character_roster}}"
+    as: character_item
+    agent: "comic-strips:character-designer"
+    parallel: 2
+    max_iterations: 20
+    retry:
+      max_attempts: 2
+      initial_delay: 5
+    prompt: |
+      Project tracking: project_id={{project_id}}, style={{loaded_storyboard.style_name}}
+
+      Design a character reference sheet for this single character using comic_create.
+
+      Character to design:
+      {{character_item}}
+
+      Style Guide URI: {{loaded_storyboard.style_uri}}
+      Load the style guide using: comic_style(action='get', uri='{{loaded_storyboard.style_uri}}')
+
+      Force regeneration: {{force}}
+
+      Existing characters already in this project (from previous runs):
+      {{existing_characters}}
+
+      FOUR WORKFLOWS — read the character_item fields AND the existing_characters list, then choose ONE:
+
+      WORKFLOW 0 — SKIP (CHARACTER ALREADY EXISTS IN PROJECT):
+      Check if ANY entry in existing_characters has the SAME char_slug as character_item.char_slug
+      AND the SAME style as '{{loaded_storyboard.style_name}}'.
+      If a match is found AND "{{force}}" does NOT equal "true":
+        This character already has a design in this project for this style. Skip generation entirely.
+        Return the existing character's URI as-is — no image generation needed.
+        (This prevents creating unnecessary new versions like v=9 of the same character.)
+
+      WORKFLOW A — REUSE EXISTING (CROSS-PROJECT):
+      If character_item.existing_uri is non-null AND character_item.needs_redesign is false,
+      AND no project-local match was found in Workflow 0,
+      this character has a design from another project. Skip generation entirely.
+      Return the existing_uri as-is — no image generation needed.
+
+      WORKFLOW B — REDESIGN WITH STYLE UPDATE:
+      If character_item.existing_uri is non-null AND character_item.needs_redesign is true,
+      the character exists but needs a style refresh. Load the existing design:
+      comic_asset(action='get', uri=character_item.existing_uri)
+      Then create a NEW reference sheet that preserves the character's identity (key visual
+      traits, silhouette, distinguishing features) while updating the rendering style to
+      match the current style guide. Call comic_create with the existing design as reference.
+
+      WORKFLOW C — CREATE NEW CHARACTER:
+      If character_item.existing_uri is null AND no project-local match was found in Workflow 0
+      (or "{{force}}" equals "true"), this is a brand new character. Create a full reference
+      sheet from scratch based on the character_item fields.
+
+      STYLE COHESION (CRITICAL): All characters in this project MUST share the same visual DNA
+      from the style guide's Character Rendering section. Load the style guide and extract the
+      character rendering rules. Every character prompt MUST include these shared traits
+      (e.g., for Ghibli: round open faces, large expressive eyes, naturalistic proportions,
+      watercolor rendering). Characters that don't match the style's visual DNA will look
+      like they're from different comics — this is a FAILURE.
+
+      Design this character with bundle-affiliation visual markers — characters from the
+      same bundle share team colors, insignia, or uniform elements.
+
+      For WORKFLOW B and C, call:
+      comic_create(action='create_character_ref',
+                   project='{{project_id}}',
+                   issue='issue-001',
+                   name=<character_item.char_slug>,
+                   visual_traits=<visual_traits from character_item>,
+                   distinctive_features=<identifying features from character_item>,
+                   personality=<description from character_item>,
+                   metadata=<metadata dict from character_item if present>,
+                   prompt=<generation prompt combining visual_traits, style, and bundle affiliation>)
+
+      PER-ISSUE VARIANTS:
+      After handling the base design (via any workflow above), check character_item.per_issue
+      for entries where needs_new_variant is true (e.g., a battle-worn costume in issue 3, or
+      a power-up transformation). For each such variant, generate an additional reference sheet:
+      comic_create(action='create_character_ref',
+                   project='{{project_id}}',
+                   issue=<issue_id for that variant>,
+                   name=<char_slug>-<issue_slug>,
+                   visual_traits=<base traits + variant costume_variant notes>,
+                   prompt=<variant prompt referencing base design + per_issue changes>)
+
+      Return ONLY the base character URI string from the comic_create response
+      (e.g., "comic://proj/characters/the-explorer").
+      Do NOT return JSON objects, image paths, or base64 data.
+    collect: "character_uris"
+    timeout: 600  # per character: generate + store + optional variants (~3-5 min each)

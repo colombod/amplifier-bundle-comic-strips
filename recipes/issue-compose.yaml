@@ -1,0 +1,183 @@
+name: "issue-compose"
+description: "Composition-only reassembly — loads existing panels, cover, storyboard, characters, and style from the comic:// asset store, then assembles the final HTML comic. Zero image generation. Use to change dialogue, captions, layout, or text overlays without regenerating art."
+version: "1.0.0"
+author: "amplifier-comic-strips"
+tags: ["comic", "composition", "assembly", "composable", "no-generation"]
+
+# =============================================================================
+# CHANGELOG
+# =============================================================================
+#
+# v1.0.0 (2026-03-07):
+#   - NEW: Standalone composition recipe — reassembles an issue's HTML comic
+#     from existing assets in the comic:// store. No image generation.
+#   - FEAT: load-existing-assets step verifies all required assets (panels,
+#     cover, storyboard, style) exist before attempting composition. Fails
+#     with a clear manifest of missing assets if any are absent.
+#   - FEAT: Composition step is identical to issue-art.yaml's composition
+#     step but sources all data from loaded assets instead of freshly
+#     generated recipe context variables.
+#   - USE CASES: Editing dialogue/captions after art review, adjusting text
+#     overlay positions, changing page layouts, fixing typos, applying a
+#     different text style — all without re-running expensive generation.
+
+# Usage:
+#   amplifier run "execute issue-compose with project_id=my-saga issue_id=issue-001"
+#   amplifier run "execute issue-compose with project_id=my-saga issue_id=issue-002 output_name=revised-issue-2"
+
+context:
+  project_id: ""            # Required: comic project identifier
+  issue_id: ""              # Required: issue identifier within the project
+  output_name: ""           # Optional: custom output filename (defaults to comic-{issue_id})
+
+steps:
+  # ============================================
+  # STEP 1: LOAD EXISTING ASSETS
+  # Loads ALL required assets for composition from
+  # the asset store: storyboard (for dialogue, captions,
+  # page_layouts), character URIs, style guide URI,
+  # panel URIs, and cover URI.
+  # Fails with a clear error if any required assets
+  # (panels or cover) are missing.
+  # ============================================
+  - id: "load-existing-assets"
+    agent: "comic-strips:style-curator"
+    prompt: |
+      YOUR ONLY JOB: Load all existing assets for this issue from the asset store. Do NOTHING else.
+
+      Project tracking: project_id={{project_id}}, issue_id={{issue_id}}
+
+      Load each of these in order:
+
+      1. STORYBOARD — Load the issue storyboard:
+         First try issue-specific storyboard:
+         comic_asset(action='get', project='{{project_id}}', issue='{{issue_id}}', type='storyboard', name='storyboard', include='full')
+
+         If not found, load the saga storyboard from issue-001 and extract this issue's data:
+         comic_asset(action='get', project='{{project_id}}', issue='issue-001', type='storyboard', name='storyboard', include='full')
+         From the saga storyboard, find the issue entry matching issue_id='{{issue_id}}'.
+
+         If NEITHER is found, STOP and return:
+         {"error": "No storyboard found for project '{{project_id}}'. Run saga-plan.yaml first."}
+
+      2. STYLE GUIDE — Load the style guide URI:
+         comic_style(action='list', project='{{project_id}}')
+         Use the first/latest style guide. Extract its URI.
+
+         If no style guide found, STOP and return:
+         {"error": "No style guide found for project '{{project_id}}'. Run saga-plan.yaml first."}
+
+      3. CHARACTER URIs — List all designed characters:
+         comic_character(action='list', project='{{project_id}}')
+         Collect all character URIs into a list.
+
+      4. PANEL URIs — List all panels for this issue:
+         comic_asset(action='list', project='{{project_id}}', issue='{{issue_id}}', type='panel')
+         Collect all panel URIs into a list, ordered by panel name (panel_01, panel_02, ...).
+
+         If NO panels are found, STOP and return:
+         {"error": "No panels found for issue '{{issue_id}}' in project '{{project_id}}'. Run issue-art.yaml first to generate panel artwork."}
+
+      5. COVER URI — Load the cover for this issue:
+         comic_asset(action='get', project='{{project_id}}', issue='{{issue_id}}', type='cover', name='cover')
+         Extract the cover URI.
+
+         If no cover found, set cover_uri to "COVER_NOT_FOUND" (composition will proceed without cover).
+
+      6. SAGA CONTEXT — Check if this is part of a multi-issue saga:
+         comic_project(action='list_issues', project='{{project_id}}')
+         If there are multiple issues, load the saga_plan from the storyboard to get
+         arc_summary, cliffhanger, and recap information for this issue.
+
+      Return a JSON object with EXACTLY this structure:
+      {
+        "storyboard": <the full storyboard/issue data including panel_list, title, subtitle, page_layouts>,
+        "style_uri": "<comic:// URI for the style guide>",
+        "character_uris": ["comic://...", "comic://...", ...],
+        "panel_uris": ["comic://...", "comic://...", ...],
+        "cover_uri": "<comic:// URI for cover>" or "COVER_NOT_FOUND",
+        "saga_context": <saga_plan object if multi-issue, else null>,
+        "issue_number": <integer>,
+        "project_id": "{{project_id}}",
+        "issue_id": "{{issue_id}}"
+      }
+
+      Return ONLY the JSON object — no markdown fences, no explanation.
+    output: "existing_assets"
+    parse_json: true
+    timeout: 300  # load-existing-assets: multiple asset store reads (~2-3 min)
+
+  # ============================================
+  # STEP 2: COMPOSITION — Final Assembly
+  # Assembles the complete comic strip HTML from
+  # loaded panel URIs, cover URI, storyboard, and
+  # style. Identical to issue-art.yaml's composition
+  # step but using loaded assets.
+  # ZERO image generation — only text overlays and
+  # HTML assembly.
+  # ============================================
+  - id: "composition"
+    agent: "comic-strips:strip-compositor"
+    depends_on: ["load-existing-assets"]
+    prompt: |
+      Project tracking: project_id={{project_id}}, issue_id={{issue_id}}
+
+      Assemble the final comic strip HTML from URIs using comic_create.
+
+      THIS IS A COMPOSITION-ONLY RUN — do NOT generate any images.
+      All panels and cover already exist in the asset store.
+
+      Panel URIs (in order):
+      {{existing_assets.panel_uris}}
+
+      Cover URI:
+      {{existing_assets.cover_uri}}
+      If cover_uri is "COVER_NOT_FOUND", omit the cover page from the layout
+      and proceed with panel assembly only. Do not fail the composition.
+
+      Storyboard (for dialogue, captions, sound effects per panel):
+      {{existing_assets.storyboard}}
+
+      Style Guide URI: {{existing_assets.style_uri}}
+      Load layout conventions using: comic_style(action='get', uri='{{existing_assets.style_uri}}')
+
+      Output filename: {{output_name}}
+      If output_name is empty, use "comic-{{issue_id}}".
+
+      Saga Context:
+      {{existing_assets.saga_context}}
+
+      WORKFLOW:
+      1. Load the style guide to understand layout conventions, bubble styles, and page structure.
+      2. If saga_context is non-null and this is NOT issue #1:
+         - Add a "Previously in..." recap text block on the first story page summarizing
+           the previous issue's key events from saga_context.
+      3. For each panel URI in {{existing_assets.panel_uris}}, call:
+         comic_create(action='review_asset', uri=<panel_uri>,
+                      prompt="Describe character positions, negative space, and focal points for text overlay placement.")
+         Use the visual descriptions to make precise text overlay placement decisions.
+      4. Build a layout object mapping each panel URI to its storyboard dialogue, captions,
+         and sound effects. Use overlay coordinates (0-100% of panel dimensions) informed by
+         the visual composition analysis.
+      5. If saga_context is non-null and saga_context indicates more issues follow:
+         - Add a "To Be Continued..." tease panel or text block at the end of the last
+           story page, hinting at the next issue's conflict or cliffhanger.
+      6. Call:
+         comic_create(action='assemble_comic',
+                      project='{{project_id}}',
+                      issue='{{issue_id}}',
+                      output_path=<output filename>,
+                      style_uri='{{existing_assets.style_uri}}',
+                      layout={
+                        "title": "{{existing_assets.storyboard.title}}",
+                        "cover": {"uri": "{{existing_assets.cover_uri}}", "title": "{{existing_assets.storyboard.title}}",
+                                  "subtitle": "{{existing_assets.storyboard.subtitle}}", "branding": "AmpliVerse"},
+                        "pages": [<pages with panel URIs, shapes, and text overlays>]
+                      })
+
+      The tool handles all base64 encoding, SVG bubble rendering, and HTML assembly internally.
+      Do NOT fetch image bytes or call base64 encoding tools.
+
+      Do NOT delete intermediate files. All assets are managed by the asset manager.
+    output: "final_output"
+    timeout: 2400  # composition: panel review + layout assembly (~20-30 min for large issues)

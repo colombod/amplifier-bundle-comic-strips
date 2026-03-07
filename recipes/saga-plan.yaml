@@ -1,0 +1,565 @@
+name: "saga-plan"
+description: "Standalone saga planning — discovers sessions, curates style, writes multi-issue storyboard, and creates saga issues. Reads/writes via comic:// asset store. Skips if storyboard already exists unless force=true."
+version: "1.0.0"
+author: "amplifier-comic-strips"
+tags: ["comic", "saga", "storyboard", "planning", "composable"]
+
+# =============================================================================
+# CHANGELOG
+# =============================================================================
+#
+# v1.0.0 (2026-03-07):
+#   - NEW: Extracted Stage 1 (research-and-storyboard) from session-to-comic
+#     v8.1.0 as a standalone composable recipe.
+#   - FEAT: check-existing step probes the asset store for a pre-existing
+#     storyboard. If found and force != "true", all planning steps are
+#     skipped via conditions. A prepare-review step always runs — it loads
+#     storyboard data from the store (fresh or pre-existing) so the approval
+#     gate can render a consistent review summary.
+#   - FEAT: All step outputs match session-to-comic Stage 1 when proceed is
+#     true: project_init, session_data, research_data, style_guide,
+#     existing_characters, storyboard, storyboard_validation, saga_issues.
+#     When proceed is false (skip), downstream recipes should read from the
+#     comic:// asset store directly.
+
+# Usage:
+#   amplifier run "execute saga-plan with source=comic-strip-bundle style=superhero"
+#   amplifier run "execute saga-plan with source=./session.jsonl style=manga project_name=my-saga"
+#   amplifier run "execute saga-plan with source=my-project style=naruto force=true"
+
+context:
+  source: ""                # Required: project name, session ID(s), file path(s), or descriptive phrase
+  session_file: ""          # Deprecated: backward-compatible alias for source (single file path)
+  style: "superhero"        # 28 styles: manga, superhero, indie, newspaper, ligne-claire, retro-americana, sin-city, watchmen, berserk, cuphead, ghibli, attack-on-titan, spider-man, x-men, solo-leveling, gundam, transformers, tatsunoko, witchblade, dylan-dog, tex-willer, disney-classic, bendy, hellraiser, naruto, jujutsu-kaisen, one-piece, go-nagai — or any custom description
+  project_name: ""          # Optional: project name (defaults to "comic-project")
+  issue_title: ""           # Optional: first issue title (defaults to "Saga Planning")
+  force: "false"            # Skip if storyboard exists unless "true"
+  max_characters: ""        # Optional: max characters to design (default 5-6)
+  max_pages: ""             # Optional: max story pages per issue (default 5)
+  panels_per_page: ""       # Optional: panels per page range (default "3-6")
+  max_issues: "5"           # Optional: max issues in saga (default 5)
+  story_hints: ""           # Optional: creative direction for narrative (e.g. "emphasize the human feedback loop")
+  character_hints: ""       # Optional: creative direction for character design (e.g. "make the protagonist look battle-worn")
+  content_policy_notes: ""  # Accumulated moderation lessons — populated at runtime
+
+stages:
+  # ==========================================================================
+  # STAGE: SAGA PLANNING
+  # Cheap text-only steps: check existing, init project, discover sessions,
+  # extract research, curate style, write storyboard, validate, create issues.
+  # Approval gate at the end lets the user review before committing to
+  # expensive image generation via design-characters + issue-art.
+  # ==========================================================================
+  - name: "saga-planning"
+    steps:
+      # ============================================
+      # STEP 0: CHECK EXISTING STORYBOARD
+      # Fast-path: if a storyboard already exists for
+      # this project and force != "true", all downstream
+      # steps are skipped via conditions. The prepare-review
+      # step loads from the store regardless of path.
+      # ============================================
+      - id: "check-existing"
+        agent: "comic-strips:style-curator"
+        prompt: |
+          YOUR ONLY JOB: Check if a saga storyboard already exists for this project. Do NOTHING else.
+
+          Project name: {{project_name}}
+          Force regeneration: {{force}}
+
+          1. Determine the project slug:
+             - If project_name is non-empty, slugify it (lowercase, replace spaces/special chars with hyphens, strip non-alphanumeric).
+             - If project_name is empty, use "comic-project".
+
+          2. Try to load an existing storyboard:
+             comic_asset(action='get', project='<slug>', issue='issue-001', type='storyboard', name='storyboard')
+
+          3. Decide based on result:
+             - If the tool returned an error or no storyboard found:
+               Return {"proceed": "true", "reason": "No existing storyboard found. Proceeding with saga planning.", "project_slug": "<slug>"}
+
+             - If storyboard found AND "{{force}}" equals "true":
+               Return {"proceed": "true", "reason": "Storyboard exists but force=true — regenerating.", "project_slug": "<slug>"}
+
+             - If storyboard found AND "{{force}}" does NOT equal "true":
+               Return {"proceed": "false", "reason": "Storyboard already exists for project '<slug>'. Set force=true to regenerate.", "project_slug": "<slug>", "storyboard_uri": "<uri from the get response>"}
+
+          Return ONLY the JSON object — no markdown fences, no explanation.
+        output: "storyboard_check"
+        parse_json: true
+        timeout: 120
+
+      # ============================================
+      # STEP 1: INIT PROJECT - Asset Manager Setup
+      # ============================================
+      - id: "init-project"
+        condition: "{{storyboard_check.proceed}} == 'true'"
+        agent: "comic-strips:style-curator"
+        prompt: |
+          YOUR ONLY JOB: Create a project and a placeholder first issue, then return the result as JSON. Do NOTHING else.
+
+          comic_project(action='create_issue', project='{{project_name}}', title='{{issue_title}}', metadata={"source": "{{source}}", "session_file": "{{session_file}}", "style": "{{style}}", "created_by": "saga-plan recipe v1.0.0", "max_issues": "{{max_issues}}"})
+
+          If project_name is empty, use "comic-project". If issue_title is empty, use "Saga Planning".
+
+          Return ONLY the JSON from the tool response: {"project_id": "<value>", "issue_id": "<value>"}
+          Do NOT read files, do NOT curate styles, do NOT do anything else. Just call the tool and return.
+        output: "project_init"
+        parse_json: true
+        timeout: 120
+
+      # ============================================
+      # STEP 1a: DISCOVER SESSIONS - Source Resolution
+      # Translates the user's flexible {{source}} input
+      # into consolidated session data stored as an asset.
+      # ============================================
+      - id: "discover-sessions"
+        condition: "{{storyboard_check.proceed}} == 'true'"
+        agent: "stories:story-researcher"
+        prompt: |
+          You are given a source describing what to research: {{source}}
+          Legacy session file (if provided): {{session_file}}
+
+          If source is provided, use it. If source is empty but session_file is provided, use session_file instead.
+          If BOTH are empty, STOP and return an error: {"error": "No source or session_file provided. One is required."}
+
+          The source could be any of these — inspect the string and figure out which:
+          - A project name (e.g. "comic-strip-bundle")
+          - A directory path to a project
+          - A single session file path (e.g. path/to/events.jsonl)
+          - A session ID or comma-separated list of session IDs
+          - A descriptive phrase (e.g. "the context-intelligence project")
+
+          YOUR JOB: Discover and gather the relevant Amplifier session data — agent activity,
+          tool usage, key moments, outcomes, and metrics. Use your tools freely: bash (git log,
+          gh CLI, find, ls), grep, read_file, and delegation to foundation:explorer for deep
+          exploration. Synthesize across multiple sessions if the source spans more than one.
+
+          DO NOT extract comic-specific structures (characters, panel moments, narrative arcs).
+          That is the research step's job. You are purely "find the data and consolidate it."
+
+          SMART PROJECT NAMING: If the project_name is empty or equal to "comic-project" (the default),
+          propose a meaningful project name based on the content you discovered. Analyze the session
+          themes, project names, repository names, or key topics to craft a short, descriptive slug
+          (e.g. "context-intelligence-saga", "auth-refactor-chronicles"). Store your suggestion under
+          a "suggested_project_name" field in the research output. If the user already provided a
+          meaningful project_name (i.e. not empty and not "comic-project"), skip this step.
+
+          Store the consolidated research material using:
+          comic_asset(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', type='research', name='session-discovery', content=<your consolidated session data>)
+
+          Return ONLY the URI string from the store response. Your entire output should be just the URI, e.g.:
+          comic://my-project/issues/issue-001/research/session-discovery?v=1
+        output: "session_data"
+        timeout: 1800  # discover-sessions: exploration + consolidation (large projects may take 15-20 min)
+
+      # ============================================
+      # STEP 2: RESEARCH - Data Extraction
+      # ============================================
+      - id: "research"
+        condition: "{{storyboard_check.proceed}} == 'true'"
+        agent: "stories:story-researcher"
+        prompt: |
+          Analyze the session data at: {{session_data}}
+
+          Load the consolidated session data:
+          comic_asset(action='get', uri='{{session_data}}', include='full')
+
+          Extract structured data for comic strip creation:
+
+          **Session Metadata:**
+          - Session ID, duration, date
+          - Agents used and their roles
+          - Tools called and frequency
+          - Number of user interactions
+
+          **Agent Activity Analysis (CRITICAL for character selection):**
+          - Rank each agent by activity level: count tool calls, delegations sent, delegations received
+          - Identify which bundle each agent belongs to (e.g., foundation:explorer -> foundation bundle)
+          - Map bundle memberships so the storyboard writer can assign team affiliations
+          - Flag the top 3-4 most active agents and note their key contributions
+
+          **Key Moments (for comic panels):**
+          - The initial challenge or goal (what started the session?)
+          - Breakthrough moments (problems solved, discoveries made)
+          - Agent collaboration highlights (which agents worked together?)
+          - The final outcome or deliverable
+          - Any dramatic failures or unexpected turns
+
+          **Characters:**
+          - Map each agent to a character with a brief visual description
+          - Identify the "protagonist" (main agent driving the story)
+          - Identify any "antagonists" (bugs, errors, blockers)
+
+          **Metrics:**
+          - Quantified achievements (files created, tests passed, etc.)
+          - Session duration and effort indicators
+
+          Produce structured JSON with: title, subtitle, timeline, key_moments, characters, metrics, outcome.
+
+          Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}
+
+          Store the research JSON using:
+          comic_asset(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', type='research', name='session-analysis', content=<your structured research JSON>)
+
+          Then return ONLY the URI string from the store response. Do not return the full research content.
+          Your entire output should be just the URI string, e.g.:
+          comic://e2e-real-test/issues/issue-001/research/session-analysis?v=1
+        output: "research_data"
+        timeout: 900  # research: session analysis + store asset (~8-12 min for large sessions)
+
+      # ============================================
+      # STEP 3: STYLE CURATION
+      # ============================================
+      - id: "style-curation"
+        condition: "{{storyboard_check.proceed}} == 'true'"
+        agent: "comic-strips:style-curator"
+        prompt: |
+          Define the visual style for this comic strip.
+
+          Style requested: {{style}}
+
+          If "{{style}}" matches a predefined style name (manga, superhero, indie, newspaper, ligne-claire, retro-americana), load the corresponding style pack and adapt it for this specific story.
+
+          If it's a custom description, interpret it and generate a complete style guide.
+
+          Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}, style={{style}}
+          Store the completed style guide using:
+          comic_style(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', name='{{style}}', definition=<your style guide output>)
+
+          Return ONLY the style URI from the comic_style response (e.g., "comic://proj/styles/manga").
+          Do NOT return the full style guide text — just the URI string.
+          Downstream agents will load the style guide content via comic_style(action='get', uri=<uri>) when needed.
+        output: "style_guide"
+        timeout: 300  # style-curation: load style pack + store (~2-3 min)
+
+      # ============================================
+      # STEP 3a: LOOKUP EXISTING CHARACTERS
+      # Deterministic character search so the storyboard
+      # knows which characters already exist in this style.
+      # ============================================
+      - id: "lookup-existing-characters"
+        condition: "{{storyboard_check.proceed}} == 'true'"
+        agent: "comic-strips:style-curator"
+        prompt: |
+          YOUR ONLY JOB: Search for existing characters in this comic style. Do NOTHING else.
+
+          Call: comic_character(action='search', style='{{style}}')
+
+          Return the FULL search results as JSON. If no characters are found, return [].
+          Do NOT create characters. Do NOT read files. Just call the search tool and return the results.
+        output: "existing_characters"
+        parse_json: true
+        timeout: 120  # lookup-existing-characters: single tool call
+
+      # ============================================
+      # STEP 4: SAGA STORYBOARD
+      # ============================================
+      - id: "storyboard"
+        condition: "{{storyboard_check.proceed}} == 'true'"
+        agent: "comic-strips:storyboard-writer"
+        prompt: |
+          Create a multi-issue saga storyboard from the session research data.
+
+          Research Data URI: {{research_data}}
+          Load the research data:
+          comic_asset(action='get', uri='{{research_data}}', include='full')
+
+          Style Guide URI: {{style_guide}}
+          Load the style guide content using: comic_style(action='get', uri='{{style_guide}}')
+
+          IMPORTANT: You are a TWO-PHASE agent.
+
+          **Phase 1 — Delegate Narrative Creation:**
+          First, delegate to stories:content-strategist with the research data to select
+          the best narrative arc (problem/solution/impact, journey/discovery, etc.).
+          Then delegate to stories:case-study-writer with the arc and research data to
+          generate Challenge -> Approach -> Results narrative prose.
+
+          **Story Hints from User (apply these throughout):**
+          {{story_hints}}
+          If story_hints is non-empty, weave these creative directions into BOTH phases:
+          - In Phase 1: pass them to the stories agents as tone/emphasis guidance
+          - In Phase 2: use them to guide which moments get panels, which characters get focus,
+            and what emotional beats are emphasized. Hints like "emphasize human feedback" mean
+            more panels showing human-agent interaction. Hints like "underdog story" mean the
+            challenge/struggle sections get more dramatic weight.
+
+          **Phase 2 — Translate Narrative into Multi-Issue Saga:**
+          Take the narrative prose from Phase 1 and translate it into a multi-issue saga plan.
+
+          **Known existing characters (from previous runs and other projects):**
+          {{existing_characters}}
+
+          For EVERY character in this list that matches an agent/role from the research data,
+          include them in the character_roster with:
+            existing_uri: "<the URI from the search results>"
+            needs_redesign: false
+          Only create NEW character entries (existing_uri: null) for agents that have NO match.
+
+          **Cross-Project Character Discovery:**
+          The search has already been performed above — do NOT call comic_character(action='search') again.
+          Use the existing_characters list above to drive reuse decisions.
+          Reuse existing characters where they match agents/roles from the research data.
+          For reused characters, set `existing_uri` to their comic:// URI and `needs_redesign`
+          to false (or true if the style has changed significantly).
+
+          **Smart Project Naming:**
+          If the project_name is empty or equal to "comic-project", propose a meaningful
+          project name based on the narrative content. Store as `suggested_project_name`
+          in the output JSON.
+
+          **MANDATORY: Call list_layouts before assigning any page layouts.**
+          comic_create(action='list_layouts')
+          All layout IDs in page_layouts MUST come from the list_layouts response.
+          Do NOT invent layout names. Invalid layout IDs will cause the pipeline to fail.
+
+          **SAGA BUDGET (defaults — user can override via recipe params):**
+          - max_issues: {{max_issues}} (default: 5 if empty. Total issues in the saga.)
+          - max_characters: {{max_characters}} (default: 5-6 if empty. 4 main + 1-2 supporting.)
+          - max_pages: {{max_pages}} (default: 5 if empty). Per issue, plus 1 cover + 1 cast page.
+          - panels_per_page: {{panels_per_page}} (default: 3-6 if empty. Some pages can use 2 for big dramatic moments.)
+
+          **SAGA PLANNING RULES:**
+          - Each issue must have a self-contained arc (beginning, middle, cliffhanger or resolution).
+          - Issues 2+ must open with a brief recap of the previous issue's cliffhanger.
+          - Maintain a shared character roster across all issues — the same characters persist.
+          - Plan character evolution across issues: characters grow, change, gain scars or
+            new abilities as the saga progresses. Track this in the per_issue field of
+            each character_roster entry.
+          - The final issue resolves the overarching saga arc.
+
+          All dialogue must be natural, dramatized character speech. NO raw session data
+          (UUIDs, file paths, file sizes, token counts, raw error messages) in speech bubbles.
+          Use caption boxes for factual anchors. Technical events become visual metaphors.
+
+          Set page breaks every 2-3 panels, after dramatic beats.
+
+          CRITICAL OUTPUT REQUIREMENT — Your JSON output MUST include these top-level fields:
+
+          {
+            "title": "<saga title>",
+            "subtitle": "<saga subtitle>",
+            "suggested_project_name": "<slug if project_name was empty/default, else omit>",
+            "saga_plan": {
+              "total_issues": <integer>,
+              "arc_summary": "<one-paragraph overview of the full saga arc>",
+              "issues": [
+                {
+                  "issue_number": 1,
+                  "title": "<issue title>",
+                  "character_list": [ ... ],
+                  "panel_list": [ ... ],
+                  "page_layouts": [ {"page": 1, "layout": "<valid layout_id>", "panel_count": <n>} ],
+                  "page_count": <integer>,
+                  "panel_count": <integer>,
+                  "cliffhanger": "<how this issue ends — teaser for next>",
+                  "recap": null
+                },
+                {
+                  "issue_number": 2,
+                  "title": "<issue title>",
+                  "character_list": [ ... ],
+                  "panel_list": [ ... ],
+                  "page_layouts": [ ... ],
+                  "page_count": <integer>,
+                  "panel_count": <integer>,
+                  "cliffhanger": "<cliffhanger or null for final issue>",
+                  "recap": "<recap of issue 1 ending>"
+                }
+              ]
+            },
+            "character_roster": [
+              {
+                "name": "<display name>",
+                "char_slug": "<url-safe slug>",
+                "role": "<protagonist | antagonist | supporting | cameo>",
+                "type": "<agent | human | concept | system>",
+                "bundle": "<originating bundle, e.g. foundation>",
+                "first_appearance": "issue-001",
+                "existing_uri": "<comic:// URI if reused from another project, else null>",
+                "needs_redesign": false,
+                "visual_traits": "<key visual identifiers — outfit, colors, props>",
+                "description": "<character personality and narrative role>",
+                "backstory": "<character origin — what agent/concept inspired them>",
+                "metadata": { "agent_name": "...", "activity_rank": 1 },
+                "per_issue": {
+                  "issue-001": { "arc_role": "intro", "costume_variant": null, "notes": "..." },
+                  "issue-002": { "arc_role": "growth", "costume_variant": "battle-worn", "notes": "..." }
+                }
+              }
+            ]
+          }
+
+          The saga_plan.issues[] array drives downstream per-issue processing.
+          Each issue's character_list and panel_list are used by foreach loops for
+          character design and panel art generation. page_layouts is validated by a
+          downstream step — invalid layout IDs will cause the pipeline to fail.
+          The character_roster[] provides the shared roster with per_issue evolution maps.
+
+          Output the complete saga plan as structured JSON.
+
+          Project tracking: project_id={{project_init.project_id}}, issue_id={{project_init.issue_id}}
+          After producing the saga storyboard JSON, store it using:
+          comic_asset(action='store', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', type='storyboard', name='storyboard', content=<your saga storyboard output>)
+        output: "storyboard"
+        parse_json: true
+        timeout: 1800  # saga storyboard: delegates to 2 stories agents + saga JSON production (~12-20 min)
+
+      # ============================================
+      # STEP 4a: VALIDATE STORYBOARD LAYOUTS
+      # Deterministic check — catches invalid layout IDs
+      # BEFORE the approval gate and BEFORE expensive
+      # image generation starts.
+      # ============================================
+      - id: "validate-storyboard"
+        condition: "{{storyboard_check.proceed}} == 'true'"
+        agent: "comic-strips:style-curator"
+        prompt: |
+          YOUR ONLY JOB: Validate the storyboard page layouts across ALL saga issues. Do NOTHING else.
+
+          Saga issues from the storyboard:
+          {{storyboard.saga_plan.issues}}
+
+          For each issue in the list above, extract its page_layouts array.
+          Combine ALL page_layouts from ALL issues into a single flat array.
+
+          Call: comic_create(action='validate_storyboard', page_layouts=<combined page_layouts from all issues>)
+
+          If validation PASSED, return ONLY: {"validation": "PASSED", "total_issues": <number of issues>, "total_pages": <sum of all pages across all issues>}
+          If validation FAILED, return: {"validation": "FAILED", "invalid_layout_ids": <from tool>, "suggestions": <from tool>, "failed_issues": <list of issue numbers with invalid layouts>}
+        output: "storyboard_validation"
+        parse_json: true
+        timeout: 120
+
+      # ============================================
+      # STEP 4b: CREATE/UPDATE SAGA ISSUES
+      # Iterate over the saga plan's issues array.
+      # Issue #1 updates the placeholder; #2+ create new.
+      # ============================================
+      - id: "create-issues"
+        condition: "{{storyboard_check.proceed}} == 'true'"
+        foreach: "{{storyboard.saga_plan.issues}}"
+        as: saga_issue_entry
+        agent: "comic-strips:style-curator"
+        max_iterations: 20
+        prompt: |
+          YOUR ONLY JOB: Create or update a single saga issue in the project. Do NOTHING else.
+
+          Current saga issue to process:
+          {{saga_issue_entry}}
+
+          Saga metadata:
+          - Saga title: {{storyboard.title}}
+          - Style: {{style}}
+
+          RULES — read the issue_number from the saga_issue_entry object above, then:
+
+          IF issue_number == 1 (first issue):
+            This issue was already created during project init. UPDATE it with saga metadata:
+            comic_project(action='update_issue', project='{{project_init.project_id}}', issue='{{project_init.issue_id}}', title=saga_issue_entry.title, metadata={"saga_issue_number": 1, "saga_title": "{{storyboard.title}}", "style": "{{style}}", "created_by": "saga-plan recipe v1.0.0"})
+
+            Return ONLY: {"issue_id": "{{project_init.issue_id}}", "issue_number": 1, "title": "<title from saga_issue_entry>"}
+
+          IF issue_number >= 2 (subsequent issues):
+            Create a NEW issue for this saga entry:
+            comic_project(action='create_issue', project='{{project_init.project_id}}', title=saga_issue_entry.title, metadata={"saga_issue_number": saga_issue_entry.issue_number, "saga_title": "{{storyboard.title}}", "style": "{{style}}", "created_by": "saga-plan recipe v1.0.0"})
+
+            Return ONLY: {"issue_id": "<issue_id from tool response>", "issue_number": <saga_issue_entry.issue_number>, "title": "<title from saga_issue_entry>"}
+
+          Return valid JSON with exactly these three fields: issue_id, issue_number, title.
+        collect: "saga_issues"
+        parse_json: true
+        timeout: 120
+
+      # ============================================
+      # STEP 5: PREPARE REVIEW SUMMARY
+      # Always runs. Loads the storyboard from the asset
+      # store (whether freshly generated or pre-existing)
+      # so the approval gate has a consistent data source.
+      # This avoids undefined variable errors when the
+      # planning steps were skipped (proceed=false).
+      # ============================================
+      - id: "prepare-review"
+        agent: "comic-strips:style-curator"
+        prompt: |
+          YOUR ONLY JOB: Load the saga storyboard from the asset store and prepare a review summary. Do NOTHING else.
+
+          Preflight check result:
+          - proceed: {{storyboard_check.proceed}}
+          - reason: {{storyboard_check.reason}}
+          - project_slug: {{storyboard_check.project_slug}}
+
+          1. Load the storyboard from the asset store:
+             comic_asset(action='get', project='{{storyboard_check.project_slug}}', issue='issue-001', type='storyboard', name='storyboard', include='full')
+
+          2. List issues in the project:
+             comic_project(action='list_issues', project='{{storyboard_check.project_slug}}')
+
+          3. If "{{storyboard_check.proceed}}" equals "true", also validate layout status:
+             The storyboard was freshly generated — report any validation results.
+
+          4. If "{{storyboard_check.proceed}}" equals "false":
+             The storyboard was pre-existing — note this in the status.
+
+          Return a JSON object with EXACTLY this structure:
+          {
+            "status": "new" or "existing",
+            "reason": "<from preflight check>",
+            "title": "<saga title from storyboard>",
+            "subtitle": "<saga subtitle from storyboard>",
+            "total_issues": <integer from saga_plan.total_issues>,
+            "arc_summary": "<from saga_plan.arc_summary>",
+            "issues_overview": [{"issue_number": N, "title": "...", "panel_count": N, "page_count": N}],
+            "character_roster": [{"name": "...", "role": "...", "existing_uri": "..." or null}],
+            "saga_issues": [{"issue_id": "...", "issue_number": N, "title": "..."}],
+            "validation": "PASSED" or "FAILED" or "N/A (pre-existing)"
+          }
+
+          Return ONLY the JSON object — no markdown fences, no explanation.
+        output: "review_summary"
+        parse_json: true
+        timeout: 300  # prepare-review: load storyboard + list issues (~2-3 min)
+
+    # ------------------------------------------------------------------
+    # APPROVAL GATE: Saga Plan Review
+    # This is the last checkpoint before expensive image generation.
+    # The user can review the saga plan and approve or deny.
+    # References only review_summary.* (always defined by prepare-review).
+    # ------------------------------------------------------------------
+    approval:
+      required: true
+      prompt: |
+        --- SAGA PLAN REVIEW ---
+
+        Status: {{review_summary.status}}
+        {{review_summary.reason}}
+
+        Saga title: {{review_summary.title}}
+        Subtitle: {{review_summary.subtitle}}
+        Total issues: {{review_summary.total_issues}}
+
+        Arc summary:
+        {{review_summary.arc_summary}}
+
+        Issues overview:
+        {{review_summary.issues_overview}}
+
+        Character roster:
+        {{review_summary.character_roster}}
+
+        Created/existing issues:
+        {{review_summary.saga_issues}}
+
+        Layout validation: {{review_summary.validation}}
+
+        ---
+
+        If status is "existing": storyboard was already in the asset store (not regenerated).
+        Approve to acknowledge, or deny and re-run with force=true to regenerate.
+
+        If status is "new": storyboard was freshly generated.
+        If validation FAILED, DENY and fix the storyboard layouts.
+        Otherwise, APPROVE to proceed with character design and per-issue art generation.
+      timeout: 0
+      default: "deny"

@@ -800,7 +800,7 @@ stages:
         foreach: "{{storyboard.saga_plan.issues}}"
         as: current_issue
         type: recipe
-        recipe: "@comic-strips:recipes/issue-art.yaml"
+        recipe: "issue-art.yaml"
         on_error: continue
         max_iterations: 20
         timeout: 7200  # per issue: panels + cover + composition (~60-120 min each)

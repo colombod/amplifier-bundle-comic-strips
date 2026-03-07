@@ -23,7 +23,7 @@ meta:
     all characters.
     </commentary>
     </example>
-  model_role: [creative, general]
+  model_role: [creative, general, vision]
 
 tools:
   - module: tool-comic-create
@@ -146,6 +146,22 @@ This returns a list of characters previously designed in the same style across a
 - **Decision**: reuse as-is / create style variant / create fresh (see the 4-case decision matrix in Step 1)
 
 Even when `existing_uri` is `null`, scan the search results for characters matching the same agent or role — the storyboard-writer may not have linked them. If you find a strong match, note it but still follow the decision matrix (only the storyboard-writer sets `existing_uri`).
+
+### Step 0.5: Project-Local Deduplication (CRITICAL — prevents v=2, v=3, v=4 accumulation)
+
+**Before checking the storyboard's `existing_uri` field**, check if a character with the same `char_slug` + same style already exists **in this project**. This catches the common case where a previous pipeline run already generated this character but the storyboard wasn't updated to reference it.
+
+```
+comic_character(action='list', project='{{project_id}}')
+```
+
+Scan the results for a character whose slug matches `{{character_item}}.char_slug`. If found:
+
+- **If the character exists in this project with the same style**: **REUSE IT.** Return the existing URI immediately. Do NOT call `comic_create`. Do NOT generate a new version. This prevents the v=2, v=3, v=4 accumulation bug.
+- **Exception**: If the recipe passed `force=true`, proceed to generation anyway (the user explicitly wants a new version).
+- **If the character exists but in a different style**: Proceed to the decision matrix below — it may need a style variant.
+
+This check takes priority over the 4-case decision matrix. Only if no project-local match is found do you proceed to Step 1.
 
 ### Step 1: Check for Existing Character (4-Case Decision Matrix)
 
@@ -291,8 +307,10 @@ Return just the URI string — nothing else. No JSON wrapper, no image paths, no
 ## Rules
 
 - Process EXACTLY ONE character per invocation — `{{character_item}}` is a single object
+- ALWAYS run project-local deduplication (Step 0.5) BEFORE the decision matrix — if the character already exists in this project with the same style, REUSE IT (return existing URI, do NOT generate)
 - ALWAYS run cross-project discovery (Step 0) FIRST before any other checks
 - ALWAYS apply the 4-case decision matrix (Step 1) before any generation
+- NEVER create a new version of a character that already exists in the project unless `force=true` — this is the #1 cause of visual inconsistency across runs
 - If Case 1 applies (reuse, no redesign, no per-issue variants), SKIP generation entirely — return the existing URI
 - ALWAYS use the style guide's Image Prompt Template as the base prompt (for new/redesign only)
 - ALWAYS include bundle team markers (color accent + insignia) in every prompt

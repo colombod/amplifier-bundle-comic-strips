@@ -483,6 +483,141 @@ Use arrow keys, click the nav buttons, or tap the page dots to navigate.
 
 ---
 
+## transformers-saga-issue-1.html / issue-2.html / issue-3.html
+
+**Style:** Transformers (mecha manga)
+**Source:** comic-strip-bundle development history (302 commits, 10 days)
+**Recipe version:** session-to-comic v9.0.0 (composable sub-recipe pipeline)
+**Generated:** 2026-03-08
+
+### What it is
+
+A 3-issue saga titled "Forging the Comic Engine" -- subtitled "How Six Mecha
+Agents Built a Visual Storytelling Pipeline in Ten Days -- 302 Commits, Nine
+Versions, Zero to Saga." Generated from the complete development history of the
+comic-strips bundle itself, rendered in a Transformers mecha aesthetic: energon-blue
+piping, mechanical forge environments, holographic UI elements, and Autobot-red
+faction accents.
+
+The saga follows six mecha agents through the creation of the comic pipeline:
+
+- **Issue #1: Genesis** -- The forge ignites. Six agents are forged from nothing,
+  the comic:// URI protocol is born, and the foreach breakthrough shatters the
+  first scaling crisis. Ends with 154 commits in three days and a red storm
+  gathering on the horizon.
+- **Issue #2: Trial by Fire** -- The style library explodes from 6 to 29 visual
+  languages, then the Moderation Wall slams shut, blocking all image generation.
+  The team invents fallback chains and adaptive scene rewriting. The saga system
+  is born -- and the 853-line monolith begins to groan.
+- **Issue #3: The Shattering** -- The monolithic recipe threatens to collapse.
+  The Forgemaster strikes, shattering it into three composable sub-recipes. Twenty
+  projects stand as proof. The engine achieves self-awareness by generating a
+  comic about its own creation.
+
+### What makes this example special
+
+This is the FIRST multi-issue saga generated with the v9.0.0 composable
+sub-recipe pipeline, showcasing all three v9.0.0 quality fixes:
+
+| v9.0.0 Feature | What it proves |
+|-----------------|----------------|
+| **Composable sub-recipes** | Parent `session-to-comic.yaml` orchestrates three sub-recipes: `saga-plan.yaml`, `design-characters.yaml`, `issue-art.yaml` |
+| **Cast page auto-population** | Every issue's cast page is populated from the project character roster automatically -- no explicit `characters` key needed in the layout |
+| **Speech bubble auto-layout** | Overlays without explicit position data are auto-distributed left/right with vertical spread, not stacked at (10,10) |
+| **Deterministic panel review** | New `review-panel-compositions` step pre-computes character positions and overlay placement via vision before final assembly |
+| **Saga continuity** | Issues 2 and 3 open with "Previously in..." recaps; issues 1 and 2 end with "To Be Continued..." teasers |
+| **Character evolution** | The Forgemaster gains battle scars, the Architect's scroll splits into three sub-scrolls, the Renderer acquires dual-provider brushes |
+
+### The exact prompt that created it
+
+From an Amplifier session with the `comic-strips` bundle active:
+
+```
+execute session-to-comic with source=comic-strip-bundle style=transformers project_name=forge-saga output_name=transformers-saga force=true
+```
+
+The recipe pauses at an approval gate after the saga storyboard is complete.
+Review the full saga plan -- all 3 issues, 6-character roster, narrative arcs,
+and layout validation status -- then approve to proceed with character design
+and per-issue art generation.
+
+### Characters
+
+| Character | Role | Agent | Visual traits |
+|-----------|------|-------|---------------|
+| The Forgemaster | Protagonist | workspace orchestrator | Mecha-human hybrid, forge apron with energon-blue piping, code-fire hands, welding goggles |
+| The Architect | Protagonist | storyboard-writer | Flowing robes with panel grid patterns, luminous scroll that unfurls into page layouts |
+| The Renderer | Specialist | panel-artist | Multi-tool belt of glowing brushes, paint-stained articulated hands, speed lines |
+| The Sculptor | Specialist | character-designer | Magnifying monocle projecting scanning beams, floating reference sheet workshop |
+| The Assembler | Specialist | strip-compositor | Geometric SVG-path armor, CSS Grid lines, speech bubble satellites |
+| The Curator | Supporting | style-curator | Ever-shifting outer shell cycling through 29 art styles, palette-weapon with 29 color wells |
+
+### How it was created
+
+The v9.0.0 composable pipeline ran through three sub-recipes:
+
+```
+Sub-recipe 1: saga-plan.yaml
+  Step 0: check-existing      -- Probed asset store for existing storyboard
+  Step 1: init-project         -- Created project "forge-saga" with 3 issues
+  Step 1a: discover-sessions   -- Explored comic-strip-bundle git history (302 commits)
+  Step 2: research             -- Extracted agent activity, key moments, metrics
+  Step 3: style-curation       -- Loaded transformers style pack, stored as versioned asset
+  Step 3a: lookup-characters   -- Searched for existing characters in transformers style
+  Step 4: storyboard           -- Delegated to stories agents, produced 3-issue saga plan
+  Step 4-store: persist        -- Stored storyboard JSON to asset store
+  Step 4a: validate-storyboard -- Confirmed all layout IDs valid across all 3 issues
+  Step 4b: create-issues       -- Created issue-001, issue-002, issue-003
+  Step 5: prepare-review       -- Loaded storyboard for approval gate display
+
+  --- APPROVAL GATE ---
+  Human reviewed saga plan, all issues, character roster, layout validation
+
+Sub-recipe 2: design-characters.yaml
+  Step 1: load-storyboard      -- Loaded storyboard + style from asset store
+  Step 2: search-existing      -- Checked for reusable characters across projects
+  Step 3: design-characters    -- Generated 7 reference sheets (foreach, parallel)
+
+Sub-recipe 3: issue-art.yaml (executed per issue)
+  Step 1: generate-panels      -- Panel art with self-review (foreach, parallel 2)
+  Step 2: generate-cover       -- Cover art (parallel with panels)
+  Step 2.5: review-panels      -- Pre-computed overlay positions via vision (NEW in v9.0.0)
+  Step 3: composition          -- Final HTML assembly with pre-computed overlays
+```
+
+### What the output demonstrates
+
+| Feature | Issue #1 | Issue #2 | Issue #3 |
+|---------|----------|----------|----------|
+| File | `transformers-saga-issue-1.html` | `transformers-saga-issue-2.html` | `transformers-saga-issue-3.html` |
+| Size | 5.5 MB | 5.8 MB | 4.9 MB |
+| Pages | 5 (cover + cast + 3 story) | 5 (cover + cast + 3 story) | 5 (cover + cast + 3 story) |
+| Panels | 8 | 9 | 7 |
+| Recap | -- | "Previously in Genesis..." | "Previously in Trial by Fire..." |
+| Teaser | "The Moderation Wall is coming" | "The Shattering" | -- (saga finale) |
+| Cast page | Auto-populated from roster | Auto-populated from roster | Auto-populated from roster |
+| Bubble layout | Auto-distributed overlays | Auto-distributed overlays | Auto-distributed overlays |
+
+### Opening them
+
+```bash
+# macOS
+open examples/transformers-saga-issue-1.html
+open examples/transformers-saga-issue-2.html
+open examples/transformers-saga-issue-3.html
+
+# Linux
+xdg-open examples/transformers-saga-issue-1.html
+xdg-open examples/transformers-saga-issue-2.html
+xdg-open examples/transformers-saga-issue-3.html
+
+# or just drag the files into any browser
+```
+
+Use arrow keys, click the nav buttons, or tap the page dots to navigate.
+
+---
+
 ## Saga Mode (v8.0.0)
 
 Starting with v8.0.0, the `session-to-comic` recipe automatically plans

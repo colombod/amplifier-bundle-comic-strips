@@ -313,13 +313,19 @@ Open in any browser. No server needed.
 
 ## Examples
 
-See [`examples/`](examples/) for four generated comics with full pipeline
-documentation:
+See [`examples/`](examples/) for generated comics with full pipeline documentation:
+
+**Single-issue examples (v7.4.0--v7.6.0):**
 
 - **Sin City** noir (Frank Miller aesthetic, 10 panels)
-- **Jujutsu Kaisen** manga (Gege Akutami style, 19 panels)
-- **Watchmen** (rigid grid, muted palette, clinical linework, 14 panels)
-- **Studio Ghibli** watercolor (Miyazaki illustration, 34 panels)
+- **Jujutsu Kaisen** manga (Gege Akutami style, 19 panels, 3 pages)
+- **Watchmen** (rigid grid, muted palette, clinical linework, 14 panels, 4 pages)
+- **Studio Ghibli** watercolor (Miyazaki illustration, 34 panels, 10 pages)
+- **Naruto** manga (Kishimoto style, 9 panels, 3 pages -- first layout-validation e2e)
+
+**Multi-issue saga example (v9.0.0):**
+
+- **Transformers: The Forge Saga** -- 3-issue saga in Transformers mecha style, 24 panels across 9 story pages. Chronicles the creation of the comic engine itself: genesis, the moderation wall crisis, and the monolith shattering into composable architecture. Demonstrates the v9.0.0 composable sub-recipe pipeline with deterministic panel review, cast page auto-population, and speech bubble auto-layout.
 
 The README there includes the exact prompts that created each one.
 

@@ -23,7 +23,7 @@ meta:
     all characters.
     </commentary>
     </example>
-  model_role: [creative, general, vision]
+  model_role: [creative, vision, general]
 
 tools:
   - module: tool-comic-create

@@ -613,19 +613,36 @@ def _sfx_html(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def render_overlay_svg(overlay: dict[str, Any]) -> str:
+def render_overlay_svg(
+    overlay: dict[str, Any],
+    index: int = 0,
+    total: int = 1,
+) -> str:
     """Render a speech/thought/caption overlay as positioned HTML with SVG bubble.
 
     The returned string is a ``<div>`` absolutely positioned inside its
     panel container, using ``position.x/y/width/height`` as CSS percentages.
 
+    When ``position`` is absent or empty, overlays are auto-distributed
+    across the panel: odd-indexed bubbles go left, even-indexed go right,
+    and all are spread vertically so they never stack on top of each other.
+
     Supported shapes: oval, cloud, rectangular, jagged, whisper.
     """
-    pos = overlay.get("position", {})
-    x = pos.get("x", 10)
-    y = pos.get("y", 10)
-    w = pos.get("width", 30)
-    h = pos.get("height", 20)
+    pos = overlay.get("position") or {}
+    if pos:
+        # Explicit positioning — use as-is.
+        x = pos.get("x", 10)
+        y = pos.get("y", 10)
+        w = pos.get("width", 30)
+        h = pos.get("height", 20)
+    else:
+        # Auto-layout: alternate left/right, spread vertically.
+        w = 38
+        h = min(25, max(15, 70 // max(total, 1)))
+        x = 5 if index % 2 == 0 else 55
+        spacing = max(h + 2, 85 // max(total, 1))
+        y = 5 + index * spacing
 
     text = overlay.get("text", "")
     shape = overlay.get("shape", "oval").lower()
@@ -721,8 +738,10 @@ def _render_panel(panel_def: dict[str, Any], resolved: dict[str, str]) -> str:
     if not data_uri:
         return ""
 
+    overlays = panel_def.get("overlays", [])
     overlays_html = "".join(
-        render_overlay_svg(ov) for ov in panel_def.get("overlays", [])
+        render_overlay_svg(ov, index=i, total=len(overlays))
+        for i, ov in enumerate(overlays)
     )
     # Pass panel shape to CSS via data attribute (enables clip-path transforms)
     shape = panel_def.get("shape", "")

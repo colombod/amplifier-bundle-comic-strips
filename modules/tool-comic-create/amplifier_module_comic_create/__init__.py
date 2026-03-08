@@ -1231,6 +1231,36 @@ class ComicCreateTool:
                 )
             )
 
+        # --- Auto-populate cast page characters from project roster ---
+        # The strip-compositor agent should populate layout["characters"],
+        # but agents are unreliable. If it's missing, fill it from the
+        # project's character roster so the cast page always renders.
+        if not layout.get("characters"):
+            project = params["project"]
+            try:
+                svc = self._resolve_service()
+                roster = await svc.list_characters(project)
+                characters: list[dict[str, Any]] = []
+                for entry in roster:
+                    char_name = entry.get("name", "")
+                    try:
+                        full = await svc.get_character(project, char_name)
+                        characters.append({
+                            "uri": full.get("uri", ""),
+                            "name": full.get("name", char_name),
+                            "role": full.get("role", ""),
+                            "backstory": (
+                                full.get("backstory", "")
+                                or full.get("description", "")
+                            ),
+                        })
+                    except Exception:
+                        characters.append({"name": char_name})
+                if characters:
+                    layout["characters"] = characters
+            except Exception:
+                pass  # Graceful degradation — no cast page if lookup fails
+
         # --- Resolve style CSS (non-fatal) ---
         style_css = ""
         style_uri = params.get("style_uri", "")

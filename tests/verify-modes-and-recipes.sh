@@ -58,7 +58,7 @@ for mode in comic-brainstorm comic-design comic-plan comic-review comic-publish;
     fail "${mode}.md not found, skipping key check"
     continue
   fi
-  python3 -c "
+  if python3 -c "
 import yaml, sys
 text = open('$FILE').read()
 data = yaml.safe_load(text.split('---')[1])
@@ -73,8 +73,7 @@ if 'tools' not in m or 'safe' not in m.get('tools', {}):
 if missing:
     print(','.join(missing))
     sys.exit(1)
-" 2>/dev/null
-  if [[ $? -eq 0 ]]; then
+" 2>/dev/null; then
     pass "${mode}.md has all required keys"
   else
     fail "${mode}.md MISSING keys"
@@ -138,6 +137,8 @@ print(data.get('mode', {}).get('allow_clear', False))
   else
     fail "comic-publish: allow_clear is '${VAL}', expected True"
   fi
+else
+  fail "comic-publish.md not found, skipping allow_clear check"
 fi
 
 echo ""

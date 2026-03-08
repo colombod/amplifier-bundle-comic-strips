@@ -77,7 +77,7 @@ steps:
       Return ONLY the JSON object — no markdown fences, no explanation.
     output: "loaded_storyboard"
     parse_json: true
-    timeout: 300  # load-storyboard: asset store reads (~2-3 min)
+    timeout: 600  # 10m — multiple asset store reads + style resolution
 
   # ============================================
   # STEP 2: LOAD EXISTING CHARACTERS
@@ -103,7 +103,7 @@ steps:
       Do NOT create characters. Do NOT read files. Just search and return.
     output: "existing_characters"
     parse_json: true
-    timeout: 120  # load-existing-characters: single search call
+    timeout: 600  # 10m — agent overhead on creative-tier model + project-wide search
 
   # ============================================
   # STEP 3: DESIGN CHARACTERS (foreach per character)
@@ -214,4 +214,4 @@ steps:
       (e.g., "comic://proj/characters/the-explorer").
       Do NOT return JSON objects, image paths, or base64 data.
     collect: "character_uris"
-    timeout: 600  # per character: generate + store + optional variants (~3-5 min each)
+    timeout: 1800  # 30m per character — image gen + vision review + up to 3 retries + cross-provider fallback

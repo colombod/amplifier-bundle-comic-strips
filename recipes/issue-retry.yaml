@@ -56,7 +56,7 @@ stages:
           Return ONLY the JSON object — no markdown fences, no explanation.
         output: "existing_assets"
         parse_json: true
-        timeout: 300
+        timeout: 600  # 10m — multiple asset store reads (storyboard, characters, style)
 
       # ============================================
       # STEP 1: PANEL ART GENERATION (foreach per panel)
@@ -114,7 +114,7 @@ stages:
           on earlier images in this same comic. Apply them to ALL your prompts immediately.
           Do not repeat patterns that were already blocked.
         collect: "panel_results"
-        timeout: 600
+        timeout: 1800  # 30m per panel — image gen + vision review + up to 3 retries + cross-provider fallback
 
       # ============================================
       # STEP 2: COVER ART GENERATION
@@ -170,7 +170,7 @@ stages:
           IMPORTANT: If cover generation fails after all attempts (including moderation blocks),
           return ONLY the text "COVER_GENERATION_FAILED" — do not return a URI.
         output: "cover_results"
-        timeout: 600
+        timeout: 1800  # 30m — image gen + vision review + up to 3 retries + composition-biased model selection
 
       # ============================================
       # STEP 3: COMPOSITION — Final Assembly
@@ -230,4 +230,4 @@ stages:
 
           Content Policy Notes: {{content_policy_notes}}
         output: "final_output"
-        timeout: 2400
+        timeout: 3600  # 1h — inline vision review per panel + layout assembly for large issues

@@ -87,7 +87,7 @@ stages:
           Return ONLY the JSON object — no markdown fences, no explanation.
         output: "storyboard_check"
         parse_json: true
-        timeout: 120
+        timeout: 600  # 10m — agent overhead on creative-tier model + tool round-trip
 
       # ============================================
       # STEP 1: INIT PROJECT - Asset Manager Setup
@@ -106,7 +106,7 @@ stages:
           Do NOT read files, do NOT curate styles, do NOT do anything else. Just call the tool and return.
         output: "project_init"
         parse_json: true
-        timeout: 120
+        timeout: 600  # 10m — agent overhead on creative-tier model + tool round-trip
 
       # ============================================
       # STEP 1a: DISCOVER SESSIONS - Source Resolution
@@ -151,7 +151,7 @@ stages:
           Return ONLY the URI string from the store response. Your entire output should be just the URI, e.g.:
           comic://my-project/issues/issue-001/research/session-discovery?v=1
         output: "session_data"
-        timeout: 1800  # discover-sessions: exploration + consolidation (large projects may take 15-20 min)
+        timeout: 3600  # 1h — large projects: multiple sessions, git history, file exploration, consolidation
 
       # ============================================
       # STEP 2: RESEARCH - Data Extraction
@@ -206,7 +206,7 @@ stages:
           Your entire output should be just the URI string, e.g.:
           comic://e2e-real-test/issues/issue-001/research/session-analysis?v=1
         output: "research_data"
-        timeout: 900  # research: session analysis + store asset (~8-12 min for large sessions)
+        timeout: 1800  # 30m — structured extraction from large consolidated session data
 
       # ============================================
       # STEP 3: STYLE CURATION
@@ -231,7 +231,7 @@ stages:
           Do NOT return the full style guide text — just the URI string.
           Downstream agents will load the style guide content via comic_style(action='get', uri=<uri>) when needed.
         output: "style_guide"
-        timeout: 300  # style-curation: load style pack + store (~2-3 min)
+        timeout: 900  # 15m — custom style descriptions require creative generation, not just pack lookup
 
       # ============================================
       # STEP 3a: LOOKUP EXISTING CHARACTERS
@@ -250,7 +250,7 @@ stages:
           Do NOT create characters. Do NOT read files. Just call the search tool and return the results.
         output: "existing_characters"
         parse_json: true
-        timeout: 120  # lookup-existing-characters: single tool call
+        timeout: 600  # 10m — agent overhead on creative-tier model + cross-project search
 
       # ============================================
       # STEP 4: SAGA STORYBOARD
@@ -405,7 +405,7 @@ stages:
           yourself — the next recipe step handles storage deterministically.
         output: "storyboard"
         parse_json: true
-        timeout: 1800  # saga storyboard: delegates to 2 stories agents + saga JSON production (~12-20 min)
+        timeout: 3600  # 1h — delegates to 2 stories agents + multi-issue saga JSON with panel sequences
 
       # ============================================
       # STEP 4-store: PERSIST STORYBOARD TO ASSET STORE
@@ -427,7 +427,7 @@ stages:
 
           Return ONLY the URI string from the store response (e.g. "comic://project/issues/issue-001/storyboards/storyboard?v=1").
         output: "storyboard_uri"
-        timeout: 300  # store-storyboard: large saga JSON may need >120s to process + store
+        timeout: 600  # 10m — saga JSON can be very large for multi-issue plans
 
       # ============================================
       # STEP 4a: VALIDATE STORYBOARD LAYOUTS
@@ -453,7 +453,7 @@ stages:
           If validation FAILED, return: {"validation": "FAILED", "invalid_layout_ids": <from tool>, "suggestions": <from tool>, "failed_issues": <list of issue numbers with invalid layouts>}
         output: "storyboard_validation"
         parse_json: true
-        timeout: 120
+        timeout: 600  # 10m — multi-issue layout validation across many pages
 
       # ============================================
       # STEP 4b: CREATE/UPDATE SAGA ISSUES
@@ -493,7 +493,7 @@ stages:
           Return valid JSON with exactly these three fields: issue_id, issue_number, title.
         collect: "saga_issues"
         parse_json: true
-        timeout: 120
+        timeout: 600  # 10m per iteration — agent overhead on creative-tier model + tool round-trip
 
       # ============================================
       # STEP 5: PREPARE REVIEW SUMMARY
@@ -542,7 +542,7 @@ stages:
           Return ONLY the JSON object — no markdown fences, no explanation.
         output: "review_summary"
         parse_json: true
-        timeout: 300  # prepare-review: load storyboard + list issues (~2-3 min)
+        timeout: 900  # 15m — builds comprehensive review from potentially large multi-issue saga
 
     # ------------------------------------------------------------------
     # APPROVAL GATE: Saga Plan Review

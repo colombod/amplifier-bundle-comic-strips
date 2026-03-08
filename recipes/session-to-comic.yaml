@@ -103,7 +103,7 @@ steps:
       character_hints: "{{character_hints}}"
       content_policy_notes: "{{content_policy_notes}}"
     output: "saga_plan_result"
-    timeout: 7200  # includes approval gate wait time
+    timeout: 14400  # 4h — includes approval gate wait + heavy creative work (storyboard, discovery)
 
   # ==========================================================================
   # STEP 2: CHARACTER DESIGN
@@ -120,7 +120,7 @@ steps:
       style: "{{style}}"
       force: "{{force}}"
     output: "design_result"
-    timeout: 7200  # full roster design (~10-30 min)
+    timeout: 14400  # 4h — full roster: foreach character × image gen + vision review + retries
 
   # ==========================================================================
   # STEP 3: PER-ISSUE ART GENERATION
@@ -136,7 +136,7 @@ steps:
     recipe: "issue-art.yaml"
     on_error: "continue"
     max_iterations: 20
-    timeout: 7200  # per issue: panels + cover + composition (~60-120 min)
+    timeout: 14400  # 4h per issue — 20+ panels at parallel:2 + cover + vision review + composition
     context:
       project_id: "{{saga_plan_result.project_init.project_id}}"
       issue_id: "{{current_issue.issue_id}}"

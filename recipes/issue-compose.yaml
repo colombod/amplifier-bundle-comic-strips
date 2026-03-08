@@ -105,7 +105,7 @@ steps:
       Return ONLY the JSON object — no markdown fences, no explanation.
     output: "existing_assets"
     parse_json: true
-    timeout: 300  # load-existing-assets: multiple asset store reads (~2-3 min)
+    timeout: 600  # 10m — 6 different asset loads (storyboard, style, characters, panels, cover, saga context)
 
   # ============================================
   # STEP 2: COMPOSITION — Final Assembly
@@ -180,4 +180,4 @@ steps:
 
       Do NOT delete intermediate files. All assets are managed by the asset manager.
     output: "final_output"
-    timeout: 2400  # composition: panel review + layout assembly (~20-30 min for large issues)
+    timeout: 3600  # 1h — inline vision review per panel + layout assembly for large issues

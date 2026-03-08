@@ -242,23 +242,40 @@ context='{"session_file": "events.jsonl", "style": "naruto", "panels_per_page": 
 
 ## Pipeline
 
-The recipe runs 8 steps across 2 stages with an approval gate between them:
+The `session-to-comic` recipe is a thin orchestrator that calls 3 composable
+sub-recipes in sequence. Each sub-recipe is independently invocable.
 
-**Stage 1 -- Research & Storyboard** (text-only, cheap):
+**Sub-recipe 1 -- `saga-plan.yaml`** (text-only, low cost):
 
-1. **Init Project** -- Creates project and issue with generation metadata
-2. **Research** -- Analyzes session via `stories:story-researcher`, stores as asset
-3. **Style Curation** -- Loads or generates style guide, stores as asset
-4. **Storyboard** -- Delegates to `stories:content-strategist` + `stories:case-study-writer`, produces panel sequence with characters, dialogue, camera angles, page breaks
+1. **check-existing** -- Skips if storyboard already exists (unless `force=true`)
+2. **init-project** -- Creates project and issue with generation metadata
+3. **discover-sessions** -- Resolves flexible `source` input to session data
+4. **research** -- Analyzes session via `stories:story-researcher`, stores as asset
+5. **style-curation** -- Loads or generates style guide, stores as asset
+6. **lookup-existing-chars** -- Searches for reusable characters across projects
+7. **storyboard** -- Produces multi-issue saga plan with panel sequences, characters, dialogue, camera angles
+8. **store-storyboard** / **validate-storyboard** -- Persists and validates layout IDs
+9. **create-issues** -- Creates issue assets for each saga issue (foreach)
+10. **prepare-review** -- Builds approval summary (always runs)
 
-> **Approval gate** -- Review storyboard before committing to image generation
+> **Approval gate** -- Review saga arc, all issues, character roster, and layout validation before committing to image generation
 
-**Stage 2 -- Art Generation** (image generation, expensive):
+**Sub-recipe 2 -- `design-characters.yaml`** (image generation, project-scoped):
 
-5. **Character Design** -- Generates reference sheets (parallel, max 2 concurrent)
-6. **Panel Art** -- Generates panels with self-review loop (parallel, max 2 concurrent)
-7. **Cover Art** -- Portrait ratio cover with AmpliVerse branding (concurrent with panels)
-8. **Composition** -- Assembles final HTML with SVG speech bubbles, panel shapes, visual QA
+11. **load-storyboard** / **load-existing-characters** -- Loads from asset store
+12. **design-characters** -- Generates reference sheets (foreach character, parallel:2)
+
+**Sub-recipe 3 -- `issue-art.yaml`** (foreach issue, image generation, high cost):
+
+13. **generate-panels** -- Panel images with self-review (foreach panel, parallel:2)
+14. **generate-cover** -- Cover with AmpliVerse branding (runs in parallel with panels)
+15. **review-panel-compositions** -- Vision pre-analysis for text overlay placement (foreach panel)
+16. **composition** -- Assembles final HTML with SVG speech bubbles, panel shapes, visual QA
+
+**Standalone recipes** (invoke independently for recovery/editing):
+
+- **`issue-compose.yaml`** -- Reassembles HTML from existing assets with zero image generation
+- **`issue-retry.yaml`** -- Surgical single-issue re-generation from existing storyboard and characters
 
 ## Output Format
 
@@ -319,10 +336,6 @@ Both are automatically included when the bundle is installed.
 
 ## Diagrams
 
-### Pipeline Flow
+### Pipeline Orchestration
 
-![Pipeline Flow](docs/diagrams/pipeline-flow.png)
-
-### Agent Model Routing
-
-![Agent Model Routing](docs/diagrams/agent-model-routing.png)
+![Comic Pipeline](docs/diagrams/comic-pipeline.png)

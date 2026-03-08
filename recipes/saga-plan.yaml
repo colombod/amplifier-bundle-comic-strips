@@ -427,7 +427,7 @@ stages:
 
           Return ONLY the URI string from the store response (e.g. "comic://project/issues/issue-001/storyboards/storyboard?v=1").
         output: "storyboard_uri"
-        timeout: 120
+        timeout: 300  # store-storyboard: large saga JSON may need >120s to process + store
 
       # ============================================
       # STEP 4a: VALIDATE STORYBOARD LAYOUTS

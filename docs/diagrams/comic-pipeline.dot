@@ -1,0 +1,181 @@
+digraph comic_pipeline {
+  /* ─── Global ─────────────────────────────────────────── */
+  rankdir=TB;
+  bgcolor="transparent";
+  fontname="Helvetica Neue,Helvetica,Arial,sans-serif";
+  node [fontname="Helvetica Neue,Helvetica,Arial,sans-serif", fontsize=10,
+        margin="0.12,0.06", height=0.35];
+  edge [fontname="Helvetica Neue,Helvetica,Arial,sans-serif", fontsize=8,
+        arrowsize=0.7];
+  compound=true;
+  nodesep=0.35;
+  ranksep=0.45;
+
+  labelloc=t;
+  label=<<FONT POINT-SIZE="14"><B>session-to-comic v9.0.0</B></FONT><BR/>
+         <FONT POINT-SIZE="9" COLOR="#777777">Thin orchestrator · 3 composable sub-recipes</FONT>>;
+
+  /* ─── Input ──────────────────────────────────────────── */
+  input [
+    label=<<B>source</B><BR/><FONT POINT-SIZE="8" COLOR="#777777">project · session IDs · file paths · description</FONT>>,
+    shape=note, style=filled, fillcolor="#E8F4FD", color="#90CAF9", width=2.8
+  ];
+
+  /* ═══════════════════════════════════════════════════════
+     SUB-RECIPE 1: saga-plan.yaml
+     staged · 11 steps + approval gate · text-only
+     ═══════════════════════════════════════════════════════ */
+  subgraph cluster_saga_plan {
+    label=<<B>saga-plan.yaml</B>  <FONT POINT-SIZE="9" COLOR="#666666">type: recipe</FONT><BR/>
+           <FONT POINT-SIZE="8" COLOR="#999999">Saga Planning · staged · text-only · low cost</FONT>>;
+    style="rounded,filled"; fillcolor="#F5F7FA"; color="#5C9BD5"; penwidth=1.5;
+    fontsize=10; margin=16;
+
+    sp01 [label=<<B>check-existing</B><BR/><FONT POINT-SIZE="8" COLOR="#5C9BD5">style-curator</FONT>>,
+          shape=box, style="rounded,filled", fillcolor="#DCE8F5", color="#5C9BD5"];
+    sp02 [label=<<B>init-project</B><BR/><FONT POINT-SIZE="8" COLOR="#5C9BD5">style-curator</FONT>>,
+          shape=box, style="rounded,filled", fillcolor="#DCE8F5", color="#5C9BD5"];
+    sp03 [label=<<B>discover-sessions</B><BR/><FONT POINT-SIZE="8" COLOR="#5C9BD5">story-researcher</FONT>>,
+          shape=box, style="rounded,filled", fillcolor="#DCE8F5", color="#5C9BD5"];
+    sp04 [label=<<B>research</B><BR/><FONT POINT-SIZE="8" COLOR="#5C9BD5">story-researcher</FONT>>,
+          shape=box, style="rounded,filled", fillcolor="#DCE8F5", color="#5C9BD5"];
+    sp05 [label=<<B>style-curation</B><BR/><FONT POINT-SIZE="8" COLOR="#5C9BD5">style-curator</FONT>>,
+          shape=box, style="rounded,filled", fillcolor="#DCE8F5", color="#5C9BD5"];
+    sp06 [label=<<B>lookup-existing-chars</B><BR/><FONT POINT-SIZE="8" COLOR="#5C9BD5">style-curator</FONT>>,
+          shape=box, style="rounded,filled", fillcolor="#DCE8F5", color="#5C9BD5"];
+    sp07 [label=<<B>storyboard</B><BR/><FONT POINT-SIZE="8" COLOR="#5C9BD5">storyboard-writer</FONT><BR/>
+                <FONT POINT-SIZE="7" COLOR="#3A8F3A">produces issues[] + character_roster[]</FONT>>,
+          shape=box, style="rounded,filled", fillcolor="#DCE8F5", color="#5C9BD5"];
+    sp08 [label=<<B>store-storyboard</B><BR/><FONT POINT-SIZE="8" COLOR="#5C9BD5">style-curator</FONT>>,
+          shape=box, style="rounded,filled", fillcolor="#DCE8F5", color="#5C9BD5"];
+    sp09 [label=<<B>validate-storyboard</B><BR/><FONT POINT-SIZE="8" COLOR="#C04040">style-curator · layout IDs</FONT>>,
+          shape=box, style="rounded,filled", fillcolor="#FCE4E4", color="#C04040"];
+    sp10 [label=<<B>create-issues</B><BR/><FONT POINT-SIZE="8" COLOR="#5C9BD5">style-curator</FONT><BR/>
+                <FONT POINT-SIZE="7" COLOR="#777777">&#10227; foreach issue</FONT>>,
+          shape=box, style="rounded,dashed,filled", fillcolor="#DCE8F5", color="#5C9BD5"];
+    sp11 [label=<<B>prepare-review</B><BR/><FONT POINT-SIZE="8" COLOR="#5C9BD5">style-curator</FONT><BR/>
+                <FONT POINT-SIZE="7" COLOR="#777777">always runs</FONT>>,
+          shape=box, style="rounded,filled", fillcolor="#DCE8F5", color="#5C9BD5"];
+    sp_gate [label=<<B>APPROVAL GATE</B><BR/><FONT POINT-SIZE="8">arc · issues · roster · layouts</FONT>>,
+             shape=octagon, style=filled, fillcolor="#FFF3C4", color="#E0A015",
+             penwidth=1.5, width=2.2];
+
+    /* main path (conditional: proceed == true) */
+    sp01 -> sp02 -> sp03 -> sp04 -> sp05 -> sp06 -> sp07 -> sp08 -> sp09 -> sp10 -> sp11
+      [color="#5C9BD5"];
+    sp11 -> sp_gate [color="#E0A015", penwidth=1.2];
+
+    /* skip path: storyboard already exists */
+    sp01 -> sp11 [style=dashed, color="#BBBBBB", constraint=false,
+                  label=<<FONT POINT-SIZE="7" COLOR="#AAAAAA">skip (exists)</FONT>>];
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     SUB-RECIPE 2: design-characters.yaml
+     flat · 3 steps · image gen · project-scoped
+     ═══════════════════════════════════════════════════════ */
+  subgraph cluster_design_chars {
+    label=<<B>design-characters.yaml</B>  <FONT POINT-SIZE="9" COLOR="#666666">type: recipe</FONT><BR/>
+           <FONT POINT-SIZE="8" COLOR="#999999">Character Design · flat · image gen · project-scoped</FONT>>;
+    style="rounded,filled"; fillcolor="#F0F7EE"; color="#4A9A3E"; penwidth=1.5;
+    fontsize=10; margin=16;
+
+    dc01 [label=<<B>load-storyboard</B><BR/><FONT POINT-SIZE="8" COLOR="#4A9A3E">style-curator</FONT>>,
+          shape=box, style="rounded,filled", fillcolor="#DFF0D8", color="#4A9A3E"];
+    dc02 [label=<<B>load-existing-characters</B><BR/><FONT POINT-SIZE="8" COLOR="#4A9A3E">style-curator</FONT>>,
+          shape=box, style="rounded,filled", fillcolor="#DFF0D8", color="#4A9A3E"];
+    dc03 [label=<<B>design-characters</B><BR/><FONT POINT-SIZE="8" COLOR="#4A9A3E">character-designer</FONT><BR/>
+                <FONT POINT-SIZE="7" COLOR="#777777">&#10227; foreach character · parallel:2</FONT>>,
+          shape=box, style="rounded,dashed,filled", fillcolor="#DFF0D8", color="#4A9A3E"];
+
+    dc01 -> dc02 -> dc03 [color="#4A9A3E"];
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     SUB-RECIPE 3: issue-art.yaml
+     staged · 4 steps · foreach issue · image gen
+     ═══════════════════════════════════════════════════════ */
+  subgraph cluster_issue_art {
+    label=<<B>issue-art.yaml</B>  <FONT POINT-SIZE="9" COLOR="#666666">type: recipe</FONT><BR/>
+           <FONT POINT-SIZE="8" COLOR="#999999">Per-Issue Art · staged · &#10227; foreach issue · image gen · high cost</FONT>>;
+    style="rounded,dashed,filled"; fillcolor="#FDF5ED"; color="#D9882A"; penwidth=1.5;
+    fontsize=10; margin=16;
+
+    ia_fork [label="", shape=point, width=0.1, color="#D9882A"];
+
+    ia01 [label=<<B>generate-panels</B><BR/><FONT POINT-SIZE="8" COLOR="#D9882A">panel-artist</FONT><BR/>
+                <FONT POINT-SIZE="7" COLOR="#777777">&#10227; foreach panel · parallel:2</FONT>>,
+          shape=box, style="rounded,dashed,filled", fillcolor="#FAE5C8", color="#D9882A"];
+    ia02 [label=<<B>generate-cover</B><BR/><FONT POINT-SIZE="8" COLOR="#D9882A">cover-artist</FONT>>,
+          shape=box, style="rounded,filled", fillcolor="#FAE5C8", color="#D9882A"];
+    ia03 [label=<<B>review-panel-compositions</B><BR/><FONT POINT-SIZE="8" COLOR="#D9882A">strip-compositor</FONT><BR/>
+                <FONT POINT-SIZE="7" COLOR="#777777">&#10227; foreach panel · vision analysis</FONT>>,
+          shape=box, style="rounded,dashed,filled", fillcolor="#FAE5C8", color="#D9882A"];
+
+    ia_join [label="", shape=point, width=0.1, color="#D9882A"];
+
+    ia04 [label=<<B>composition</B><BR/><FONT POINT-SIZE="8" COLOR="#D9882A">strip-compositor</FONT><BR/>
+                <FONT POINT-SIZE="7" COLOR="#777777">assemble_comic &#8594; HTML</FONT>>,
+          shape=box, style="rounded,filled", fillcolor="#FAE5C8", color="#D9882A"];
+
+    ia_fork -> ia01 [color="#D9882A"];
+    ia_fork -> ia02 [color="#D9882A"];
+    ia01 -> ia03    [color="#D9882A"];
+    ia03 -> ia_join [color="#D9882A"];
+    ia02 -> ia_join [color="#D9882A"];
+    ia_join -> ia04 [color="#D9882A"];
+  }
+
+  /* ─── Output ─────────────────────────────────────────── */
+  output [
+    label=<<B>issue-001.html   issue-002.html   ...</B><BR/>
+           <FONT POINT-SIZE="8" COLOR="#777777">self-contained HTML per issue</FONT>>,
+    shape=note, style=filled, fillcolor="#E8F5E9", color="#81C784", width=3.2
+  ];
+
+  /* ═══════════════════════════════════════════════════════
+     STANDALONE REUSABLE RECIPES
+     composable entry points · invoke independently
+     ═══════════════════════════════════════════════════════ */
+  subgraph cluster_reusable {
+    label=<<B>Standalone Recipes</B><BR/>
+           <FONT POINT-SIZE="8" COLOR="#999999">Composable entry points · invoke independently</FONT>>;
+    style="rounded,filled"; fillcolor="#F5F0FA"; color="#9070C0"; penwidth=1.5;
+    fontsize=10; margin=16;
+
+    re01 [label=<<B>issue-compose.yaml</B><BR/>
+                <FONT POINT-SIZE="8" COLOR="#9070C0">load assets &#8594; composition</FONT><BR/>
+                <FONT POINT-SIZE="7" COLOR="#777777">zero image gen · reassembly only</FONT>>,
+          shape=box, style="rounded,filled", fillcolor="#EDE5F5", color="#9070C0"];
+    re02 [label=<<B>issue-retry.yaml</B><BR/>
+                <FONT POINT-SIZE="8" COLOR="#9070C0">load &#8594; panels + cover &#8594; compose</FONT><BR/>
+                <FONT POINT-SIZE="7" COLOR="#777777">surgical single-issue re-generation</FONT>>,
+          shape=box, style="rounded,filled", fillcolor="#EDE5F5", color="#9070C0"];
+  }
+
+  /* ─── Asset Store ────────────────────────────────────── */
+  store [
+    label=<<B>comic:// asset store</B><BR/>
+           <FONT POINT-SIZE="8" COLOR="#777777">characters · styles · panels · covers · storyboards</FONT>>,
+    shape=cylinder, style=filled, fillcolor="#FFF9E0", color="#E0A015", width=2.8
+  ];
+
+  /* ═══════════════════════════════════════════════════════
+     ORCHESTRATOR FLOW  (inter-cluster edges)
+     ═══════════════════════════════════════════════════════ */
+  input   -> sp01    [lhead=cluster_saga_plan, color="#5C9BD5", penwidth=1.3];
+  sp_gate -> dc01    [ltail=cluster_saga_plan, lhead=cluster_design_chars,
+                      color="#4A9A3E", penwidth=1.3,
+                      label=<<FONT POINT-SIZE="7" COLOR="#777777">project_id  style_uri</FONT>>];
+  dc03    -> ia_fork [ltail=cluster_design_chars, lhead=cluster_issue_art,
+                      color="#D9882A", penwidth=1.3,
+                      label=<<FONT POINT-SIZE="7" COLOR="#777777">character_uris</FONT>>];
+  ia04    -> output  [ltail=cluster_issue_art, color="#81C784", penwidth=1.3];
+
+  /* ── asset store connections ── */
+  sp_gate -> store [color="#CCCCCC", style=dashed, arrowsize=0.5, constraint=false];
+  dc03    -> store [color="#CCCCCC", style=dashed, arrowsize=0.5, constraint=false];
+  ia04    -> store [color="#CCCCCC", style=dashed, arrowsize=0.5, constraint=false];
+  re01    -> store [color="#9070C0", style=dashed, arrowsize=0.5, constraint=false];
+  re02    -> store [color="#9070C0", style=dashed, arrowsize=0.5, constraint=false];
+}

@@ -60,6 +60,7 @@ stages:
       # step loads from the store regardless of path.
       # ============================================
       - id: "check-existing"
+        model_role: fast
         agent: "comic-strips:style-curator"
         prompt: |
           YOUR ONLY JOB: Check if a saga storyboard already exists for this project. Do NOTHING else.
@@ -93,6 +94,7 @@ stages:
       # STEP 1: INIT PROJECT - Asset Manager Setup
       # ============================================
       - id: "init-project"
+        model_role: fast
         condition: "{{storyboard_check.proceed}} == 'true'"
         agent: "comic-strips:style-curator"
         prompt: |
@@ -239,6 +241,7 @@ stages:
       # knows which characters already exist in this style.
       # ============================================
       - id: "lookup-existing-characters"
+        model_role: fast
         condition: "{{storyboard_check.proceed}} == 'true'"
         agent: "comic-strips:style-curator"
         prompt: |
@@ -417,6 +420,7 @@ stages:
       # can read it independently.
       # ============================================
       - id: "store-storyboard"
+        model_role: fast
         condition: "{{storyboard_check.proceed}} == 'true'"
         agent: "comic-strips:style-curator"
         prompt: |
@@ -436,6 +440,7 @@ stages:
       # image generation starts.
       # ============================================
       - id: "validate-storyboard"
+        model_role: fast
         condition: "{{storyboard_check.proceed}} == 'true'"
         agent: "comic-strips:style-curator"
         prompt: |
@@ -461,6 +466,7 @@ stages:
       # Issue #1 updates the placeholder; #2+ create new.
       # ============================================
       - id: "create-issues"
+        model_role: fast
         condition: "{{storyboard_check.proceed}} == 'true'"
         foreach: "{{storyboard.saga_plan.issues}}"
         as: saga_issue_entry
@@ -504,6 +510,7 @@ stages:
       # planning steps were skipped (proceed=false).
       # ============================================
       - id: "prepare-review"
+        model_role: fast
         agent: "comic-strips:style-curator"
         prompt: |
           YOUR ONLY JOB: Load the saga storyboard from the asset store and prepare a review summary. Do NOTHING else.

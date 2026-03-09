@@ -15,84 +15,48 @@ Validates:
 11. inspect-flagged-panels prompt references panel_results and flagged
 """
 
-import pathlib
-
-import yaml
-
-RECIPE_PATH = pathlib.Path(__file__).parent.parent / "recipes" / "issue-art.yaml"
-
-EXPECTED_STEP_ORDER = [
-    "generate-panels",
-    "inspect-flagged-panels",
-    "generate-cover",
-    "review-panel-compositions",
-    "composition",
-]
-
-
-def _parse_recipe():
-    return yaml.safe_load(RECIPE_PATH.read_text())
-
-
-def _get_steps(data):
-    """Return flat list of all steps across all stages."""
-    steps = []
-    for stage in data.get("stages", []):
-        steps.extend(stage.get("steps", []))
-    return steps
-
-
-def _find_step(steps, step_id):
-    """Find a step by id."""
-    for step in steps:
-        if step.get("id") == step_id:
-            return step
-    return None
+from conftest import EXPECTED_STEP_IDS
 
 
 # ---------------------------------------------------------------
 # Test 1: YAML still parses after modification
 # ---------------------------------------------------------------
-def test_yaml_still_parses():
+def test_yaml_still_parses(issue_art_recipe):
     """Recipe YAML must parse without errors after adding new step."""
-    data = _parse_recipe()
-    assert data is not None, "Recipe parsed to None"
-    assert isinstance(data, dict), f"Recipe root is {type(data)}, expected dict"
+    assert issue_art_recipe is not None, "Recipe parsed to None"
+    assert isinstance(issue_art_recipe, dict), (
+        f"Recipe root is {type(issue_art_recipe)}, expected dict"
+    )
 
 
 # ---------------------------------------------------------------
 # Test 2: Step count is 5
 # ---------------------------------------------------------------
-def test_step_count_is_five():
+def test_step_count_is_five(issue_art_steps):
     """Issue-art recipe must have exactly 5 steps after adding inspect-flagged-panels."""
-    data = _parse_recipe()
-    steps = _get_steps(data)
-    assert len(steps) == 5, (
-        f"Expected 5 steps, got {len(steps)}: {[s['id'] for s in steps]}"
+    assert len(issue_art_steps) == 5, (
+        f"Expected 5 steps, got {len(issue_art_steps)}: "
+        f"{[s['id'] for s in issue_art_steps]}"
     )
 
 
 # ---------------------------------------------------------------
 # Test 3: Step order matches expected
 # ---------------------------------------------------------------
-def test_step_order():
+def test_step_order(issue_art_steps):
     """Steps must appear in the correct order."""
-    data = _parse_recipe()
-    steps = _get_steps(data)
-    step_ids = [s["id"] for s in steps]
-    assert step_ids == EXPECTED_STEP_ORDER, (
-        f"Expected step order {EXPECTED_STEP_ORDER}, got {step_ids}"
+    step_ids = [s["id"] for s in issue_art_steps]
+    assert step_ids == EXPECTED_STEP_IDS, (
+        f"Expected step order {EXPECTED_STEP_IDS}, got {step_ids}"
     )
 
 
 # ---------------------------------------------------------------
 # Test 4: inspect-flagged-panels depends_on ['generate-panels']
 # ---------------------------------------------------------------
-def test_inspect_flagged_panels_depends_on_generate_panels():
+def test_inspect_flagged_panels_depends_on_generate_panels(find_step):
     """inspect-flagged-panels must depend on generate-panels."""
-    data = _parse_recipe()
-    steps = _get_steps(data)
-    step = _find_step(steps, "inspect-flagged-panels")
+    step = find_step("inspect-flagged-panels")
     assert step is not None, "inspect-flagged-panels step not found"
     assert step.get("depends_on") == ["generate-panels"], (
         f"inspect-flagged-panels depends_on must be ['generate-panels'], "
@@ -103,11 +67,9 @@ def test_inspect_flagged_panels_depends_on_generate_panels():
 # ---------------------------------------------------------------
 # Test 5: review-panel-compositions depends_on ['inspect-flagged-panels']
 # ---------------------------------------------------------------
-def test_review_panel_compositions_depends_on_inspect():
+def test_review_panel_compositions_depends_on_inspect(find_step):
     """review-panel-compositions must now depend on inspect-flagged-panels (changed)."""
-    data = _parse_recipe()
-    steps = _get_steps(data)
-    step = _find_step(steps, "review-panel-compositions")
+    step = find_step("review-panel-compositions")
     assert step is not None, "review-panel-compositions step not found"
     assert step.get("depends_on") == ["inspect-flagged-panels"], (
         f"review-panel-compositions depends_on must be ['inspect-flagged-panels'], "
@@ -118,11 +80,9 @@ def test_review_panel_compositions_depends_on_inspect():
 # ---------------------------------------------------------------
 # Test 6: composition depends_on unchanged
 # ---------------------------------------------------------------
-def test_composition_depends_on_unchanged():
+def test_composition_depends_on_unchanged(find_step):
     """composition must still depend on review-panel-compositions and generate-cover."""
-    data = _parse_recipe()
-    steps = _get_steps(data)
-    step = _find_step(steps, "composition")
+    step = find_step("composition")
     assert step is not None, "composition step not found"
     deps = sorted(step.get("depends_on", []))
     assert deps == ["generate-cover", "review-panel-compositions"], (
@@ -134,11 +94,9 @@ def test_composition_depends_on_unchanged():
 # ---------------------------------------------------------------
 # Test 7: inspect-flagged-panels has model_role: fast
 # ---------------------------------------------------------------
-def test_inspect_flagged_panels_model_role():
+def test_inspect_flagged_panels_model_role(find_step):
     """inspect-flagged-panels must have model_role: fast."""
-    data = _parse_recipe()
-    steps = _get_steps(data)
-    step = _find_step(steps, "inspect-flagged-panels")
+    step = find_step("inspect-flagged-panels")
     assert step is not None, "inspect-flagged-panels step not found"
     assert step.get("model_role") == "fast", (
         f"inspect-flagged-panels model_role must be 'fast', got {step.get('model_role')}"
@@ -148,11 +106,9 @@ def test_inspect_flagged_panels_model_role():
 # ---------------------------------------------------------------
 # Test 8: inspect-flagged-panels output and parse_json
 # ---------------------------------------------------------------
-def test_inspect_flagged_panels_output():
+def test_inspect_flagged_panels_output(find_step):
     """inspect-flagged-panels must have output 'flagged_panel_report' with parse_json: true."""
-    data = _parse_recipe()
-    steps = _get_steps(data)
-    step = _find_step(steps, "inspect-flagged-panels")
+    step = find_step("inspect-flagged-panels")
     assert step is not None, "inspect-flagged-panels step not found"
     assert step.get("output") == "flagged_panel_report", (
         f"inspect-flagged-panels output must be 'flagged_panel_report', "
@@ -166,11 +122,9 @@ def test_inspect_flagged_panels_output():
 # ---------------------------------------------------------------
 # Test 9: inspect-flagged-panels has timeout: 300
 # ---------------------------------------------------------------
-def test_inspect_flagged_panels_timeout():
+def test_inspect_flagged_panels_timeout(find_step):
     """inspect-flagged-panels must have timeout: 300 (5 minutes)."""
-    data = _parse_recipe()
-    steps = _get_steps(data)
-    step = _find_step(steps, "inspect-flagged-panels")
+    step = find_step("inspect-flagged-panels")
     assert step is not None, "inspect-flagged-panels step not found"
     assert step.get("timeout") == 300, (
         f"inspect-flagged-panels timeout must be 300, got {step.get('timeout')}"
@@ -180,11 +134,9 @@ def test_inspect_flagged_panels_timeout():
 # ---------------------------------------------------------------
 # Test 10: inspect-flagged-panels agent is style-curator
 # ---------------------------------------------------------------
-def test_inspect_flagged_panels_agent():
+def test_inspect_flagged_panels_agent(find_step):
     """inspect-flagged-panels must use comic-strips:style-curator agent."""
-    data = _parse_recipe()
-    steps = _get_steps(data)
-    step = _find_step(steps, "inspect-flagged-panels")
+    step = find_step("inspect-flagged-panels")
     assert step is not None, "inspect-flagged-panels step not found"
     assert step.get("agent") == "comic-strips:style-curator", (
         f"inspect-flagged-panels agent must be 'comic-strips:style-curator', "
@@ -195,11 +147,9 @@ def test_inspect_flagged_panels_agent():
 # ---------------------------------------------------------------
 # Test 11: inspect-flagged-panels prompt references key terms
 # ---------------------------------------------------------------
-def test_inspect_flagged_panels_prompt_content():
+def test_inspect_flagged_panels_prompt_content(find_step):
     """inspect-flagged-panels prompt must reference panel_results and flagged."""
-    data = _parse_recipe()
-    steps = _get_steps(data)
-    step = _find_step(steps, "inspect-flagged-panels")
+    step = find_step("inspect-flagged-panels")
     assert step is not None, "inspect-flagged-panels step not found"
     prompt = step.get("prompt", "")
     assert "panel_results" in prompt, (
@@ -218,16 +168,13 @@ def test_inspect_flagged_panels_prompt_content():
 # ---------------------------------------------------------------
 # Test 12: Dependency chain is correct end-to-end
 # ---------------------------------------------------------------
-def test_full_dependency_chain():
+def test_full_dependency_chain(find_step):
     """Verify the complete dependency chain as specified."""
-    data = _parse_recipe()
-    steps = _get_steps(data)
-
-    panels = _find_step(steps, "generate-panels")
-    inspect = _find_step(steps, "inspect-flagged-panels")
-    cover = _find_step(steps, "generate-cover")
-    review = _find_step(steps, "review-panel-compositions")
-    comp = _find_step(steps, "composition")
+    panels = find_step("generate-panels")
+    inspect = find_step("inspect-flagged-panels")
+    cover = find_step("generate-cover")
+    review = find_step("review-panel-compositions")
+    comp = find_step("composition")
 
     assert panels is not None, "generate-panels step not found"
     assert inspect is not None, "inspect-flagged-panels step not found"

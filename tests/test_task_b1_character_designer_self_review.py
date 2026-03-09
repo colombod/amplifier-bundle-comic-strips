@@ -117,20 +117,21 @@ def test_maximum_3_attempts() -> None:
 def test_remediation_for_face_failure() -> None:
     """Remediation text for face visibility failure must exist."""
     content = _read_agent()
-    assert (
-        "face" in content.lower()
-        and "remediat" in content.lower()
-        or ("face clearly visible" in content.lower() and "adjust" in content.lower())
+    assert ("face" in content.lower() and "remediat" in content.lower()) or (
+        "face clearly visible" in content.lower() and "adjust" in content.lower()
     ), "Missing specific remediation for face visibility failure"
 
 
 def test_remediation_for_text_failure() -> None:
     """Remediation text for baked-in text failure must exist."""
     content = _read_agent()
-    # Must have remediation language about text artifacts
-    assert "text" in content.lower() and (
-        "no text" in content.lower() or "no words" in content.lower()
-    ), "Missing specific remediation for baked-in text failure"
+    # Must have remediation language specific to the Step 2.5 remediation block,
+    # not just the pre-existing prompt template ("No text in image" on line ~209).
+    # The remediation block uses stronger language: "no words, no letters, no labels".
+    assert "no words" in content.lower() and "no labels" in content.lower(), (
+        "Missing specific remediation for baked-in text failure "
+        "(expected 'no words' and 'no labels' from the remediation prompt adjustment)"
+    )
 
 
 def test_remediation_for_format_failure() -> None:

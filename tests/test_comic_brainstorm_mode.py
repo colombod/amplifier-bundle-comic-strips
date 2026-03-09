@@ -4,6 +4,7 @@ Validates YAML frontmatter structure, required keys, tool policies,
 and body content requirements per the design specification.
 """
 
+import pytest
 import yaml
 from pathlib import Path
 
@@ -161,7 +162,7 @@ def test_5_process_phases():
     assert "Phase 5" in body or "Converge" in body
 
 
-def test_style_exploration_lists_29_packs():
+def test_style_exploration_lists_named_packs():
     body = _get_body()
     style_packs = [
         "manga",
@@ -267,7 +268,7 @@ def test_verification_script_brainstorm_checks():
 
     script = Path(__file__).parent / "verify-modes-and-recipes.sh"
     if not script.exists():
-        return  # Skip if verification script not present
+        pytest.skip("verification script not present")
 
     result = subprocess.run(
         ["bash", str(script)],

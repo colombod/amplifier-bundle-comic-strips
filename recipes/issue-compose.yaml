@@ -108,6 +108,52 @@ steps:
     timeout: 600  # 10m — 6 different asset loads (storyboard, style, characters, panels, cover, saga context)
 
   # ============================================
+  # STEP 1.5: REVIEW PANEL COMPOSITIONS
+  # Pre-computes character positions and overlay
+  # placement for each panel before final assembly.
+  # Makes bubble positioning deterministic and
+  # reviewable in recipe approval gates.
+  # ============================================
+  - id: "review-panel-compositions"
+    depends_on: ["load-existing-assets"]
+    foreach: "{{existing_assets.panel_uris}}"
+    as: panel_uri
+    agent: "comic-strips:strip-compositor"
+    retry:
+      max_attempts: 2
+      initial_delay: 3
+    prompt: |
+      Project tracking: project_id={{project_id}}, issue_id={{issue_id}}
+
+      Review a single panel image to determine optimal text overlay placement.
+
+      Panel URI: {{panel_uri}}
+
+      Character URIs (for visual reference):
+      {{existing_assets.character_uris}}
+
+      Style Guide URI: {{existing_assets.style_uri}}
+      Load layout conventions using: comic_style(action='get', uri='{{existing_assets.style_uri}}')
+
+      Storyboard panel data (for matching characters to dialogue):
+      {{existing_assets.storyboard.panel_list}}
+
+      Call:
+      comic_create(action='review_asset',
+                   uri='{{panel_uri}}',
+                   prompt="Analyze this comic panel for text overlay placement. Describe: (1) Character positions — which characters appear and where (left/right/center, upper/lower third). (2) Negative space — regions with no important visual content suitable for speech bubbles and captions. (3) Focal point — where the viewer's eye is drawn. (4) Suggested overlay placements — for each character's speech bubble and any narrator caption box, provide coordinates as x, y, width, height (0-100 percentages of panel dimensions).",
+                   reference_uris=<character URIs from {{existing_assets.character_uris}} whose characters appear in this panel>)
+
+      Return a JSON object with these fields:
+      - panel_uri: "{{panel_uri}}"
+      - characters_detected: [{name, position_x, position_y, facing}]
+      - overlay_suggestions: [{type: "speech"|"caption"|"sfx", target_character, x, y, width, height}]
+      - negative_space_regions: [{x, y, width, height, description}]
+      - composition_notes: brief description of the visual layout
+    collect: "panel_reviews"
+    timeout: 900  # 15m per panel — vision model inference on image + detailed spatial analysis
+
+  # ============================================
   # STEP 2: COMPOSITION — Final Assembly
   # Assembles the complete comic strip HTML from
   # loaded panel URIs, cover URI, storyboard, and
@@ -118,7 +164,7 @@ steps:
   # ============================================
   - id: "composition"
     agent: "comic-strips:strip-compositor"
-    depends_on: ["load-existing-assets"]
+    depends_on: ["review-panel-compositions"]
     prompt: |
       Project tracking: project_id={{project_id}}, issue_id={{issue_id}}
 
@@ -129,6 +175,9 @@ steps:
 
       Panel URIs (in order):
       {{existing_assets.panel_uris}}
+
+      Pre-computed panel composition reviews (character positions and overlay placement):
+      {{panel_reviews}}
 
       Cover URI:
       {{existing_assets.cover_uri}}
@@ -152,10 +201,11 @@ steps:
       2. If saga_context is non-null and this is NOT issue #1:
          - Add a "Previously in..." recap text block on the first story page summarizing
            the previous issue's key events from saga_context.
-      3. For each panel URI in {{existing_assets.panel_uris}}, call:
-         comic_create(action='review_asset', uri=<panel_uri>,
-                      prompt="Describe character positions, negative space, and focal points for text overlay placement.")
-         Use the visual descriptions to make precise text overlay placement decisions.
+      3. For each panel, use the pre-computed review data from {{panel_reviews}} to determine
+         character positions, available negative space, and optimal overlay coordinates.
+         Each review contains: characters_detected, overlay_suggestions, negative_space_regions,
+         and composition_notes. Use these directly for precise text overlay placement.
+         Do NOT call the review tool again — the reviews are already computed by the previous step.
       4. Build a layout object mapping each panel URI to its storyboard dialogue, captions,
          and sound effects. Use overlay coordinates (0-100% of panel dimensions) informed by
          the visual composition analysis.
@@ -180,4 +230,4 @@ steps:
 
       Do NOT delete intermediate files. All assets are managed by the asset manager.
     output: "final_output"
-    timeout: 3600  # 1h — inline vision review per panel + layout assembly for large issues
+    timeout: 3600  # 1h — load style + build layout for 20+ panels + HTML assembly

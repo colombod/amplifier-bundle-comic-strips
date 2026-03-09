@@ -1,0 +1,93 @@
+digraph two_track_composition {
+  /* ─── Global ─────────────────────────────────────────── */
+  rankdir=LR;
+  bgcolor="transparent";
+  fontname="Helvetica Neue,Helvetica,Arial,sans-serif";
+  node [fontname="Helvetica Neue,Helvetica,Arial,sans-serif", fontsize=10,
+        margin="0.12,0.06", height=0.4];
+  edge [fontname="Helvetica Neue,Helvetica,Arial,sans-serif", fontsize=8,
+        arrowsize=0.7];
+  compound=true;
+  nodesep=0.4;
+  ranksep=0.6;
+
+  labelloc=t;
+  label=<<FONT POINT-SIZE="14"><B>Two-Track Composition</B></FONT><BR/>
+         <FONT POINT-SIZE="9" COLOR="#777777">Interactive modes + automated recipes · pivot at /comic-plan</FONT>>;
+
+  /* ═══════════════════════════════════════════════════════
+     INTERACTIVE TRACK (modes — user driving)
+     ═══════════════════════════════════════════════════════ */
+  subgraph cluster_interactive {
+    label=<<B>Interactive Track</B><BR/>
+           <FONT POINT-SIZE="8" COLOR="#666666">Modes — User Driving</FONT>>;
+    style="rounded,filled"; fillcolor="#F5F5F5"; color="#BDBDBD"; penwidth=1.2;
+    fontsize=10; margin=16;
+    node [shape=box, style="rounded,filled"];
+
+    ib [label=<<B>/comic-brainstorm</B><BR/>
+              <FONT POINT-SIZE="7" COLOR="#555555">style · scope · roster</FONT>>,
+        fillcolor="#E8F5E9", color="#66BB6A"];
+
+    id [label=<<B>/comic-design</B><BR/>
+              <FONT POINT-SIZE="7" COLOR="#555555">characters · storyboard</FONT>>,
+        fillcolor="#E3F2FD", color="#42A5F5"];
+
+    ip [label=<<B>/comic-plan</B><BR/>
+              <FONT POINT-SIZE="8" COLOR="#C62828">PIVOT POINT</FONT><BR/>
+              <FONT POINT-SIZE="7" COLOR="#555555">budgets · layout · kick off</FONT>>,
+        fillcolor="#FFF3E0", color="#FFA726", penwidth=3];
+
+    ir [label=<<B>/comic-review</B><BR/>
+              <FONT POINT-SIZE="7" COLOR="#555555">inspect · retry · approve</FONT>>,
+        fillcolor="#FCE4EC", color="#EF5350"];
+
+    ipub [label=<<B>/comic-publish</B><BR/>
+                <FONT POINT-SIZE="7" COLOR="#555555">QA · assemble · ship</FONT>>,
+          fillcolor="#F3E5F5", color="#AB47BC"];
+
+    ib -> id -> ip;
+    ip -> ir -> ipub;
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     AUTOMATED TRACK (recipes — pipeline driving)
+     ═══════════════════════════════════════════════════════ */
+  subgraph cluster_automated {
+    label=<<B>Automated Track</B><BR/>
+           <FONT POINT-SIZE="8" COLOR="#666666">Recipes — Pipeline Driving</FONT>>;
+    style="rounded,filled"; fillcolor="#FAFAFA"; color="#BDBDBD"; penwidth=1.2;
+    fontsize=10; margin=16;
+    node [shape=box, style="rounded,filled", fillcolor="#FFFDE7", color="#FDD835"];
+
+    saga [label=<<B>saga-plan.yaml</B><BR/>
+                <FONT POINT-SIZE="7" COLOR="#555555">11 steps + approval gate</FONT>>];
+
+    chars [label=<<B>design-characters.yaml</B><BR/>
+                 <FONT POINT-SIZE="7" COLOR="#2E7D32">+ self-review loop (NEW)</FONT>>];
+
+    art [label=<<B>issue-art.yaml</B><BR/>
+               <FONT POINT-SIZE="7" COLOR="#555555">foreach issue</FONT><BR/>
+               <FONT POINT-SIZE="7" COLOR="#2E7D32">+ flagged panel surfacing (NEW)</FONT>>];
+
+    saga -> chars -> art;
+  }
+
+  /* ─── Cross-track connections ────────────────────────── */
+  ip -> saga [
+    label="kicks off pipeline",
+    style=bold, color="#FF6F00", penwidth=2,
+    lhead=cluster_automated
+  ];
+
+  art -> ir [
+    label="results ready",
+    style=bold, color="#FF6F00", penwidth=2,
+    ltail=cluster_automated
+  ];
+
+  ir -> art [
+    label=<<FONT COLOR="#C62828">surgical retry<BR/>(issue-retry.yaml)</FONT>>,
+    style=dashed, color="#C62828"
+  ];
+}

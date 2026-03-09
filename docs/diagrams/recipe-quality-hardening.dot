@@ -1,0 +1,165 @@
+digraph recipe_quality_hardening {
+  /* ─── Global ─────────────────────────────────────────── */
+  rankdir=TB;
+  bgcolor="transparent";
+  fontname="Helvetica Neue,Helvetica,Arial,sans-serif";
+  node [fontname="Helvetica Neue,Helvetica,Arial,sans-serif", fontsize=10,
+        margin="0.12,0.06", height=0.4];
+  edge [fontname="Helvetica Neue,Helvetica,Arial,sans-serif", fontsize=8,
+        arrowsize=0.7];
+  compound=true;
+  nodesep=0.35;
+  ranksep=0.45;
+
+  labelloc=t;
+  label=<<FONT POINT-SIZE="14"><B>Recipe Quality Hardening — 5 Fixes</B></FONT><BR/>
+         <FONT POINT-SIZE="9" COLOR="#777777">Where each fix lands in the 3-stage pipeline</FONT>>;
+
+  /* ═══════════════════════════════════════════════════════
+     STAGE 1: Saga Planning
+     ═══════════════════════════════════════════════════════ */
+  subgraph cluster_stage1 {
+    label=<<B>Stage 1: Saga Planning</B><BR/>
+           <FONT POINT-SIZE="8" COLOR="#666666">saga-plan.yaml · staged · text-only</FONT>>;
+    style="rounded,filled"; fillcolor="#F5F7FA"; color="#5C9BD5"; penwidth=1.2;
+    fontsize=10; margin=16;
+
+    saga_steps [
+      label=<<B>11 steps + approval gate</B><BR/>
+             <FONT POINT-SIZE="8" COLOR="#555555">check-existing · init-project · discover-sessions<BR/>
+             research · style-curation · lookup-chars<BR/>
+             storyboard · store-storyboard · create-issues<BR/>
+             store-saga-plan · (approval)</FONT>>,
+      shape=box, style="rounded,filled", fillcolor="#DCE8F5", color="#5C9BD5"
+    ];
+
+    fix5 [
+      label=<<B>FIX 5</B><BR/>
+             <FONT POINT-SIZE="8">model_role: fast on<BR/>8 mechanical steps</FONT><BR/>
+             <FONT POINT-SIZE="7" COLOR="#888888">Risk: Low · saves cost</FONT>>,
+      shape=note, style=filled, fillcolor="#FFFDE7", color="#FDD835"
+    ];
+
+    saga_steps -> fix5 [style=dashed, color="#FDD835", arrowhead=none];
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     STAGE 2: Character Design
+     ═══════════════════════════════════════════════════════ */
+  subgraph cluster_stage2 {
+    label=<<B>Stage 2: Character Design</B><BR/>
+           <FONT POINT-SIZE="8" COLOR="#666666">design-characters.yaml · foreach character</FONT>>;
+    style="rounded,filled"; fillcolor="#F5F7FA"; color="#5C9BD5"; penwidth=1.2;
+    fontsize=10; margin=16;
+
+    char_design [
+      label=<<B>character-designer agent</B><BR/>
+             <FONT POINT-SIZE="8" COLOR="#555555">generate reference sheet<BR/>per character in roster</FONT>>,
+      shape=box, style="rounded,filled", fillcolor="#DCE8F5", color="#5C9BD5"
+    ];
+
+    fix1 [
+      label=<<B>FIX 1</B><BR/>
+             <FONT POINT-SIZE="8">Add vision self-review loop<BR/>(up to 3 attempts)</FONT><BR/>
+             <FONT POINT-SIZE="7" COLOR="#555555">Checklist: face clarity, no baked-in text,<BR/>style cohesion, reference-sheet format</FONT><BR/>
+             <FONT POINT-SIZE="7" COLOR="#888888">Risk: Low · highest upstream impact</FONT>>,
+      shape=note, style=filled, fillcolor="#FFFDE7", color="#FDD835"
+    ];
+
+    char_design -> fix1 [style=dashed, color="#FDD835", arrowhead=none];
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     STAGE 3: Per-Issue Art
+     ═══════════════════════════════════════════════════════ */
+  subgraph cluster_stage3 {
+    label=<<B>Stage 3: Per-Issue Art</B><BR/>
+           <FONT POINT-SIZE="8" COLOR="#666666">issue-art.yaml · foreach issue</FONT>>;
+    style="rounded,filled"; fillcolor="#F5F7FA"; color="#5C9BD5"; penwidth=1.2;
+    fontsize=10; margin=16;
+
+    panels [
+      label=<<B>generate-panels</B><BR/>
+             <FONT POINT-SIZE="8" COLOR="#555555">panel-artist agent · foreach panel</FONT>>,
+      shape=box, style="rounded,filled", fillcolor="#DCE8F5", color="#5C9BD5"
+    ];
+
+    fix2 [
+      label=<<B>FIX 2</B><BR/>
+             <FONT POINT-SIZE="8">Flagged panel surfacing</FONT><BR/>
+             <FONT POINT-SIZE="7" COLOR="#555555">Inspect panel_results for flagged: true<BR/>Surface warning before composition</FONT><BR/>
+             <FONT POINT-SIZE="7" COLOR="#888888">Risk: Zero · warning only</FONT>>,
+      shape=note, style=filled, fillcolor="#FFFDE7", color="#FDD835"
+    ];
+
+    fix3 [
+      label=<<B>FIX 3</B><BR/>
+             <FONT POINT-SIZE="8">content_policy_notes accumulation</FONT><BR/>
+             <FONT POINT-SIZE="7" COLOR="#555555">Write-back moderation lessons<BR/>after each generation</FONT><BR/>
+             <FONT POINT-SIZE="7" COLOR="#888888">Risk: Low · plumbing exists</FONT>>,
+      shape=note, style=filled, fillcolor="#FFFDE7", color="#FDD835"
+    ];
+
+    cover [
+      label=<<B>generate-cover</B><BR/>
+             <FONT POINT-SIZE="8" COLOR="#555555">cover-artist agent</FONT>>,
+      shape=box, style="rounded,filled", fillcolor="#DCE8F5", color="#5C9BD5"
+    ];
+
+    review_comp [
+      label=<<B>review-panel-compositions</B><BR/>
+             <FONT POINT-SIZE="8" COLOR="#555555">pre-computed overlay review</FONT>>,
+      shape=box, style="rounded,filled", fillcolor="#DCE8F5", color="#5C9BD5"
+    ];
+
+    composition [
+      label=<<B>composition + visual QA</B><BR/>
+             <FONT POINT-SIZE="8" COLOR="#555555">assemble final HTML</FONT>>,
+      shape=box, style="rounded,filled", fillcolor="#DCE8F5", color="#5C9BD5"
+    ];
+
+    panels -> fix2 [style=dashed, color="#FDD835", arrowhead=none];
+    panels -> fix3 [style=dashed, color="#FDD835", arrowhead=none];
+    panels -> review_comp -> composition;
+    cover -> composition;
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     RECOVERY RECIPES
+     ═══════════════════════════════════════════════════════ */
+  subgraph cluster_recovery {
+    label=<<B>Recovery Recipes</B><BR/>
+           <FONT POINT-SIZE="8" COLOR="#666666">triggered from /comic-review</FONT>>;
+    style="rounded,filled"; fillcolor="#FFF3E0"; color="#FFA726"; penwidth=1.2;
+    fontsize=10; margin=16;
+
+    retry [
+      label=<<B>issue-retry.yaml</B><BR/>
+             <FONT POINT-SIZE="8" COLOR="#555555">surgical panel/cover retry</FONT>>,
+      shape=box, style="rounded,filled", fillcolor="#FFE0B2", color="#FFA726"
+    ];
+
+    compose [
+      label=<<B>issue-compose.yaml</B><BR/>
+             <FONT POINT-SIZE="8" COLOR="#555555">re-assemble with fixes</FONT>>,
+      shape=box, style="rounded,filled", fillcolor="#FFE0B2", color="#FFA726"
+    ];
+
+    fix4 [
+      label=<<B>FIX 4</B><BR/>
+             <FONT POINT-SIZE="8">Align with primary path</FONT><BR/>
+             <FONT POINT-SIZE="7" COLOR="#555555">Use pre-computed review-panel-compositions<BR/>instead of inline reviews</FONT><BR/>
+             <FONT POINT-SIZE="7" COLOR="#C62828">Risk: Medium · changes overlay placement</FONT>>,
+      shape=note, style=filled, fillcolor="#FFFDE7", color="#FDD835"
+    ];
+
+    retry -> fix4 [style=dashed, color="#FDD835", arrowhead=none];
+    compose -> fix4 [style=dashed, color="#FDD835", arrowhead=none];
+  }
+
+  /* ─── Cross-stage flow ───────────────────────────────── */
+  saga_steps -> char_design [lhead=cluster_stage2, ltail=cluster_stage1,
+                             color="#5C9BD5", penwidth=1.5];
+  char_design -> panels [lhead=cluster_stage3, ltail=cluster_stage2,
+                         color="#5C9BD5", penwidth=1.5];
+}

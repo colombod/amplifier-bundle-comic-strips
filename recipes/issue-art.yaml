@@ -92,8 +92,52 @@ stages:
           If content_policy_notes is non-empty, these are LESSONS FROM MODERATION BLOCKS
           on earlier images in this same comic. Apply them to ALL your prompts immediately.
           Do not repeat patterns that were already blocked.
+
+          CONTENT POLICY ACCUMULATION: If you encounter a moderation block during generation,
+          include a "content_policy_lesson" field in your return JSON with a brief description
+          of what was blocked and why, so later panels can avoid the same pattern.
+
+          Example return JSON with content_policy_lesson:
+          {"index": 3, "uri": "comic://...", "version": 1, "size": "landscape", "attempts": 2, "passed_review": true, "flagged": false, "content_policy_lesson": "Close-up combat scenes with energy blasts blocked — use wide establishing shots with dramatic poses instead."}
+
+          If no moderation block occurred, omit the content_policy_lesson field or set it to null.
         collect: "panel_results"
         timeout: 1800  # 30m per panel — image gen + vision review + up to 3 retries + cross-provider fallback
+
+      # ============================================
+      # STEP 1.5: INSPECT FLAGGED PANELS
+      # Scans panel_results for any panels that were
+      # flagged during generation (e.g. moderation,
+      # quality issues) and surfaces a summary report
+      # before downstream steps consume the results.
+      # ============================================
+      - id: "inspect-flagged-panels"
+        depends_on: ["generate-panels"]
+        agent: "comic-strips:style-curator"
+        model_role: fast
+        prompt: |
+          Scan the panel_results collected from the generate-panels step and identify
+          any entries where flagged: true.
+
+          Panel results to inspect:
+          {{panel_results}}
+
+          For each panel result, check whether it contains a flagged: true marker
+          (indicating moderation blocks, quality failures, or content policy issues
+          during generation).
+
+          Return a JSON object with exactly these fields:
+          - total_panels: total number of panels in panel_results
+          - flagged_count: number of panels with flagged: true
+          - flagged_panels: list of objects with uri and index for each flagged panel
+          - warning: a human-readable summary string describing the flagged panels
+            (e.g. "2 of 8 panels were flagged during generation: panels 3 and 7")
+
+          If no panels are flagged, return flagged_count: 0, flagged_panels: [],
+          and warning: "No panels were flagged during generation."
+        output: "flagged_panel_report"
+        parse_json: true
+        timeout: 300  # 5m — lightweight scan of panel metadata
 
       # ============================================
       # STEP 2: COVER ART GENERATION
@@ -159,7 +203,7 @@ stages:
       # reviewable in recipe approval gates.
       # ============================================
       - id: "review-panel-compositions"
-        depends_on: ["generate-panels"]
+        depends_on: ["inspect-flagged-panels"]
         foreach: "{{panel_results}}"
         as: panel_uri
         agent: "comic-strips:strip-compositor"

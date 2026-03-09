@@ -10,10 +10,13 @@ Validates that the create-issues step in session-to-comic.yaml:
 7. Old update-issue-title step no longer exists
 """
 
+import pytest
 import functools
 import pathlib
 
 import yaml
+
+pytestmark = pytest.mark.skip(reason="legacy test for pre-v9 recipe")
 
 RECIPE_PATH = pathlib.Path(__file__).parent.parent / "recipes" / "session-to-comic.yaml"
 

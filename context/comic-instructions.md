@@ -171,14 +171,16 @@ The comic creation pipeline is a 3-stage saga pipeline. Characters and styles ar
 
 ### Stage 2 — Character Design (image gen, shared)
 
-7. **Character Design** — Foreach over `character_roster[]`: cross-project discovery of existing characters, per-issue variant creation (v1, v2, v3 for visual evolution across issues), and evolution tracking in asset metadata. Characters are project-scoped — designed once, reused across all issues.
+7. **Character Design** — Foreach over `character_roster[]`: cross-project discovery of existing characters, per-issue variant creation (v1, v2, v3 for visual evolution across issues), and evolution tracking in asset metadata. Characters are project-scoped — designed once, reused across all issues. Each character undergoes a self-review loop: after `create_character_ref`, the designer performs a vision check against the style guide and character spec, retrying up to 3 attempts if the result does not match.
 
 ### Stage 3 — Per-Issue Art Generation (image gen, per issue)
 
 Foreach issue in the saga:
 
 8. **Panel Art** — Foreach panel in the issue, rendered via `comic_create(action='create_panel')` with issue-specific character variant URIs. Returns issue-scoped `comic://` URIs per panel.
+8.5. **Inspect Flagged Panels** — Scans `panel_results` for entries with `flagged:true` and surfaces a structured warning with panel names, flag reasons, and moderation notes. Accumulates `content_policy_notes` into shared context for downstream steps. Runs with `model_role: fast`.
 9. **Cover Art** — Cover generated via `comic_create(action='create_cover')` with issue-scoped characters. Returns an issue-scoped `comic://` URI.
+9.5. **Review Panel Compositions** — Vision pre-analysis of each panel for character positions and text overlay placement. Depends on inspect-flagged-panels completing first.
 10. **Composition** — The strip-compositor assembles the final issue: includes a recap page for issues 2+, a cliffhanger teaser for all issues except the last, and produces a separate HTML file per issue via `assemble_comic`.
 
 All recipe context variables carry URIs and text metadata only. No image bytes flow through recipe context. Total recipe state is approximately 1 KB.

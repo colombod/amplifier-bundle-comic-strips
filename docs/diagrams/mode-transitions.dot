@@ -1,0 +1,69 @@
+digraph comic_mode_transitions {
+  /* ─── Global ─────────────────────────────────────────── */
+  rankdir=TB;
+  bgcolor="transparent";
+  fontname="Helvetica Neue,Helvetica,Arial,sans-serif";
+  node [fontname="Helvetica Neue,Helvetica,Arial,sans-serif", fontsize=10,
+        margin="0.15,0.08", height=0.5, shape=box, style="rounded,filled"];
+  edge [fontname="Helvetica Neue,Helvetica,Arial,sans-serif", fontsize=9,
+        arrowsize=0.7];
+  nodesep=0.5;
+  ranksep=0.6;
+
+  labelloc=t;
+  label=<<FONT POINT-SIZE="14"><B>Comic Interactive Mode Transitions</B></FONT><BR/>
+         <FONT POINT-SIZE="9" COLOR="#777777">5-mode railed chain · double-confirmation on all transitions</FONT>>;
+
+  /* ─── Nodes ──────────────────────────────────────────── */
+  brainstorm [
+    label=<<B>/comic-brainstorm</B><BR/>
+           <FONT POINT-SIZE="8" COLOR="#555555">"What are we making?"</FONT><BR/>
+           <FONT POINT-SIZE="7" COLOR="#888888">allow_clear: false</FONT>>,
+    fillcolor="#E8F5E9", color="#66BB6A"
+  ];
+
+  design [
+    label=<<B>/comic-design</B><BR/>
+           <FONT POINT-SIZE="8" COLOR="#555555">"What does it look like?"</FONT><BR/>
+           <FONT POINT-SIZE="7" COLOR="#888888">allow_clear: false</FONT>>,
+    fillcolor="#E3F2FD", color="#42A5F5"
+  ];
+
+  plan [
+    label=<<B>/comic-plan</B><BR/>
+           <FONT POINT-SIZE="8" COLOR="#555555">"How do we build it?"</FONT><BR/>
+           <FONT POINT-SIZE="7" COLOR="#C62828">generation begins here</FONT><BR/>
+           <FONT POINT-SIZE="7" COLOR="#888888">allow_clear: false</FONT>>,
+    fillcolor="#FFF3E0", color="#FFA726", penwidth=2
+  ];
+
+  review [
+    label=<<B>/comic-review</B><BR/>
+           <FONT POINT-SIZE="8" COLOR="#555555">"Is it good enough?"</FONT><BR/>
+           <FONT POINT-SIZE="7" COLOR="#888888">allow_clear: false</FONT>>,
+    fillcolor="#FCE4EC", color="#EF5350"
+  ];
+
+  publish [
+    label=<<B>/comic-publish</B><BR/>
+           <FONT POINT-SIZE="8" COLOR="#555555">"Ship it"</FONT><BR/>
+           <FONT POINT-SIZE="7" COLOR="#2E7D32">allow_clear: true · EXIT POINT</FONT>>,
+    fillcolor="#F3E5F5", color="#AB47BC", penwidth=2
+  ];
+
+  /* ─── Golden path (solid, bold) ──────────────────────── */
+  brainstorm -> design [label="golden path", color="#2E7D32", penwidth=1.5];
+  design -> plan [label="golden path", color="#2E7D32", penwidth=1.5];
+  plan -> review [label="golden path", color="#2E7D32", penwidth=1.5];
+  review -> publish [label="golden path", color="#2E7D32", penwidth=1.5];
+
+  /* ─── Skip path (solid, thinner) ─────────────────────── */
+  brainstorm -> plan [label="design obvious", color="#FF8F00", style=dotted];
+
+  /* ─── Back-navigation (dashed) ───────────────────────── */
+  design -> brainstorm [label="revisit scope", style=dashed, color="#9E9E9E"];
+  plan -> design [label="design gaps", style=dashed, color="#9E9E9E"];
+  plan -> brainstorm [label="scope change", style=dashed, color="#9E9E9E"];
+  review -> plan [label="major rework", style=dashed, color="#9E9E9E"];
+  publish -> review [label="QA issues", style=dashed, color="#9E9E9E"];
+}

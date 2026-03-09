@@ -581,7 +581,8 @@ Sub-recipe 2: design-characters.yaml
 Sub-recipe 3: issue-art.yaml (executed per issue)
   Step 1: generate-panels      -- Panel art with self-review (foreach, parallel 2)
   Step 2: generate-cover       -- Cover art (parallel with panels)
-  Step 2.5: review-panels      -- Pre-computed overlay positions via vision (NEW in v9.0.0)
+  Step 2.5: inspect-flagged    -- Scans panel results for flagged:true, surfaces warnings (model_role: fast)
+  Step 2.6: review-panels      -- Pre-computed overlay positions via vision (NEW in v9.0.0)
   Step 3: composition          -- Final HTML assembly with pre-computed overlays
 ```
 
@@ -683,3 +684,16 @@ execute issue-retry with project_id=my-project issue_id=issue-002
 
 The retry recipe accepts `project_id`, `issue_id`, and `style` as required
 context variables, plus optional `output_name` and `content_policy_notes`.
+
+## Interactive Mode Workflow
+
+Comics can also be created through the interactive mode workflow instead of
+direct recipe invocation. Five modes guide you step-by-step:
+
+1. `/comic-brainstorm` -- Define project vision, style, and character roster
+2. `/comic-design` -- Iterate on character designs and storyboard
+3. `/comic-plan` -- Set layout strategy and generation budgets, then kick off the pipeline
+4. `/comic-review` -- Inspect results and perform surgical retries
+5. `/comic-publish` -- Final QA and ship
+
+See the main README for full mode documentation.

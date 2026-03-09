@@ -3,13 +3,15 @@
 Validates structural correctness:
 1. YAML is well-formed and parseable
 2. Required recipe fields exist (name, version, tags)
-3. All step IDs are unique and match expected set (4 steps)
+3. All step IDs are unique and match expected set (6 steps)
 4. Expected context variables are declared
 5. Step 0 (load-existing-assets) is a style-curator agent with parse_json and timeout
 6. Step 1 (generate-panels) foreach iterates over existing_assets.storyboard.panel_list
-7. Step 2 (generate-cover) has depends_on: [] and retry
-8. Step 3 (composition) depends on generate-panels and generate-cover
-9. Uses existing_assets.* references (key difference from issue-art.yaml)
+7. Step 2 (generate-cover) has depends_on: [load-existing-assets] and retry
+8. Step 1.5 (inspect-flagged-panels) depends on generate-panels
+9. Step 2.5 (review-panel-compositions) depends on inspect-flagged-panels
+10. Step 3 (composition) depends on review-panel-compositions and generate-cover
+11. Uses existing_assets.* references (key difference from issue-art.yaml)
 """
 
 import pathlib
@@ -33,6 +35,8 @@ EXPECTED_STEP_IDS = [
     "load-existing-assets",
     "generate-panels",
     "generate-cover",
+    "inspect-flagged-panels",
+    "review-panel-compositions",
     "composition",
 ]
 
@@ -81,10 +85,10 @@ def test_required_recipe_fields():
 
 
 # ---------------------------------------------------------------
-# Test 3: All step IDs are unique and match expected set (4 steps)
+# Test 3: All step IDs are unique and match expected set (6 steps)
 # ---------------------------------------------------------------
 def test_step_ids_unique_and_expected():
-    """Step IDs must be unique and match the expected 4-step set."""
+    """Step IDs must be unique and match the expected 6-step set."""
     data = _parse_recipe()
     steps = _get_steps(data)
     step_ids = [s["id"] for s in steps]
@@ -113,7 +117,7 @@ def test_context_variables():
 # Test 5: Step 0 — load-existing-assets configuration
 # ---------------------------------------------------------------
 def test_load_existing_assets_step():
-    """Step 0 must use style-curator agent, parse_json: true, timeout: 300."""
+    """Step 0 must use style-curator agent, parse_json: true, timeout: 600."""
     data = _parse_recipe()
     steps = _get_steps(data)
     step = _find_step(steps, "load-existing-assets")
@@ -124,8 +128,8 @@ def test_load_existing_assets_step():
     assert step.get("parse_json") is True, (
         "load-existing-assets must have parse_json: true"
     )
-    assert step.get("timeout") == 300, (
-        f"load-existing-assets timeout must be 300, got {step.get('timeout')}"
+    assert step.get("timeout") == 600, (
+        f"load-existing-assets timeout must be 600, got {step.get('timeout')}"
     )
     # Must have output variable named existing_assets
     assert step.get("output") == "existing_assets", (
@@ -152,7 +156,7 @@ def test_generate_panels_step():
     assert step.get("retry", {}).get("max_attempts") == 2, (
         "generate-panels retry max_attempts must be 2"
     )
-    assert step.get("timeout") == 600, "generate-panels timeout must be 600"
+    assert step.get("timeout") == 1800, "generate-panels timeout must be 1800"
     assert "collect" in step, "generate-panels must use 'collect' (not 'output')"
     assert step["collect"] == "panel_results"
 
@@ -161,19 +165,19 @@ def test_generate_panels_step():
 # Test 7: Step 2 — generate-cover configuration
 # ---------------------------------------------------------------
 def test_generate_cover_step():
-    """generate-cover must have depends_on: [], retry, timeout: 600."""
+    """generate-cover must have depends_on: [load-existing-assets], retry, timeout: 1800."""
     data = _parse_recipe()
     steps = _get_steps(data)
     step = _find_step(steps, "generate-cover")
     assert step is not None, "generate-cover step not found"
     assert step["agent"] == "comic-strips:cover-artist"
-    assert step.get("depends_on") == [], (
-        "generate-cover must have depends_on: [] for parallelism"
+    assert step.get("depends_on") == ["load-existing-assets"], (
+        "generate-cover must have depends_on: ['load-existing-assets']"
     )
     assert step.get("retry", {}).get("max_attempts") == 2, (
         "generate-cover retry max_attempts must be 2"
     )
-    assert step.get("timeout") == 600, "generate-cover timeout must be 600"
+    assert step.get("timeout") == 1800, "generate-cover timeout must be 1800"
     assert step.get("output") == "cover_results"
 
 
@@ -181,17 +185,17 @@ def test_generate_cover_step():
 # Test 8: Step 3 — composition configuration
 # ---------------------------------------------------------------
 def test_composition_step():
-    """composition must depend on generate-panels and generate-cover, timeout: 2400."""
+    """composition must depend on review-panel-compositions and generate-cover, timeout: 3600."""
     data = _parse_recipe()
     steps = _get_steps(data)
     step = _find_step(steps, "composition")
     assert step is not None, "composition step not found"
     assert step["agent"] == "comic-strips:strip-compositor"
     comp_deps = sorted(step.get("depends_on", []))
-    assert comp_deps == ["generate-cover", "generate-panels"], (
-        f"Composition depends_on must be [generate-panels, generate-cover], got {comp_deps}"
+    assert comp_deps == ["generate-cover", "review-panel-compositions"], (
+        f"Composition depends_on must be [review-panel-compositions, generate-cover], got {comp_deps}"
     )
-    assert step.get("timeout") == 2400, "composition timeout must be 2400"
+    assert step.get("timeout") == 3600, "composition timeout must be 3600"
     assert step.get("output") == "final_output"
 
 

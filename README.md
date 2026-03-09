@@ -49,6 +49,22 @@ amplifier run "Turn my last session into a Sin City noir comic strip"
 The recipe pauses at an approval gate after the storyboard. Review the character
 cast and narrative arc, then approve to proceed with image generation.
 
+## Interactive Modes
+
+The bundle includes five interactive modes that guide comic creation through a structured workflow. Use modes when you want collaborative, step-by-step control over the pipeline. Use direct recipe invocation (`session-to-comic`) when you want fully automated end-to-end generation.
+
+| Mode | Description | `comic_create` | Transitions to |
+|------|-------------|:---:|----------------|
+| `/comic-brainstorm` | Project vision: style, issue count, narrative scope, character roster | blocked | design |
+| `/comic-design` | Interactive character and storyboard work | blocked | plan |
+| `/comic-plan` | Layout strategy, generation budgets, kick off pipeline | available | review |
+| `/comic-review` | Inspect results, surgical retries | available (delegate: warn) | publish |
+| `/comic-publish` | Final QA, ship it | available | -- (exit) |
+
+All transitions require double-confirmation. `allow_clear: true` only on `/comic-publish` (the only exit point). `default_action: block` on all modes.
+
+See `docs/diagrams/mode-transitions.dot` for the full state machine.
+
 ## How Model Selection Works
 
 The bundle uses two complementary systems to pick the right model for every task
@@ -76,6 +92,13 @@ The fallback chains mean the bundle works across different matrix configurations
 A `[image-gen, vision, creative, general]` chain tries `image-gen` first (models
 tuned for visual creation), falls back to `vision` (multimodal models), then
 `creative`, then `general`.
+
+**`model_role: fast` for mechanical steps** -- Seven mechanical steps in
+`saga-plan.yaml` (check-existing, init-project, discover-sessions,
+lookup-existing-chars, store-storyboard, create-issues, prepare-review) plus
+`inspect-flagged-panels` in `issue-art.yaml` use `model_role: fast` to route
+to cheaper, faster models. These steps perform structured lookups and data
+plumbing with no creative judgment required.
 
 **Text-only agents** (`style-curator`, `storyboard-writer`, `character-designer`)
 get routed to creative-tier models (e.g. Claude Opus, GPT-5) for high-quality
@@ -269,13 +292,14 @@ sub-recipes in sequence. Each sub-recipe is independently invocable.
 
 13. **generate-panels** -- Panel images with self-review (foreach panel, parallel:2)
 14. **generate-cover** -- Cover with AmpliVerse branding (runs in parallel with panels)
-15. **review-panel-compositions** -- Vision pre-analysis for text overlay placement (foreach panel)
-16. **composition** -- Assembles final HTML with SVG speech bubbles, panel shapes, visual QA
+15. **inspect-flagged-panels** -- Scans panel results for `flagged:true`, surfaces warnings (model_role: fast)
+16. **review-panel-compositions** -- Vision pre-analysis for text overlay placement (foreach panel)
+17. **composition** -- Assembles final HTML with SVG speech bubbles, panel shapes, visual QA
 
 **Standalone recipes** (invoke independently for recovery/editing):
 
-- **`issue-compose.yaml`** -- Reassembles HTML from existing assets with zero image generation
-- **`issue-retry.yaml`** -- Surgical single-issue re-generation from existing storyboard and characters
+- **`issue-compose.yaml`** -- Reassembles HTML from existing assets with zero image generation (includes inspect-flagged-panels and review-panel-compositions steps aligned with the primary path)
+- **`issue-retry.yaml`** -- Surgical single-issue re-generation from existing storyboard and characters (includes inspect-flagged-panels and review-panel-compositions steps aligned with the primary path)
 
 ## Output Format
 
@@ -345,3 +369,10 @@ Both are automatically included when the bundle is installed.
 ### Pipeline Orchestration
 
 ![Comic Pipeline](docs/diagrams/comic-pipeline.png)
+
+### Additional Diagrams
+
+- `docs/diagrams/mode-transitions.dot` -- Interactive mode state machine (brainstorm -> design -> plan -> review -> publish)
+- `docs/diagrams/per-mode-actions.dot` -- Tool and recipe availability per mode
+- `docs/diagrams/two-track-composition.dot` -- Parallel panel + cover generation tracks
+- `docs/diagrams/recipe-quality-hardening.dot` -- Quality fixes: inspect-flagged-panels, character self-review, content_policy_notes accumulation

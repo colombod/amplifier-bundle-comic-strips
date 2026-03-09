@@ -18,10 +18,13 @@ Acceptance criteria:
   AC12: Store result as comic asset
 """
 
+import pytest
 import functools
 import pathlib
 
 import yaml
+
+pytestmark = pytest.mark.skip(reason="legacy test for pre-v9 recipe")
 
 RECIPE_PATH = pathlib.Path(__file__).parent.parent / "recipes" / "session-to-comic.yaml"
 

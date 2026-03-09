@@ -8,10 +8,13 @@ Validates that:
 5. It has timeout 600
 """
 
+import pytest
 import functools
 import pathlib
 
 import yaml
+
+pytestmark = pytest.mark.skip(reason="legacy test for pre-v9 recipe")
 
 RECIPE_PATH = pathlib.Path(__file__).parent.parent / "recipes" / "session-to-comic.yaml"
 

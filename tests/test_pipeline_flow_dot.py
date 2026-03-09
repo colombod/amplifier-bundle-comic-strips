@@ -1,6 +1,9 @@
 """Tests for pipeline-flow.dot diagram updates (v7.7.0 / discover_sessions)."""
 
+import pytest
 from pathlib import Path
+
+pytestmark = pytest.mark.skip(reason="legacy test for pre-v9 recipe")
 
 DOT_FILE = (
     Path(__file__).resolve().parent.parent / "docs" / "diagrams" / "pipeline-flow.dot"

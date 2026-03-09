@@ -1,0 +1,107 @@
+digraph per_mode_actions {
+  /* ─── Global ─────────────────────────────────────────── */
+  rankdir=TB;
+  bgcolor="transparent";
+  fontname="Helvetica Neue,Helvetica,Arial,sans-serif";
+  node [fontname="Helvetica Neue,Helvetica,Arial,sans-serif", fontsize=9,
+        shape=record, style=filled, fillcolor="#FAFAFA", color="#BDBDBD"];
+  edge [fontname="Helvetica Neue,Helvetica,Arial,sans-serif", fontsize=8,
+        arrowsize=0.7];
+  nodesep=0.4;
+  ranksep=0.5;
+
+  labelloc=t;
+  label=<<FONT POINT-SIZE="14"><B>Per-Mode Allowed Actions</B></FONT><BR/>
+         <FONT POINT-SIZE="9" COLOR="#777777">default_action: block on every mode · only listed tools available</FONT>>;
+
+  /* ─── Mode nodes (record shape) ──────────────────────── */
+  brainstorm [
+    fillcolor="#E8F5E9",
+    label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
+      <TR><TD ALIGN="CENTER"><B>/comic-brainstorm</B></TD></TR>
+      <TR><TD ALIGN="CENTER"><FONT POINT-SIZE="8" COLOR="#555555">"What are we making?"</FONT></TD></TR>
+      <HR/>
+      <TR><TD ALIGN="LEFT"><FONT COLOR="#2E7D32"><B>SAFE:</B></FONT> read_file, glob, grep, delegate,<BR/>
+        comic_project, comic_character(search),<BR/>
+        comic_style(list), load_skill,<BR/>
+        web_search, web_fetch</TD></TR>
+      <HR/>
+      <TR><TD ALIGN="LEFT"><FONT COLOR="#C62828"><B>BLOCKED:</B></FONT> comic_create (ALL),<BR/>
+        write_file, edit_file</TD></TR>
+      <HR/>
+      <TR><TD ALIGN="LEFT"><FONT COLOR="#1565C0"><B>ARTIFACT:</B></FONT> project brief</TD></TR>
+    </TABLE>>
+  ];
+
+  design [
+    fillcolor="#E3F2FD",
+    label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
+      <TR><TD ALIGN="CENTER"><B>/comic-design</B></TD></TR>
+      <TR><TD ALIGN="CENTER"><FONT POINT-SIZE="8" COLOR="#555555">"What does it look like?"</FONT></TD></TR>
+      <HR/>
+      <TR><TD ALIGN="LEFT"><FONT COLOR="#2E7D32"><B>SAFE:</B></FONT> (all brainstorm tools) +<BR/>
+        comic_character(get), comic_asset(get),<BR/>
+        comic_style(get)</TD></TR>
+      <HR/>
+      <TR><TD ALIGN="LEFT"><FONT COLOR="#C62828"><B>BLOCKED:</B></FONT> comic_create (ALL),<BR/>
+        write_file, edit_file</TD></TR>
+      <HR/>
+      <TR><TD ALIGN="LEFT"><FONT COLOR="#1565C0"><B>ARTIFACT:</B></FONT> refined storyboard +<BR/>
+        character decisions</TD></TR>
+    </TABLE>>
+  ];
+
+  plan [
+    fillcolor="#FFF3E0",
+    label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
+      <TR><TD ALIGN="CENTER"><B>/comic-plan</B></TD></TR>
+      <TR><TD ALIGN="CENTER"><FONT POINT-SIZE="8" COLOR="#555555">"How do we build it?"</FONT></TD></TR>
+      <HR/>
+      <TR><TD ALIGN="LEFT"><FONT COLOR="#2E7D32"><B>SAFE:</B></FONT> recipes, comic_create</TD></TR>
+      <HR/>
+      <TR><TD ALIGN="LEFT"><FONT COLOR="#FF8F00"><B>WARN:</B></FONT> bash (investigation only)</TD></TR>
+      <HR/>
+      <TR><TD ALIGN="LEFT"><FONT COLOR="#C62828"><B>BLOCKED:</B></FONT> write_file, edit_file</TD></TR>
+      <HR/>
+      <TR><TD ALIGN="LEFT"><FONT COLOR="#1565C0"><B>ACTION:</B></FONT> kick off pipeline</TD></TR>
+    </TABLE>>
+  ];
+
+  review [
+    fillcolor="#FCE4EC",
+    label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
+      <TR><TD ALIGN="CENTER"><B>/comic-review</B></TD></TR>
+      <TR><TD ALIGN="CENTER"><FONT POINT-SIZE="8" COLOR="#555555">"Is it good enough?"</FONT></TD></TR>
+      <HR/>
+      <TR><TD ALIGN="LEFT"><FONT COLOR="#2E7D32"><B>SAFE:</B></FONT> comic_create (retries),<BR/>
+        comic_asset, comic_character,<BR/>
+        recipes (retry/compose), bash</TD></TR>
+      <HR/>
+      <TR><TD ALIGN="LEFT"><FONT COLOR="#FF8F00"><B>WARN:</B></FONT> delegate<BR/>
+        (verify yourself, don't delegate QA)</TD></TR>
+      <HR/>
+      <TR><TD ALIGN="LEFT"><FONT COLOR="#1565C0"><B>EVIDENCE:</B></FONT> show panels,<BR/>
+        count flagged, confirm embedded</TD></TR>
+    </TABLE>>
+  ];
+
+  publish [
+    fillcolor="#F3E5F5",
+    label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2">
+      <TR><TD ALIGN="CENTER"><B>/comic-publish</B></TD></TR>
+      <TR><TD ALIGN="CENTER"><FONT POINT-SIZE="8" COLOR="#555555">"Ship it"</FONT></TD></TR>
+      <HR/>
+      <TR><TD ALIGN="LEFT"><FONT COLOR="#2E7D32"><B>SAFE:</B></FONT> ALL tools</TD></TR>
+      <HR/>
+      <TR><TD ALIGN="LEFT"><FONT COLOR="#AB47BC"><B>allow_clear: true</B></FONT></TD></TR>
+      <HR/>
+      <TR><TD ALIGN="LEFT"><FONT COLOR="#1565C0"><B>EXIT POINT</B></FONT></TD></TR>
+    </TABLE>>
+  ];
+
+  /* ─── Golden path flow ───────────────────────────────── */
+  brainstorm -> design [color="#2E7D32", penwidth=1.5];
+  design -> plan [color="#2E7D32", penwidth=1.5];
+  plan -> review [color="#2E7D32", penwidth=1.5];
+  review -> publish [color="#2E7D32", penwidth=1.5];
+}

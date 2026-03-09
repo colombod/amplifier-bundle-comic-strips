@@ -93,7 +93,7 @@ digraph comic_pipeline {
 
   /* ═══════════════════════════════════════════════════════
      SUB-RECIPE 3: issue-art.yaml
-     staged · 4 steps · foreach issue · image gen
+     staged · 5 steps · foreach issue · image gen
      ═══════════════════════════════════════════════════════ */
   subgraph cluster_issue_art {
     label=<<B>issue-art.yaml</B>  <FONT POINT-SIZE="9" COLOR="#666666">type: recipe</FONT><BR/>
@@ -108,6 +108,9 @@ digraph comic_pipeline {
           shape=box, style="rounded,dashed,filled", fillcolor="#FAE5C8", color="#D9882A"];
     ia02 [label=<<B>generate-cover</B><BR/><FONT POINT-SIZE="8" COLOR="#D9882A">cover-artist</FONT>>,
           shape=box, style="rounded,filled", fillcolor="#FAE5C8", color="#D9882A"];
+    ia_inspect [label=<<B>inspect-flagged-panels</B><BR/><FONT POINT-SIZE="8" COLOR="#D9882A">strip-compositor</FONT><BR/>
+                <FONT POINT-SIZE="7" COLOR="#777777">scan flagged:true · model_role: fast</FONT>>,
+          shape=box, style="rounded,filled", fillcolor="#FAE5C8", color="#D9882A"];
     ia03 [label=<<B>review-panel-compositions</B><BR/><FONT POINT-SIZE="8" COLOR="#D9882A">strip-compositor</FONT><BR/>
                 <FONT POINT-SIZE="7" COLOR="#777777">&#10227; foreach panel · vision analysis</FONT>>,
           shape=box, style="rounded,dashed,filled", fillcolor="#FAE5C8", color="#D9882A"];
@@ -120,7 +123,8 @@ digraph comic_pipeline {
 
     ia_fork -> ia01 [color="#D9882A"];
     ia_fork -> ia02 [color="#D9882A"];
-    ia01 -> ia03    [color="#D9882A"];
+    ia01 -> ia_inspect   [color="#D9882A"];
+    ia_inspect -> ia03   [color="#D9882A"];
     ia03 -> ia_join [color="#D9882A"];
     ia02 -> ia_join [color="#D9882A"];
     ia_join -> ia04 [color="#D9882A"];
@@ -144,11 +148,11 @@ digraph comic_pipeline {
     fontsize=10; margin=16;
 
     re01 [label=<<B>issue-compose.yaml</B><BR/>
-                <FONT POINT-SIZE="8" COLOR="#9070C0">load assets &#8594; composition</FONT><BR/>
+                <FONT POINT-SIZE="8" COLOR="#9070C0">load &#8594; inspect &#8594; review &#8594; composition</FONT><BR/>
                 <FONT POINT-SIZE="7" COLOR="#777777">zero image gen · reassembly only</FONT>>,
           shape=box, style="rounded,filled", fillcolor="#EDE5F5", color="#9070C0"];
     re02 [label=<<B>issue-retry.yaml</B><BR/>
-                <FONT POINT-SIZE="8" COLOR="#9070C0">load &#8594; panels + cover &#8594; compose</FONT><BR/>
+                <FONT POINT-SIZE="8" COLOR="#9070C0">load &#8594; panels + cover &#8594; inspect &#8594; review &#8594; compose</FONT><BR/>
                 <FONT POINT-SIZE="7" COLOR="#777777">surgical single-issue re-generation</FONT>>,
           shape=box, style="rounded,filled", fillcolor="#EDE5F5", color="#9070C0"];
   }

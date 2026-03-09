@@ -18,7 +18,7 @@ Transform Amplifier sessions and project stories into visually compelling multi-
 
 ### Visual Styles
 
-Six distinct visual styles for comic generation:
+Six core visual styles for comic generation:
 
 - **Manga** - Japanese-inspired sequential art with dynamic panel layouts and expressive characters
 - **Superhero** - Bold, action-packed American comic book style with dramatic poses and vivid colors
@@ -26,6 +26,8 @@ Six distinct visual styles for comic generation:
 - **Newspaper** - Classic daily strip format with clean lines and accessible humor
 - **Ligne Claire** - European clear-line style inspired by Herge and Franco-Belgian comics
 - **Retro Americana** - Vintage mid-century American illustration with halftone dots and warm palettes
+
+Plus 23 additional style variants -- see README for full gallery.
 
 ### Specialist Agents (6)
 
@@ -51,9 +53,26 @@ Six dedicated agents handle different aspects of comic creation:
 
 > **Note:** `generate_image` is an internal implementation detail of `comic_create`. It is not exposed to agents and does not appear in agent tool lists. Agents never call `generate_image` directly.
 
+### Interactive Modes (5)
+
+Five interactive modes guide comic creation through a structured workflow:
+
+- **`/comic-brainstorm`** -- Project vision: style, issue count, narrative scope, character roster
+- **`/comic-design`** -- Interactive character and storyboard work
+- **`/comic-plan`** -- Layout strategy, generation budgets, kick off pipeline
+- **`/comic-review`** -- Inspect results, surgical retries
+- **`/comic-publish`** -- Final QA, ship it
+
+Mode chain: brainstorm -> design -> plan -> review -> publish. Double-confirmation on all transitions.
+
 ### Automated Workflows
 
-- **session-to-comic** - End-to-end recipe that transforms an Amplifier session into a complete comic strip
+- **session-to-comic** - End-to-end thin orchestrator calling 3 composable sub-recipes:
+  - **saga-plan** - Saga planning (text-only, low cost, approval gate)
+  - **design-characters** - Character reference sheet generation (image gen, project-scoped)
+  - **issue-art** - Per-issue panel art, cover, and composition (image gen, high cost)
+- **issue-compose** - Reassemble HTML from existing assets (zero image gen)
+- **issue-retry** - Surgical single-issue re-generation from existing storyboard and characters
 
 ## Quick Start
 

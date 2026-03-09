@@ -92,6 +92,15 @@ stages:
           If content_policy_notes is non-empty, these are LESSONS FROM MODERATION BLOCKS
           on earlier images in this same comic. Apply them to ALL your prompts immediately.
           Do not repeat patterns that were already blocked.
+
+          CONTENT POLICY ACCUMULATION: If you encounter a moderation block during generation,
+          include a "content_policy_lesson" field in your return JSON with a brief description
+          of what was blocked and why, so later panels can avoid the same pattern.
+
+          Example return JSON with content_policy_lesson:
+          {"index": 3, "uri": "comic://...", "version": 1, "size": "landscape", "attempts": 2, "passed_review": true, "flagged": false, "content_policy_lesson": "Close-up combat scenes with energy blasts blocked — use wide establishing shots with dramatic poses instead."}
+
+          If no moderation block occurred, omit the content_policy_lesson field or set it to null.
         collect: "panel_results"
         timeout: 1800  # 30m per panel — image gen + vision review + up to 3 retries + cross-provider fallback
 

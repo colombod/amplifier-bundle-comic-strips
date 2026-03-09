@@ -4,6 +4,8 @@ Validates YAML frontmatter structure, required keys, tool policies,
 and body content requirements per the design specification.
 """
 
+import re
+
 import pytest
 import yaml
 from pathlib import Path
@@ -130,9 +132,7 @@ def test_full_safe_tools_list():
         "write_file",
         "edit_file",
     ]
-    assert set(safe) == set(expected), (
-        f"Safe tools mismatch. Expected: {sorted(expected)}, Got: {sorted(safe)}"
-    )
+    assert safe == expected, f"Safe tools mismatch. Expected: {expected}, Got: {safe}"
 
 
 def test_write_file_edit_file_unique_to_publish():
@@ -227,7 +227,11 @@ def test_qa_checklist_items():
 def test_anti_rationalization_table():
     body = _get_body()
     assert "Anti-Rationalization" in body, "Missing Anti-Rationalization Table"
-    lines = [line for line in body.split("\n") if line.strip().startswith("|")]
+    # Extract only the Anti-Rationalization section (between its header and the next ##)
+    match = re.search(r"## Anti-Rationalization.*?\n(.*?)(?=\n## |\Z)", body, re.DOTALL)
+    assert match, "Could not extract Anti-Rationalization section"
+    section = match.group(1)
+    lines = [line for line in section.split("\n") if line.strip().startswith("|")]
     content_rows = [
         line
         for line in lines
@@ -282,6 +286,11 @@ def test_verification_script_publish_checks():
         timeout=30,
     )
     output = result.stdout + result.stderr
+    # Verify the script produced meaningful output (guard against silent no-ops)
+    assert "comic-publish" in output, (
+        "Verification script did not produce any comic-publish output — "
+        "script may have changed format or failed silently"
+    )
     # Check that publish-specific checks pass
     publish_failures = [
         line

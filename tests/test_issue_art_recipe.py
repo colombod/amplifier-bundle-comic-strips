@@ -30,7 +30,13 @@ EXPECTED_CONTEXT_VARS = [
     "content_policy_notes",
 ]
 
-EXPECTED_STEP_IDS = ["generate-panels", "generate-cover", "composition"]
+EXPECTED_STEP_IDS = [
+    "generate-panels",
+    "inspect-flagged-panels",
+    "generate-cover",
+    "review-panel-compositions",
+    "composition",
+]
 
 
 def _parse_recipe():
@@ -106,29 +112,39 @@ def test_context_variables():
 # Test 5: Dependency graph is correct
 # ---------------------------------------------------------------
 def test_dependency_graph():
-    """Panels and cover run in parallel; composition depends on both."""
+    """Dependency chain: panels -> inspect -> review -> composition; cover parallel."""
     data = _parse_recipe()
     steps = _get_steps(data)
 
     panels = _find_step(steps, "generate-panels")
+    inspect = _find_step(steps, "inspect-flagged-panels")
     cover = _find_step(steps, "generate-cover")
+    review = _find_step(steps, "review-panel-compositions")
     comp = _find_step(steps, "composition")
     assert panels is not None, "generate-panels step not found"
+    assert inspect is not None, "inspect-flagged-panels step not found"
     assert cover is not None, "generate-cover step not found"
+    assert review is not None, "review-panel-compositions step not found"
     assert comp is not None, "composition step not found"
 
     # Panels has no explicit depends_on (first step, implicitly independent)
     assert "depends_on" not in panels or panels["depends_on"] == []
+
+    # Inspect depends on panels
+    assert inspect.get("depends_on") == ["generate-panels"]
 
     # Cover explicitly declares no dependencies to run in parallel
     assert cover.get("depends_on") == [], (
         "Cover must have depends_on: [] for parallelism"
     )
 
-    # Composition waits for both
+    # Review depends on inspect (changed from generate-panels)
+    assert review.get("depends_on") == ["inspect-flagged-panels"]
+
+    # Composition waits for review and cover
     comp_deps = sorted(comp.get("depends_on", []))
-    assert comp_deps == ["generate-cover", "generate-panels"], (
-        f"Composition depends_on must be [generate-panels, generate-cover], got {comp_deps}"
+    assert comp_deps == ["generate-cover", "review-panel-compositions"], (
+        f"Composition depends_on must be [review-panel-compositions, generate-cover], got {comp_deps}"
     )
 
 

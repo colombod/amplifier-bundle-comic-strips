@@ -5,18 +5,21 @@ and body content requirements per the design specification.
 """
 
 import re
+import subprocess
 
 import pytest
 import yaml
 from pathlib import Path
 
 MODE_FILE = Path(__file__).parent.parent / "modes" / "comic-publish.md"
+VERIFY_SCRIPT_TIMEOUT = 30
 
 
-def _parse_frontmatter() -> dict:
-    """Parse YAML frontmatter from the mode markdown file."""
+@pytest.fixture(scope="module")
+def frontmatter() -> dict:
+    """Parse YAML frontmatter from the mode markdown file (cached per module)."""
     text = MODE_FILE.read_text()
-    parts = text.split("---")
+    parts = text.split("---", 2)
     assert len(parts) >= 3, "No YAML frontmatter found (expected --- delimiters)"
     data = yaml.safe_load(parts[1])
     assert data is not None, "YAML frontmatter parsed to None"
@@ -40,34 +43,30 @@ def test_comic_publish_md_exists():
 # --- AC 2: YAML parses correctly ---
 
 
-def test_yaml_frontmatter_parses():
-    data = _parse_frontmatter()
-    assert isinstance(data, dict)
-    assert "mode" in data, "Top-level 'mode' key missing from frontmatter"
+def test_yaml_frontmatter_parses(frontmatter):
+    assert isinstance(frontmatter, dict)
+    assert "mode" in frontmatter, "Top-level 'mode' key missing from frontmatter"
 
 
 # --- AC 3: mode.name is 'comic-publish' ---
 
 
-def test_mode_name():
-    data = _parse_frontmatter()
-    assert data["mode"]["name"] == "comic-publish"
+def test_mode_name(frontmatter):
+    assert frontmatter["mode"]["name"] == "comic-publish"
 
 
 # --- AC 4: mode.default_action is 'block' ---
 
 
-def test_default_action_is_block():
-    data = _parse_frontmatter()
-    assert data["mode"]["default_action"] == "block"
+def test_default_action_is_block(frontmatter):
+    assert frontmatter["mode"]["default_action"] == "block"
 
 
 # --- AC 5: mode.allow_clear is True (ONLY mode with this) ---
 
 
-def test_allow_clear_is_true():
-    data = _parse_frontmatter()
-    assert data["mode"]["allow_clear"] is True
+def test_allow_clear_is_true(frontmatter):
+    assert frontmatter["mode"]["allow_clear"] is True
 
 
 def test_only_mode_with_allow_clear_true():
@@ -77,7 +76,7 @@ def test_only_mode_with_allow_clear_true():
         if mode_file.name == "comic-publish.md":
             continue
         text = mode_file.read_text()
-        parts = text.split("---")
+        parts = text.split("---", 2)
         if len(parts) >= 3:
             data = yaml.safe_load(parts[1])
             if data and "mode" in data:
@@ -89,31 +88,27 @@ def test_only_mode_with_allow_clear_true():
 # --- AC 6: mode.allowed_transitions is ['comic-review'] ---
 
 
-def test_allowed_transitions():
-    data = _parse_frontmatter()
-    transitions = data["mode"]["allowed_transitions"]
+def test_allowed_transitions(frontmatter):
+    transitions = frontmatter["mode"]["allowed_transitions"]
     assert transitions == ["comic-review"]
 
 
 # --- AC 7: mode.tools.safe includes write_file AND edit_file (unique to this mode) ---
 
 
-def test_write_file_in_safe():
-    data = _parse_frontmatter()
-    safe = data["mode"]["tools"]["safe"]
+def test_write_file_in_safe(frontmatter):
+    safe = frontmatter["mode"]["tools"]["safe"]
     assert "write_file" in safe, "write_file must be in tools.safe"
 
 
-def test_edit_file_in_safe():
-    data = _parse_frontmatter()
-    safe = data["mode"]["tools"]["safe"]
+def test_edit_file_in_safe(frontmatter):
+    safe = frontmatter["mode"]["tools"]["safe"]
     assert "edit_file" in safe, "edit_file must be in tools.safe"
 
 
-def test_full_safe_tools_list():
+def test_full_safe_tools_list(frontmatter):
     """Verify the full safe tools list from the spec."""
-    data = _parse_frontmatter()
-    safe = data["mode"]["tools"]["safe"]
+    safe = frontmatter["mode"]["tools"]["safe"]
     expected = [
         "read_file",
         "glob",
@@ -142,7 +137,7 @@ def test_write_file_edit_file_unique_to_publish():
         if mode_file.name == "comic-publish.md":
             continue
         text = mode_file.read_text()
-        parts = text.split("---")
+        parts = text.split("---", 2)
         if len(parts) >= 3:
             data = yaml.safe_load(parts[1])
             if data and "mode" in data:
@@ -158,22 +153,19 @@ def test_write_file_edit_file_unique_to_publish():
 # --- Structural checks ---
 
 
-def test_mode_shortcut():
-    data = _parse_frontmatter()
-    assert data["mode"]["shortcut"] == "comic-publish"
+def test_mode_shortcut(frontmatter):
+    assert frontmatter["mode"]["shortcut"] == "comic-publish"
 
 
-def test_mode_description():
-    data = _parse_frontmatter()
-    desc = data["mode"]["description"]
+def test_mode_description(frontmatter):
+    desc = frontmatter["mode"]["description"]
     assert "final" in desc.lower() or "qa" in desc.lower() or "ship" in desc.lower(), (
         f"Description should mention final QA or shipping: {desc}"
     )
 
 
-def test_required_keys_present():
-    data = _parse_frontmatter()
-    m = data["mode"]
+def test_required_keys_present(frontmatter):
+    m = frontmatter["mode"]
     for key in ["name", "default_action", "allowed_transitions", "allow_clear"]:
         assert key in m, f"mode.{key} is required"
     assert "tools" in m and "safe" in m["tools"], "mode.tools.safe is required"
@@ -272,8 +264,6 @@ def test_ship_it_mentions_mode_clear():
 
 def test_verification_script_publish_checks():
     """Run the full verification script - all mode checks should pass."""
-    import subprocess
-
     script = Path(__file__).parent / "verify-modes-and-recipes.sh"
     if not script.exists():
         pytest.skip("verification script not present")
@@ -283,7 +273,7 @@ def test_verification_script_publish_checks():
         capture_output=True,
         text=True,
         cwd=str(Path(__file__).parent.parent),
-        timeout=30,
+        timeout=VERIFY_SCRIPT_TIMEOUT,
     )
     output = result.stdout + result.stderr
     # Verify the script produced meaningful output (guard against silent no-ops)
@@ -293,9 +283,7 @@ def test_verification_script_publish_checks():
     )
     # Check that publish-specific checks pass
     publish_failures = [
-        line
-        for line in output.split("\n")
-        if "comic-publish" in line and "\u2717" in line
+        line for line in output.split("\n") if "comic-publish" in line and "✗" in line
     ]
     assert len(publish_failures) == 0, (
         "Verification script failed for comic-publish:\n" + "\n".join(publish_failures)

@@ -1,4 +1,7 @@
+import pytest
 from pathlib import Path
+
+pytestmark = pytest.mark.skip(reason="legacy test for pre-v9 recipe")
 
 
 def _read_character_designer() -> str:

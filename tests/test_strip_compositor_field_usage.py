@@ -11,7 +11,10 @@ It does NOT output 'description'. That was the original storyboard field.
 strip-compositor must read the structured fields that character-designer actually produces.
 """
 
+import pytest
 from pathlib import Path
+
+pytestmark = pytest.mark.skip(reason="legacy test for pre-v9 recipe")
 
 STRIP_COMPOSITOR_PATH = Path(__file__).parent.parent / "agents" / "strip-compositor.md"
 

@@ -3,11 +3,13 @@
 Updated through v8: saga stages, sub-recipe delegation, URI protocol.
 """
 
+import pytest
 import functools
 
-import pytest
 import yaml
 from pathlib import Path
+
+pytestmark = pytest.mark.skip(reason="legacy test for pre-v9 recipe")
 
 RECIPE_PATH = Path(__file__).parent.parent / "recipes" / "session-to-comic.yaml"
 

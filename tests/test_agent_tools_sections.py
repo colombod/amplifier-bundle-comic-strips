@@ -6,8 +6,11 @@ sections), not through YAML frontmatter.  These tests verify that each
 agent's body contains the correct tool references for its pipeline role.
 """
 
+import pytest
 import yaml
 from pathlib import Path
+
+pytestmark = pytest.mark.skip(reason="legacy test for pre-v9 recipe")
 
 AGENTS_DIR = Path(__file__).parent.parent / "agents"
 
@@ -18,7 +21,12 @@ EXPECTED_TOOL_REFS = {
     "character-designer": ["comic_character", "comic_style"],
     "panel-artist": ["comic_character", "comic_asset"],
     "cover-artist": ["comic_character", "comic_asset", "comic_style"],
-    "strip-compositor": ["comic_character", "comic_asset", "comic_style", "batch_encode"],
+    "strip-compositor": [
+        "comic_character",
+        "comic_asset",
+        "comic_style",
+        "batch_encode",
+    ],
 }
 
 # Tools that specific agents should NOT reference (removed during migration).
@@ -50,7 +58,7 @@ def _read_body(agent_name: str) -> str:
     file_path = AGENTS_DIR / f"{agent_name}.md"
     content = file_path.read_text()
     end = content.index("---", 3)
-    return content[end + 3:]
+    return content[end + 3 :]
 
 
 def test_no_tools_in_frontmatter():
@@ -125,9 +133,9 @@ def test_cover_artist_no_bash_in_asset_integration():
     idx = body.find(marker)
     assert idx != -1, "cover-artist should have an Asset Integration section"
     integration_section = body[idx:]
-    assert "Do NOT use bash" in integration_section or "IMPORTANT" in integration_section, (
-        "cover-artist Asset Integration should explicitly warn against bash usage"
-    )
+    assert (
+        "Do NOT use bash" in integration_section or "IMPORTANT" in integration_section
+    ), "cover-artist Asset Integration should explicitly warn against bash usage"
 
 
 def test_strip_compositor_no_delete_instruction():

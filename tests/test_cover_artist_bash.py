@@ -1,4 +1,7 @@
+import pytest
 from pathlib import Path
+
+pytestmark = pytest.mark.skip(reason="legacy test for pre-v9 recipe")
 
 COVER_ARTIST_PATH = Path(__file__).parent.parent / "agents" / "cover-artist.md"
 

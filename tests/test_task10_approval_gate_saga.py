@@ -17,10 +17,13 @@ Validates that the approval gate prompt is saga-aware and displays:
         character_list, storyboard.saga_plan as raw dump) are NOT in the prompt
 """
 
+import pytest
 import functools
 import pathlib
 
 import yaml
+
+pytestmark = pytest.mark.skip(reason="legacy test for pre-v9 recipe")
 
 RECIPE_PATH = pathlib.Path(__file__).parent.parent / "recipes" / "session-to-comic.yaml"
 

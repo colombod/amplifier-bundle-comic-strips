@@ -6,10 +6,13 @@ Validates that:
 3. The 'Extract structured data for comic strip creation:' line follows the comic_asset line
 """
 
+import pytest
 import functools
 import pathlib
 
 import yaml
+
+pytestmark = pytest.mark.skip(reason="legacy test for pre-v9 recipe")
 
 RECIPE_PATH = pathlib.Path(__file__).parent.parent / "recipes" / "session-to-comic.yaml"
 

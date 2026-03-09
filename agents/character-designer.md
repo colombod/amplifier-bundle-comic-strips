@@ -236,6 +236,36 @@ Use the `char_slug` field from `{{character_item}}` for the `name` parameter (e.
 
 The base character URI is project-scoped: `comic://{{project_id}}/characters/{{char_slug}}` — this is the **v1** (base variant).
 
+### Step 2.5: Self-Review (Vision Inspection)
+
+Use `comic_create(action='review_asset')` to inspect the generated character reference sheet. Apply the **Character Reference Quality Checklist**:
+
+1. **Face clearly visible?** The character's face is rendered clearly and recognizably
+2. **No baked-in text?** No words, letters, labels, or watermarks appear in the image
+3. **Style cohesion with style guide?** The character matches the visual DNA from the style guide (rendering technique, line quality, proportions)
+4. **Reference-sheet format?** Full body visible, neutral pose, plain background — structured as a character design document
+5. **Distinctive features present?** The character's unique visual identifiers (from `visual_traits` and `distinctive_features`) are clearly rendered
+
+```
+comic_create(
+  action='review_asset',
+  uri='<character ref uri from step 2>',
+  prompt='Evaluate this character reference sheet on 5 criteria: (1) Is the face clearly visible and recognizable? (2) Are there any baked-in text, words, letters, or labels in the image? (3) Does the style match the style guide (rendering technique, line quality, proportions)? (4) Is this in reference-sheet format — full body visible, neutral pose, plain background? (5) Are the character distinctive features present and clearly rendered? NOTE: this is a reference sheet, not a panel — judge it as a character design document.'
+)
+```
+
+**Regenerate on review failure (maximum 3 attempts total):**
+
+If checks 1 (face clearly visible), 2 (no baked-in text), or 4 (reference-sheet format) FAIL based on `review_asset` feedback, adjust the prompt with specific remediation text and call `comic_create(action='create_character_ref')` again:
+
+- **Face not clearly visible**: Append `"The character's face must be the focal point of the reference sheet, clearly rendered, front-facing, with no obstructions. Enlarge the head and face region."`
+- **Baked-in text detected**: Append `"CRITICAL: No text, no words, no letters, no labels, no watermarks anywhere in the image. This is a visual-only reference sheet."`
+- **Reference-sheet format wrong** (not full body, not neutral pose, or not plain background): Append `"This must be a character reference sheet: full body from head to toe, neutral standing pose, plain solid-color background. No action poses, no scenery, no cropping."`
+
+Keep the same character identity details when regenerating. Only adjust the constraint/remediation portion of the prompt.
+
+**Maximum 3 attempts total.** If all 3 attempts fail the quality checklist, use the best result and log a warning for `/comic-review` so it can be flagged for manual inspection.
+
 ---
 
 ### Step 3: Per-Issue Variant Creation

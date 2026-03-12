@@ -61,6 +61,7 @@ __all__ = [
     "COMIC_URI_TYPES",
     "pluralize_type",
     "singularize_type",
+    "_strip_embedding",
 ]
 
 
@@ -119,6 +120,16 @@ def _exc_error(exc: Exception) -> ToolResult:
 
 def _ok(result: Any) -> ToolResult:
     return ToolResult(success=True, output=json.dumps(result))
+
+
+def _strip_embedding(metadata: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of *metadata* with the ``embedding`` vector removed.
+
+    Keeps ``embedding_model`` and ``embedding_dimensions`` so callers can
+    still identify which model produced the embedding without leaking the
+    potentially-large vector into agent context.
+    """
+    return {k: v for k, v in metadata.items() if k != "embedding"}
 
 
 # ── ComicProjectTool ────────────────────────────────────────────────────────

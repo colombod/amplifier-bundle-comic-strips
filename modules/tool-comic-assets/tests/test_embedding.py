@@ -6,6 +6,7 @@ import math
 
 import pytest
 
+from amplifier_module_comic_assets import _strip_embedding
 from amplifier_module_comic_assets.service import ComicProjectService, cosine_similarity
 
 # ---------------------------------------------------------------------------
@@ -66,3 +67,46 @@ class TestCosineSimilarity:
         expected = 32.0 / (math.sqrt(14) * math.sqrt(77))
         result = cosine_similarity(a, b)
         assert result == pytest.approx(expected)
+
+
+# ===========================================================================
+# _strip_embedding
+# ===========================================================================
+
+
+class TestStripEmbedding:
+    def test_removes_embedding_key(self) -> None:
+        metadata = {
+            "name": "hero",
+            "embedding": [0.1, 0.2, 0.3],
+            "embedding_model": "text-embedding-3-small",
+            "embedding_dimensions": 3,
+        }
+        result = _strip_embedding(metadata)
+        assert "embedding" not in result
+
+    def test_keeps_embedding_model_and_dimensions(self) -> None:
+        metadata = {
+            "embedding": [0.1, 0.2, 0.3],
+            "embedding_model": "text-embedding-3-small",
+            "embedding_dimensions": 3,
+        }
+        result = _strip_embedding(metadata)
+        assert result["embedding_model"] == "text-embedding-3-small"
+        assert result["embedding_dimensions"] == 3
+
+    def test_passes_through_metadata_without_embedding(self) -> None:
+        metadata = {"name": "hero", "style": "manga", "role": "protagonist"}
+        result = _strip_embedding(metadata)
+        assert result == metadata
+
+    def test_does_not_mutate_original(self) -> None:
+        metadata = {
+            "name": "hero",
+            "embedding": [0.1, 0.2, 0.3],
+            "embedding_model": "text-embedding-3-small",
+        }
+        original_keys = set(metadata.keys())
+        _strip_embedding(metadata)
+        assert set(metadata.keys()) == original_keys
+        assert "embedding" in metadata

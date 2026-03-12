@@ -470,3 +470,91 @@ class TestStoreAssetEmbedding:
         meta_text = await service._storage.read_text(f"{version_dir}/metadata.json")
         meta = json.loads(meta_text)
         assert "embedding" not in meta
+
+
+# ===========================================================================
+# TestCompareCharacters
+# ===========================================================================
+
+
+class TestCompareCharacters:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_compare_identical_embeddings(
+        self, service: ComicProjectService
+    ) -> None:
+        """Two characters with the same embedding vector: similarity should be ~1.0."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+
+        # Both chars get the same mock embedding ([0.1, 0.2, 0.3, 0.4])
+        await service.store_character(
+            pid, iid, "Alpha", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+        await service.store_character(
+            pid, iid, "Beta", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+
+        result = await service.compare_characters(pid, "Alpha", "Beta", style="manga")
+
+        assert result["similarity"] == pytest.approx(1.0)
+        assert "a_uri" in result
+        assert "b_uri" in result
+        assert result["a_uri"].startswith("comic://")
+        assert result["b_uri"].startswith("comic://")
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_compare_missing_embedding_returns_null(
+        self, service: ComicProjectService
+    ) -> None:
+        """Characters without embeddings return reason='missing_embedding'."""
+        pid, iid = await _new_issue(service)
+
+        # Store two characters WITHOUT embeddings (default compute_embedding=False)
+        await service.store_character(
+            pid, iid, "Alpha", "manga", **_CHAR_META, data=_PNG
+        )
+        await service.store_character(
+            pid, iid, "Beta", "manga", **_CHAR_META, data=_PNG
+        )
+
+        result = await service.compare_characters(pid, "Alpha", "Beta", style="manga")
+
+        assert result["similarity"] is None
+        assert result["reason"] == "missing_embedding"
+        assert "a_uri" in result
+        assert "b_uri" in result
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_compare_dimension_mismatch(
+        self, service: ComicProjectService
+    ) -> None:
+        """Alpha has 4-dim embedding, Beta has 8-dim: returns reason='dimension_mismatch'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+
+        # Store Alpha with a 4-dim embedding
+        await service.store_character(
+            pid, iid, "Alpha", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+
+        # Store Beta without embedding first, then manually inject an 8-dim vector
+        await service.store_character(
+            pid, iid, "Beta", "manga", **_CHAR_META, data=_PNG
+        )
+        beta_meta_path = f"projects/{pid}/characters/beta/manga_v1/metadata.json"
+        beta_meta = json.loads(await service._storage.read_text(beta_meta_path))
+        beta_meta["embedding"] = [0.1] * 8
+        await service._storage.write_text(
+            beta_meta_path, json.dumps(beta_meta, indent=2)
+        )
+
+        result = await service.compare_characters(pid, "Alpha", "Beta", style="manga")
+
+        assert result["similarity"] is None
+        assert result["reason"] == "dimension_mismatch"
+        assert "a_uri" in result
+        assert "b_uri" in result

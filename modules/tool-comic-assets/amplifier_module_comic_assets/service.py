@@ -874,6 +874,79 @@ class ComicProjectService:
 
         return results
 
+    async def compare_characters(
+        self,
+        project_id: str,
+        name_a: str,
+        name_b: str,
+        *,
+        style: str | None = None,
+    ) -> dict[str, Any]:
+        """Compare two characters by cosine similarity of their stored embeddings.
+
+        Gets both characters via ``get_character``, then reads the raw
+        ``metadata.json`` for each to extract their ``embedding`` vectors.
+
+        Returns:
+            ``{similarity: float, a_uri: str, b_uri: str}`` on success.
+            ``{similarity: None, reason: 'missing_embedding', a_uri, b_uri}``
+                if either character's metadata lacks an ``embedding`` key.
+            ``{similarity: None, reason: 'dimension_mismatch', a_uri, b_uri}``
+                if the two embedding vectors have different lengths.
+        """
+        _validate_id(project_id, "project_id")
+
+        char_a = await self.get_character(project_id, name_a, style=style)
+        char_b = await self.get_character(project_id, name_b, style=style)
+
+        a_uri = char_a["uri"]
+        b_uri = char_b["uri"]
+
+        # Construct paths to raw metadata.json files using slugified name/style.
+        char_slug_a = slugify(name_a)
+        char_slug_b = slugify(name_b)
+        style_slug_a = slugify(char_a["style"])
+        style_slug_b = slugify(char_b["style"])
+        ver_a: int = char_a["version"]
+        ver_b: int = char_b["version"]
+
+        meta_path_a = (
+            f"projects/{project_id}/characters/{char_slug_a}"
+            f"/{style_slug_a}_v{ver_a}/metadata.json"
+        )
+        meta_path_b = (
+            f"projects/{project_id}/characters/{char_slug_b}"
+            f"/{style_slug_b}_v{ver_b}/metadata.json"
+        )
+
+        meta_a = json.loads(await self._storage.read_text(meta_path_a))
+        meta_b = json.loads(await self._storage.read_text(meta_path_b))
+
+        emb_a: list[float] | None = meta_a.get("embedding")
+        emb_b: list[float] | None = meta_b.get("embedding")
+
+        if emb_a is None or emb_b is None:
+            return {
+                "similarity": None,
+                "reason": "missing_embedding",
+                "a_uri": a_uri,
+                "b_uri": b_uri,
+            }
+
+        if len(emb_a) != len(emb_b):
+            return {
+                "similarity": None,
+                "reason": "dimension_mismatch",
+                "a_uri": a_uri,
+                "b_uri": b_uri,
+            }
+
+        return {
+            "similarity": cosine_similarity(emb_a, emb_b),
+            "a_uri": a_uri,
+            "b_uri": b_uri,
+        }
+
     # ------------------------------------------------------------------
     # Assets
     # ------------------------------------------------------------------

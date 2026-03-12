@@ -1296,6 +1296,75 @@ class ComicProjectService:
 
         return sorted(result, key=lambda x: (x["asset_type"], x["name"]))
 
+    async def compare_assets(
+        self,
+        project_id: str,
+        issue_id: str,
+        asset_type: str,
+        name_a: str,
+        name_b: str,
+    ) -> dict[str, Any]:
+        """Compare two assets by cosine similarity of their stored embeddings.
+
+        Gets both assets via ``get_asset``, then reads the raw
+        ``metadata.json`` for each to extract their ``embedding`` vectors.
+
+        Returns:
+            ``{similarity: float, a_uri: str, b_uri: str}`` on success.
+            ``{similarity: None, reason: 'missing_embedding', a_uri, b_uri}``
+                if either asset's metadata lacks an ``embedding`` key.
+            ``{similarity: None, reason: 'dimension_mismatch', a_uri, b_uri}``
+                if the two embedding vectors have different lengths.
+        """
+        _validate_id(project_id, "project_id")
+        _validate_id(issue_id, "issue_id")
+
+        asset_a = await self.get_asset(project_id, issue_id, asset_type, name_a)
+        asset_b = await self.get_asset(project_id, issue_id, asset_type, name_b)
+
+        a_uri = asset_a["uri"]
+        b_uri = asset_b["uri"]
+
+        ver_a: int = asset_a["version"]
+        ver_b: int = asset_b["version"]
+
+        meta_path_a = (
+            f"{self._asset_version_dir(project_id, issue_id, asset_type, name_a, ver_a)}"
+            f"/metadata.json"
+        )
+        meta_path_b = (
+            f"{self._asset_version_dir(project_id, issue_id, asset_type, name_b, ver_b)}"
+            f"/metadata.json"
+        )
+
+        meta_a = json.loads(await self._storage.read_text(meta_path_a))
+        meta_b = json.loads(await self._storage.read_text(meta_path_b))
+
+        emb_a: list[float] | None = meta_a.get("embedding")
+        emb_b: list[float] | None = meta_b.get("embedding")
+
+        if emb_a is None or emb_b is None:
+            return {
+                "similarity": None,
+                "reason": "missing_embedding",
+                "a_uri": a_uri,
+                "b_uri": b_uri,
+            }
+
+        if len(emb_a) != len(emb_b):
+            return {
+                "similarity": None,
+                "reason": "dimension_mismatch",
+                "a_uri": a_uri,
+                "b_uri": b_uri,
+            }
+
+        return {
+            "similarity": cosine_similarity(emb_a, emb_b),
+            "a_uri": a_uri,
+            "b_uri": b_uri,
+        }
+
     async def batch_encode(
         self,
         project_id: str,

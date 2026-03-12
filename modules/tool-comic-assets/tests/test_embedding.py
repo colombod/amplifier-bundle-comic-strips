@@ -558,3 +558,80 @@ class TestCompareCharacters:
         assert result["reason"] == "dimension_mismatch"
         assert "a_uri" in result
         assert "b_uri" in result
+
+
+# ===========================================================================
+# TestCompareAssets
+# ===========================================================================
+
+
+class TestCompareAssets:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_compare_identical_panel_embeddings(
+        self, service: ComicProjectService
+    ) -> None:
+        """Two panels with the same embedding vector: similarity should be ~1.0."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+
+        # Both panels get the same mock embedding ([0.1, 0.2, 0.3, 0.4])
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "A hero stands tall"},
+            compute_embedding=True,
+        )
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel02",
+            data=_PNG,
+            metadata={"prompt": "A villain looms"},
+            compute_embedding=True,
+        )
+
+        result = await service.compare_assets(pid, iid, "panel", "panel01", "panel02")
+
+        assert result["similarity"] == pytest.approx(1.0)
+        assert "a_uri" in result
+        assert "b_uri" in result
+        assert result["a_uri"].startswith("comic://")
+        assert result["b_uri"].startswith("comic://")
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_compare_assets_missing_embedding(
+        self, service: ComicProjectService
+    ) -> None:
+        """Panels without embeddings return reason='missing_embedding'."""
+        pid, iid = await _new_issue(service)
+
+        # Store two panels WITHOUT embeddings (default compute_embedding=False)
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "A hero stands tall"},
+        )
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel02",
+            data=_PNG,
+            metadata={"prompt": "A villain looms"},
+        )
+
+        result = await service.compare_assets(pid, iid, "panel", "panel01", "panel02")
+
+        assert result["similarity"] is None
+        assert result["reason"] == "missing_embedding"
+        assert "a_uri" in result
+        assert "b_uri" in result

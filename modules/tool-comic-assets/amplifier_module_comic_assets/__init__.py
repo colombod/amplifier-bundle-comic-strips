@@ -363,6 +363,8 @@ class ComicCharacterTool:
                         "update_metadata",
                         "search",
                         "compare",
+                        "search_similar",
+                        "embed",
                     ],
                 },
                 "project": {
@@ -630,6 +632,21 @@ class ComicCharacterTool:
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
+        async def _search_similar() -> ToolResult:
+            if m := _require(params, "project", "name"):
+                return _missing_error(m)
+            try:
+                result = await self._service.search_similar_characters(
+                    params["project"],
+                    params["name"],
+                    top_k=int(params.get("top_k", 5)),
+                    style=params.get("style"),
+                    search_project_id=params.get("search_project"),
+                )
+                return _ok(result)
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
         dispatch: dict[str, Any] = {
             "store": _store,
             "get": _get,
@@ -638,6 +655,7 @@ class ComicCharacterTool:
             "update_metadata": _update_metadata,
             "search": _search,
             "compare": _compare,
+            "search_similar": _search_similar,
         }
 
         handler = dispatch.get(action)  # type: ignore[arg-type]

@@ -478,6 +478,15 @@ class ComicCharacterTool:
                     ),
                     "default": False,
                 },
+                "name_b": {
+                    "type": "string",
+                    "description": "Second character name for the compare action.",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Maximum number of results to return for search_similar. Defaults to 5.",
+                    "default": 5,
+                },
             },
             "required": ["action"],
         }
@@ -608,6 +617,21 @@ class ComicCharacterTool:
             )
             return _ok([_strip_embedding(r) for r in result])
 
+        async def _compare() -> ToolResult:
+            if m := _require(params, "project", "name", "name_b"):
+                return _missing_error(m)
+            project = params["project"]
+            name = params["name"]
+            name_b = params["name_b"]
+            style = params.get("style")
+            try:
+                result = await self._service.compare_characters(
+                    project, name, name_b, style=style
+                )
+                return _ok(result)
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
         dispatch: dict[str, Any] = {
             "store": _store,
             "get": _get,
@@ -615,6 +639,7 @@ class ComicCharacterTool:
             "list_versions": _list_versions,
             "update_metadata": _update_metadata,
             "search": _search,
+            "compare": _compare,
         }
 
         handler = dispatch.get(action)  # type: ignore[arg-type]

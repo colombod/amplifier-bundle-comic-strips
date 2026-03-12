@@ -1347,3 +1347,42 @@ class TestToolComputeEmbedding:
         assert len(meta["embedding"]) == 4
         assert meta["embedding_model"] == "gemini-embedding-2-preview"
         assert meta["embedding_dimensions"] == 4
+
+
+# ===========================================================================
+# TestToolCompareAction — tool layer compare action
+# ===========================================================================
+
+
+class TestToolCompareAction:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_character_compare_action(self, service: ComicProjectService) -> None:
+        """Two characters with identical embeddings: compare via tool returns similarity ~1.0 with no 'embedding' in output."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+
+        # Both characters receive the same mock embedding → similarity 1.0
+        await service.store_character(
+            pid, iid, "Alpha", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+        await service.store_character(
+            pid, iid, "Beta", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+
+        tool = ComicCharacterTool(service)
+        result = await tool.execute(
+            {
+                "action": "compare",
+                "project": pid,
+                "name": "Alpha",
+                "name_b": "Beta",
+                "style": "manga",
+            }
+        )
+
+        assert result.success is True, f"compare action failed: {result.output}"
+        data = json.loads(result.output)
+        assert data["similarity"] == pytest.approx(1.0)
+        assert "embedding" not in data

@@ -9,7 +9,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from amplifier_module_comic_assets import ComicAssetTool, ComicCharacterTool, _strip_embedding
+from amplifier_module_comic_assets import (
+    ComicAssetTool,
+    ComicCharacterTool,
+    _strip_embedding,
+)
 from amplifier_module_comic_assets.service import ComicProjectService, cosine_similarity
 
 # ---------------------------------------------------------------------------
@@ -1245,3 +1249,61 @@ class TestEmbeddingIsolation:
         assert "embedding" not in data
         assert "embedding_model" in data
         assert "embedding_dimensions" in data
+
+
+# ===========================================================================
+# TestToolComputeEmbedding — tool layer must pass compute_embedding through
+# ===========================================================================
+
+
+class TestToolComputeEmbedding:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_character_tool_passes_compute_embedding(
+        self, service: ComicProjectService
+    ) -> None:
+        """store via tool with compute_embedding=True writes embedding to metadata.json."""
+        import base64
+
+        # Arrange: give the service an embedding client
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        # Create a project/issue so the store can succeed
+        r = await service.create_issue("test_project", "Issue 1")
+        pid = r["project_id"]
+        iid = r["issue_id"]
+
+        tool = ComicCharacterTool(service)
+        png_b64 = base64.b64encode(_PNG).decode()
+
+        # Act: invoke the tool with compute_embedding=True
+        result = await tool.execute(
+            {
+                "action": "store",
+                "project": pid,
+                "issue": iid,
+                "name": "Hero",
+                "style": "manga",
+                "role": "protagonist",
+                "character_type": "main",
+                "bundle": "comic-strips",
+                "visual_traits": "tall, blue eyes",
+                "team_markers": "hero badge",
+                "distinctive_features": "scar on left cheek",
+                "data": png_b64,
+                "compute_embedding": True,
+            }
+        )
+
+        assert result.success is True, f"Tool store failed: {result.output}"
+
+        # Assert: verify the embedding was written to metadata.json on disk
+        char_slug = "hero"
+        meta_text = await service._storage.read_text(
+            f"projects/{pid}/characters/{char_slug}/manga_v1/metadata.json"
+        )
+        meta = json.loads(meta_text)
+        assert "embedding" in meta, "embedding key missing from metadata.json on disk"
+        assert len(meta["embedding"]) == 4
+        assert meta["embedding_model"] == "gemini-embedding-2-preview"
+        assert meta["embedding_dimensions"] == 4

@@ -362,6 +362,9 @@ class ComicCharacterTool:
                         "list_versions",
                         "update_metadata",
                         "search",
+                        "compare",
+                        "search_similar",
+                        "embed",
                     ],
                 },
                 "project": {
@@ -466,6 +469,15 @@ class ComicCharacterTool:
                         "Project-scoped format: comic://project/characters/name[?v=N]."
                     ),
                 },
+                "compute_embedding": {
+                    "type": "boolean",
+                    "description": (
+                        "If true, compute a Gemini embedding for the character at store time "
+                        "and persist it in metadata.json. Requires a Gemini client to be "
+                        "configured. Defaults to false."
+                    ),
+                    "default": False,
+                },
             },
             "required": ["action"],
         }
@@ -521,6 +533,7 @@ class ComicCharacterTool:
                     metadata=params.get("metadata"),
                     source_path=params.get("source_path"),
                     data=data_bytes,
+                    compute_embedding=bool(params.get("compute_embedding", False)),
                 )
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:

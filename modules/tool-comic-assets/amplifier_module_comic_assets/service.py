@@ -947,6 +947,116 @@ class ComicProjectService:
             "b_uri": b_uri,
         }
 
+    async def search_similar_characters(
+        self,
+        project_id: str,
+        name: str,
+        *,
+        top_k: int = 5,
+        style: str | None = None,
+        search_project_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Brute-force embedding search for characters similar to a source character.
+
+        Gets the source character and reads its embedding from raw metadata.json.
+        Returns ``{query_uri, similarity: None, reason: 'missing_embedding'}``
+        if the source character has no embedding.
+
+        Uses ``search_characters(style=style, project_id=search_project_id)`` to
+        scan candidates. Skips self (by URI match). For each candidate, reads its
+        metadata.json and skips those without embeddings or with dimension mismatch.
+        Scores with ``cosine_similarity``, sorts descending, and returns top_k results.
+
+        Returns:
+            On success:
+                ``{query_uri, results: [{uri, name, style, similarity,
+                originating_project}]}``
+            On missing source embedding:
+                ``{query_uri, similarity: None, reason: 'missing_embedding'}``
+        """
+        _validate_id(project_id, "project_id")
+        char_slug = slugify(name)
+
+        # Get source character (resolves latest version for the given style).
+        source = await self.get_character(project_id, name, style=style)
+        source_uri = source["uri"]
+        source_style_slug = slugify(source["style"])
+        source_ver: int = source["version"]
+
+        # Read source embedding from raw metadata.json.
+        meta_path = (
+            f"projects/{project_id}/characters/{char_slug}"
+            f"/{source_style_slug}_v{source_ver}/metadata.json"
+        )
+        source_meta = json.loads(await self._storage.read_text(meta_path))
+        source_emb: list[float] | None = source_meta.get("embedding")
+
+        if source_emb is None:
+            return {
+                "query_uri": source_uri,
+                "similarity": None,
+                "reason": "missing_embedding",
+            }
+
+        # Scan candidates across projects (or a single project if specified).
+        candidates = await self.search_characters(
+            style=style, project_id=search_project_id
+        )
+
+        scored: list[dict[str, Any]] = []
+        for cand in candidates:
+            cand_uri = cand["uri"]
+
+            # Skip self.
+            if cand_uri == source_uri:
+                continue
+
+            cand_pid: str = cand["originating_project"]
+            cand_slug: str = cand["char_slug"]
+            cand_style_slug = slugify(cand["style"])
+            cand_ver: int = cand["version"]
+
+            cand_meta_path = (
+                f"projects/{cand_pid}/characters/{cand_slug}"
+                f"/{cand_style_slug}_v{cand_ver}/metadata.json"
+            )
+
+            try:
+                cand_meta = json.loads(
+                    await self._storage.read_text(cand_meta_path)
+                )
+            except (FileNotFoundError, json.JSONDecodeError):
+                continue
+
+            cand_emb: list[float] | None = cand_meta.get("embedding")
+
+            # Skip candidates without embeddings.
+            if cand_emb is None:
+                continue
+
+            # Skip candidates with dimension mismatch.
+            if len(cand_emb) != len(source_emb):
+                continue
+
+            sim = cosine_similarity(source_emb, cand_emb)
+            scored.append(
+                {
+                    "uri": cand_uri,
+                    "name": cand["name"],
+                    "style": cand["style"],
+                    "similarity": sim,
+                    "originating_project": cand_pid,
+                }
+            )
+
+        # Sort descending by similarity and return top_k.
+        scored.sort(key=lambda x: x["similarity"], reverse=True)
+
+        return {
+            "query_uri": source_uri,
+            "results": scored[:top_k],
+        }
+
     # ------------------------------------------------------------------
     # Assets
     # ------------------------------------------------------------------

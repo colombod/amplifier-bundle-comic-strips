@@ -635,3 +635,112 @@ class TestCompareAssets:
         assert result["reason"] == "missing_embedding"
         assert "a_uri" in result
         assert "b_uri" in result
+
+
+# ===========================================================================
+# TestSearchSimilarCharacters
+# ===========================================================================
+
+
+class TestSearchSimilarCharacters:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_returns_sorted_results(self, service: ComicProjectService) -> None:
+        """3 characters with same embedding, top_k=2: returns top 2 sorted descending."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+
+        # All three get the same mock embedding → similarity 1.0
+        await service.store_character(
+            pid, iid, "Alpha", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+        await service.store_character(
+            pid, iid, "Beta", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+        await service.store_character(
+            pid, iid, "Gamma", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+
+        result = await service.search_similar_characters(pid, "Alpha", top_k=2)
+
+        assert "query_uri" in result
+        assert "results" in result
+        assert len(result["results"]) == 2
+        # All should have similarity ~1.0 since they all use the same mock embedding
+        for r in result["results"]:
+            assert r["similarity"] == pytest.approx(1.0)
+        # Verify sorted descending
+        sims = [r["similarity"] for r in result["results"]]
+        assert sims == sorted(sims, reverse=True)
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_excludes_source_character(
+        self, service: ComicProjectService
+    ) -> None:
+        """Source character URI is not included in results."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+
+        await service.store_character(
+            pid, iid, "Alpha", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+        await service.store_character(
+            pid, iid, "Beta", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+
+        result = await service.search_similar_characters(pid, "Alpha", top_k=5)
+
+        query_uri = result["query_uri"]
+        result_uris = [r["uri"] for r in result["results"]]
+        assert query_uri not in result_uris
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_missing_source_embedding_returns_error(
+        self, service: ComicProjectService
+    ) -> None:
+        """Returns error dict when source character has no embedding."""
+        pid, iid = await _new_issue(service)
+
+        # Store without embedding (no client / compute_embedding=False)
+        await service.store_character(
+            pid, iid, "Alpha", "manga", **_CHAR_META, data=_PNG
+        )
+
+        result = await service.search_similar_characters(pid, "Alpha")
+
+        assert result["similarity"] is None
+        assert result["reason"] == "missing_embedding"
+        assert "query_uri" in result
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_skips_characters_without_embeddings(
+        self, service: ComicProjectService
+    ) -> None:
+        """Beta (no embedding) is skipped; Gamma (with embedding) is returned."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+
+        await service.store_character(
+            pid, iid, "Alpha", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+        # Beta stored without embedding (temporarily remove client)
+        service._genai_client = None
+        await service.store_character(
+            pid, iid, "Beta", "manga", **_CHAR_META, data=_PNG
+        )
+        # Restore client for Gamma
+        service.set_embedding_client(client, embedding_dim=4)
+        await service.store_character(
+            pid, iid, "Gamma", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+
+        result = await service.search_similar_characters(pid, "Alpha", top_k=5)
+
+        result_names = [r["name"] for r in result["results"]]
+        assert "Beta" not in result_names
+        assert "Gamma" in result_names

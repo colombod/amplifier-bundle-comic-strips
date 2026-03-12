@@ -1633,6 +1633,71 @@ class ComicProjectService:
             "results": scored[:top_k],
         }
 
+    async def embed_asset(
+        self,
+        project_id: str,
+        issue_id: str,
+        asset_type: str,
+        name: str,
+    ) -> dict[str, Any]:
+        """Backfill embedding for an existing asset.
+
+        Gets the asset's metadata.json, computes a multimodal embedding from
+        its prompt/description text and image, then writes the embedding back
+        under a project lock.
+
+        Returns:
+            ``{embedded: False, reason: 'no_client'}`` if no embedding client.
+            ``{embedded: False, reason: 'structured_asset'}`` if asset_type is
+                a structured type (research, storyboard, final).
+            ``{embedded: True, uri}`` on success.
+        """
+        if self._genai_client is None:
+            return {"embedded": False, "reason": "no_client"}
+
+        if asset_type in _STRUCTURED_TYPES:
+            return {"embedded": False, "reason": "structured_asset"}
+
+        _validate_id(project_id, "project_id")
+        _validate_id(issue_id, "issue_id")
+        _validate_id(name, "name")
+
+        # Get asset to resolve latest version.
+        asset = await self.get_asset(project_id, issue_id, asset_type, name)
+        version: int = asset["version"]
+
+        # Read metadata.json from the versioned directory.
+        version_dir = self._asset_version_dir(project_id, issue_id, asset_type, name, version)
+        metadata_rel = f"{version_dir}/metadata.json"
+        meta = json.loads(await self._storage.read_text(metadata_rel))
+
+        # Get embedding text from metadata prompt or description.
+        asset_metadata: dict[str, Any] = meta.get("metadata", {})
+        emb_text: str | None = asset_metadata.get("prompt") or asset_metadata.get("description")
+
+        # Get image absolute path from storage_path.
+        image_rel: str | None = meta.get("storage_path")
+        abs_image: str | None = None
+        if image_rel is not None:
+            abs_image = await self._storage.abs_path(image_rel)
+
+        # Compute embedding.
+        vec = await self._compute_embedding(abs_image, emb_text)
+        if vec is None:
+            return {"embedded": False, "reason": "compute_failed"}
+
+        # Under lock: re-read metadata, write embedding fields, re-write.
+        lock = await self._get_lock(project_id)
+        async with lock:
+            meta = json.loads(await self._storage.read_text(metadata_rel))
+            meta["embedding"] = vec
+            meta["embedding_model"] = "gemini-embedding-2-preview"
+            meta["embedding_dimensions"] = self._embedding_dim
+            await self._storage.write_text(metadata_rel, json.dumps(meta, indent=2))
+
+        uri = ComicURI.for_asset(project_id, issue_id, asset_type, name, version=version)
+        return {"embedded": True, "uri": str(uri)}
+
     async def batch_encode(
         self,
         project_id: str,

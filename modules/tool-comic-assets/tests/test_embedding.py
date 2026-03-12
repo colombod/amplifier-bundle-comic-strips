@@ -974,3 +974,71 @@ class TestEmbedCharacter:
         )
         meta = json.loads(meta_text)
         assert "embedding" in meta
+
+
+# ===========================================================================
+# TestEmbedAsset
+# ===========================================================================
+
+
+class TestEmbedAsset:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_backfill_adds_embedding_to_panel(
+        self, service: ComicProjectService
+    ) -> None:
+        """Store panel without embedding, backfill, verify embedding present."""
+        pid, iid = await _new_issue(service)
+
+        # Store panel WITHOUT embedding (no client)
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "A hero stands tall", "description": "Scene 1"},
+        )
+
+        # Now set up client and backfill
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        result = await service.embed_asset(pid, iid, "panel", "panel01")
+
+        # Verify return dict
+        assert result["embedded"] is True
+        assert "uri" in result
+        assert result["uri"].startswith("comic://")
+
+        # Verify metadata.json now has embedding fields
+        version_dir = f"projects/{pid}/issues/{iid}/panels/panel01_v1"
+        meta_text = await service._storage.read_text(f"{version_dir}/metadata.json")
+        meta = json.loads(meta_text)
+        assert "embedding" in meta
+        assert meta["embedding"] == pytest.approx([0.1 * (i + 1) for i in range(4)])
+        assert meta["embedding_model"] == "gemini-embedding-2-preview"
+        assert meta["embedding_dimensions"] == 4
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_backfill_noop_when_no_client(
+        self, service: ComicProjectService
+    ) -> None:
+        """Returns {embedded: False, reason: 'no_client'} when no client set."""
+        pid, iid = await _new_issue(service)
+
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "A hero stands tall"},
+        )
+
+        # No client set (default)
+        assert service._genai_client is None
+
+        result = await service.embed_asset(pid, iid, "panel", "panel01")
+
+        assert result["embedded"] is False
+        assert result["reason"] == "no_client"

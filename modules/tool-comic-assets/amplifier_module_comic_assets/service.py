@@ -1055,6 +1055,76 @@ class ComicProjectService:
             "results": scored[:top_k],
         }
 
+    async def embed_character(
+        self,
+        project_id: str,
+        name: str,
+        *,
+        style: str | None = None,
+    ) -> dict[str, Any]:
+        """Backfill embedding for an existing character.
+
+        Gets the character's metadata.json, computes a multimodal embedding
+        from its visual_traits, distinctive_features, personality, and image,
+        then writes the embedding back under a project lock.
+
+        Returns:
+            ``{embedded: False, reason: 'no_client'}`` if no embedding client.
+            ``{embedded: False, reason: 'compute_failed'}`` if embedding fails.
+            ``{embedded: True, uri, style}`` on success.
+        """
+        if self._genai_client is None:
+            return {"embedded": False, "reason": "no_client"}
+
+        _validate_id(project_id, "project_id")
+        char_slug = slugify(name)
+        _validate_id(char_slug, "name")
+
+        # Get character to resolve latest version and style.
+        char = await self.get_character(project_id, name, style=style)
+        resolved_style: str = char["style"]
+        style_slug = slugify(resolved_style)
+        ver: int = char["version"]
+
+        # Read metadata.json from the versioned directory.
+        metadata_rel = (
+            f"projects/{project_id}/characters/{char_slug}"
+            f"/{style_slug}_v{ver}/metadata.json"
+        )
+        meta = json.loads(await self._storage.read_text(metadata_rel))
+
+        # Build embedding text from visual traits, distinctive features, personality.
+        emb_text = ". ".join(
+            [
+                meta.get("visual_traits", ""),
+                meta.get("distinctive_features", ""),
+                meta.get("personality", ""),
+            ]
+        )
+
+        # Get absolute image path if available.
+        image_path: str | None = meta.get("image_path")
+        abs_image: str | None = None
+        if image_path is not None:
+            abs_image = await self._storage.abs_path(image_path)
+
+        # Compute embedding.
+        vec = await self._compute_embedding(abs_image, emb_text)
+        if vec is None:
+            return {"embedded": False, "reason": "compute_failed"}
+
+        # Under lock: re-read metadata, write embedding fields, re-write.
+        lock = await self._get_lock(project_id)
+        async with lock:
+            meta = json.loads(await self._storage.read_text(metadata_rel))
+            meta["embedding"] = vec
+            meta["embedding_model"] = "gemini-embedding-2-preview"
+            meta["embedding_dimensions"] = self._embedding_dim
+            await self._storage.write_text(metadata_rel, json.dumps(meta, indent=2))
+
+        uri = ComicURI.for_character(project_id, char_slug, version=ver)
+        return {"embedded": True, "uri": str(uri), "style": resolved_style}
+
     # ------------------------------------------------------------------
     # Assets
     # ------------------------------------------------------------------

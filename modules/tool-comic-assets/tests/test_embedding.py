@@ -869,3 +869,108 @@ class TestSearchSimilarAssets:
         assert result["similarity"] is None
         assert result["reason"] == "missing_embedding"
         assert "query_uri" in result
+
+
+# ===========================================================================
+# TestEmbedCharacter
+# ===========================================================================
+
+
+class TestEmbedCharacter:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_backfill_adds_embedding(self, service: ComicProjectService) -> None:
+        """Store character without embedding, backfill, verify embedding present."""
+        pid, iid = await _new_issue(service)
+
+        # Store character WITHOUT embedding (no client)
+        await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+        )
+
+        # Now set up client and backfill
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        result = await service.embed_character(pid, "Hero")
+
+        # Verify return dict
+        assert result["embedded"] is True
+        assert "uri" in result
+        assert result["uri"].startswith("comic://")
+        assert "style" in result
+
+        # Verify metadata.json now has embedding fields
+        char_slug = "hero"
+        style_slug = "manga"
+        meta_text = await service._storage.read_text(
+            f"projects/{pid}/characters/{char_slug}/{style_slug}_v1/metadata.json"
+        )
+        meta = json.loads(meta_text)
+        assert "embedding" in meta
+        assert meta["embedding"] == pytest.approx([0.1 * (i + 1) for i in range(4)])
+        assert meta["embedding_model"] == "gemini-embedding-2-preview"
+        assert meta["embedding_dimensions"] == 4
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_backfill_noop_when_no_client(
+        self, service: ComicProjectService
+    ) -> None:
+        """Returns {embedded: False, reason: 'no_client'} when no client set."""
+        pid, iid = await _new_issue(service)
+
+        await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+        )
+
+        # No client set (default)
+        assert service._genai_client is None
+
+        result = await service.embed_character(pid, "Hero")
+
+        assert result["embedded"] is False
+        assert result["reason"] == "no_client"
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_backfill_with_specific_style(
+        self, service: ComicProjectService
+    ) -> None:
+        """Backfill with style='manga' only affects the manga version."""
+        pid, iid = await _new_issue(service)
+
+        # Store character with manga style
+        await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+        )
+
+        # Set up client and backfill with explicit style
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        result = await service.embed_character(pid, "Hero", style="manga")
+
+        assert result["embedded"] is True
+        assert result["style"] == "manga"
+        assert "uri" in result
+
+        # Verify embedding was written to the manga version
+        char_slug = "hero"
+        meta_text = await service._storage.read_text(
+            f"projects/{pid}/characters/{char_slug}/manga_v1/metadata.json"
+        )
+        meta = json.loads(meta_text)
+        assert "embedding" in meta

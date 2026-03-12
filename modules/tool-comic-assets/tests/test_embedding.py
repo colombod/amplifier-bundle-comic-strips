@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -1042,3 +1043,56 @@ class TestEmbedAsset:
 
         assert result["embedded"] is False
         assert result["reason"] == "no_client"
+
+
+# ===========================================================================
+# TestMountEmbeddingDiscovery
+# ===========================================================================
+
+
+class TestMountEmbeddingDiscovery:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_mount_sets_client_from_provider(self) -> None:
+        """FakeProvider with a mock client: mount() sets service._genai_client."""
+        mock_client = MagicMock()
+
+        class FakeProvider:
+            client = mock_client
+
+        captured: dict[str, Any] = {}
+
+        coordinator = MagicMock()
+        coordinator.mount = AsyncMock()
+        coordinator.register_capability = MagicMock(
+            side_effect=lambda name, svc: captured.update({name: svc})
+        )
+        coordinator.get = MagicMock(return_value={"gemini-flash": FakeProvider()})
+
+        from amplifier_module_comic_assets import mount
+
+        await mount(coordinator)
+
+        service = captured["comic.project-service"]
+        assert service._genai_client is mock_client
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_mount_works_without_provider(self, monkeypatch) -> None:
+        """No providers, no env vars: mount() leaves service._genai_client as None."""
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+        captured: dict[str, Any] = {}
+
+        coordinator = MagicMock()
+        coordinator.mount = AsyncMock()
+        coordinator.register_capability = MagicMock(
+            side_effect=lambda name, svc: captured.update({name: svc})
+        )
+        coordinator.get = MagicMock(return_value=None)
+
+        from amplifier_module_comic_assets import mount
+
+        await mount(coordinator)
+
+        service = captured["comic.project-service"]
+        assert service._genai_client is None

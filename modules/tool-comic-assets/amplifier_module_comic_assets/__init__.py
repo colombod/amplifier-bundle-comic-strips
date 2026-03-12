@@ -12,9 +12,15 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import platform
 from dataclasses import dataclass
 from typing import Any
+
+try:
+    import google.genai as genai  # type: ignore[import-untyped]
+except ImportError:  # pragma: no cover — optional dependency
+    genai = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -1053,6 +1059,37 @@ async def mount(coordinator: Any, config: Any = None) -> Any:
     cfg = config or {}
     storage = _build_storage(cfg.get("storage", {}))
     service = ComicProjectService(storage=storage)
+
+    # ── Gemini embedding-client discovery ────────────────────────────────────
+    embedding_dim: int = cfg.get("asset_embedding_dimension", 1536)
+    genai_client: Any = None
+
+    # Phase 1 – coordinator providers
+    providers = coordinator.get("providers") if callable(getattr(coordinator, "get", None)) else None
+    if providers and hasattr(providers, "items"):
+        for name, provider in providers.items():
+            name_lower = name.lower() if isinstance(name, str) else ""
+            if "gemini" in name_lower or "google" in name_lower:
+                client = getattr(provider, "client", None)
+                if client is not None:
+                    genai_client = client
+                    break
+
+    # Phase 2 – environment-variable fallback
+    if genai_client is None and genai is not None:
+        api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+        if api_key:
+            genai_client = genai.Client(api_key=api_key)
+
+    if genai_client is not None:
+        service.set_embedding_client(genai_client, embedding_dim=embedding_dim)
+        logger.info(
+            "tool-comic-assets: Gemini embedding client configured (dim=%d)", embedding_dim
+        )
+    else:
+        logger.debug("tool-comic-assets: No Gemini client found; embeddings disabled")
+    # ─────────────────────────────────────────────────────────────────────────
+
     tools = [
         ComicProjectTool(service),
         ComicCharacterTool(service),

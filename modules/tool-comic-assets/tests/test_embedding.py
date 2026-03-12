@@ -1497,15 +1497,32 @@ class TestToolSearchSimilarAction:
         pid, iid = await _new_issue(service, "tool_ss_asset", "I1")
         for n in ["p01", "p02"]:
             await service.store_asset(
-                pid, iid, "panel", n, source_path=sample_png, metadata={"prompt": "hero"}, compute_embedding=True
+                pid,
+                iid,
+                "panel",
+                n,
+                source_path=sample_png,
+                metadata={"prompt": "hero"},
+                compute_embedding=True,
             )
         tool = ComicAssetTool(service)
         result = await tool.execute(
-            {"action": "search_similar", "project": pid, "issue": iid, "type": "panel", "name": "p01", "top_k": 1}
+            {
+                "action": "search_similar",
+                "project": pid,
+                "issue": iid,
+                "type": "panel",
+                "name": "p01",
+                "top_k": 1,
+            }
         )
         assert result.success is True
         data = json.loads(result.output)
         assert len(data["results"]) == 1
+        assert data["query_uri"].startswith("comic://")
+        assert data["results"][0]["name"] == "p02"
+        for r in data["results"]:
+            assert "embedding" not in r
 
 
 # ===========================================================================
@@ -1519,7 +1536,9 @@ class TestToolEmbedAction:
         self, service: ComicProjectService, sample_png: str
     ) -> None:
         pid, iid = await _new_issue(service, "tool_bf_char", "I1")
-        await service.store_character(pid, iid, "Hero", "manga", **_CHAR_META, source_path=sample_png)
+        await service.store_character(
+            pid, iid, "Hero", "manga", **_CHAR_META, source_path=sample_png
+        )
         client = _make_embedding_client(dim=4)
         service.set_embedding_client(client, embedding_dim=4)
         tool = ComicCharacterTool(service)
@@ -1535,13 +1554,24 @@ class TestToolEmbedAction:
     ) -> None:
         pid, iid = await _new_issue(service, "tool_bf_asset", "I1")
         await service.store_asset(
-            pid, iid, "panel", "p01", source_path=sample_png, metadata={"prompt": "hero on cliff"}
+            pid,
+            iid,
+            "panel",
+            "p01",
+            source_path=sample_png,
+            metadata={"prompt": "hero on cliff"},
         )
         client = _make_embedding_client(dim=4)
         service.set_embedding_client(client, embedding_dim=4)
         tool = ComicAssetTool(service)
         result = await tool.execute(
-            {"action": "embed", "project": pid, "issue": iid, "type": "panel", "name": "p01"}
+            {
+                "action": "embed",
+                "project": pid,
+                "issue": iid,
+                "type": "panel",
+                "name": "p01",
+            }
         )
         assert result.success is True
         data = json.loads(result.output)

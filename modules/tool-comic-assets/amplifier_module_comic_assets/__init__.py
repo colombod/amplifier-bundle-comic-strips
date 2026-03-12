@@ -641,7 +641,6 @@ class ComicCharacterTool:
                     params["name"],
                     top_k=int(params.get("top_k", 5)),
                     style=params.get("style"),
-                    search_project_id=params.get("search_project"),
                 )
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:

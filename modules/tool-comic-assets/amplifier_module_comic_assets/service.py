@@ -900,6 +900,10 @@ class ComicProjectService:
 
         Version is auto-incremented per (asset_type, name) within the issue,
         tracked in issue.json assets dict.
+
+        compute_embedding only applies to binary asset types (panel, cover, avatar,
+        qa_screenshot); it is silently ignored for structured types (research,
+        storyboard, final).
         """
         if asset_type not in ASSET_TYPES:
             raise ValueError(
@@ -1020,9 +1024,8 @@ class ComicProjectService:
 
                 # Optionally compute and persist a multimodal embedding.
                 if compute_embedding and self._genai_client is not None:
-                    emb_text = (metadata or {}).get("prompt") or (metadata or {}).get(
-                        "description"
-                    )
+                    _meta = metadata or {}
+                    emb_text = _meta.get("prompt") or _meta.get("description")
                     abs_image = await self._storage.abs_path(image_rel)
                     vec = await self._compute_embedding(abs_image, emb_text)
                     if vec is not None:

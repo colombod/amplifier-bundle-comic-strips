@@ -1436,14 +1436,8 @@ class ComicProjectService:
         ver_a: int = asset_a["version"]
         ver_b: int = asset_b["version"]
 
-        meta_path_a = (
-            f"{self._asset_version_dir(project_id, issue_id, asset_type, name_a, ver_a)}"
-            f"/metadata.json"
-        )
-        meta_path_b = (
-            f"{self._asset_version_dir(project_id, issue_id, asset_type, name_b, ver_b)}"
-            f"/metadata.json"
-        )
+        meta_path_a = f"{self._asset_version_dir(project_id, issue_id, asset_type, name_a, ver_a)}/metadata.json"
+        meta_path_b = f"{self._asset_version_dir(project_id, issue_id, asset_type, name_b, ver_b)}/metadata.json"
 
         meta_a = json.loads(await self._storage.read_text(meta_path_a))
         meta_b = json.loads(await self._storage.read_text(meta_path_b))
@@ -1509,10 +1503,7 @@ class ComicProjectService:
         source_ver: int = source["version"]
 
         # Read source embedding from raw metadata.json.
-        meta_path = (
-            f"{self._asset_version_dir(project_id, issue_id, asset_type, name, source_ver)}"
-            f"/metadata.json"
-        )
+        meta_path = f"{self._asset_version_dir(project_id, issue_id, asset_type, name, source_ver)}/metadata.json"
         source_meta = json.loads(await self._storage.read_text(meta_path))
         source_emb: list[float] | None = source_meta.get("embedding")
 
@@ -1537,10 +1528,7 @@ class ComicProjectService:
             cand_ver: int = cand["latest_version"]
             cand_uri: str = cand["uri"]
 
-            cand_meta_path = (
-                f"{self._asset_version_dir(project_id, issue_id, asset_type, cand_name, cand_ver)}"
-                f"/metadata.json"
-            )
+            cand_meta_path = f"{self._asset_version_dir(project_id, issue_id, asset_type, cand_name, cand_ver)}/metadata.json"
 
             try:
                 cand_meta = json.loads(await self._storage.read_text(cand_meta_path))

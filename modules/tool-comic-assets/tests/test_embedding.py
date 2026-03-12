@@ -1404,3 +1404,43 @@ class TestToolCompareAction:
 
         assert result.success is False
         assert "name_b" in result.output
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_asset_compare_action(
+        self, service: ComicProjectService, sample_png: str
+    ) -> None:
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+        pid, iid = await _new_issue(service, "tool_cmp_asset", "I1")
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "p01",
+            source_path=sample_png,
+            metadata={"prompt": "hero"},
+            compute_embedding=True,
+        )
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "p02",
+            source_path=sample_png,
+            metadata={"prompt": "hero"},
+            compute_embedding=True,
+        )
+        tool = ComicAssetTool(service)
+        result = await tool.execute(
+            {
+                "action": "compare",
+                "project": pid,
+                "issue": iid,
+                "type": "panel",
+                "name": "p01",
+                "name_b": "p02",
+            }
+        )
+        assert result.success is True
+        data = json.loads(result.output)
+        assert data["similarity"] == pytest.approx(1.0)

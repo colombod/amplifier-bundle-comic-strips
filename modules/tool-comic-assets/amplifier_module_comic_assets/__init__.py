@@ -786,6 +786,15 @@ class ComicAssetTool:
                     ),
                     "default": False,
                 },
+                "name_b": {
+                    "type": "string",
+                    "description": "Second asset name for compare action.",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Max results for search_similar. Default 5.",
+                    "default": 5,
+                },
             },
             "required": ["action"],
         }
@@ -908,12 +917,28 @@ class ComicAssetTool:
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
+        async def _compare() -> ToolResult:
+            if m := _require(params, "project", "issue", "type", "name", "name_b"):
+                return _missing_error(m)
+            try:
+                result = await self._service.compare_assets(
+                    params["project"],
+                    params["issue"],
+                    params["type"],
+                    params["name"],
+                    params["name_b"],
+                )
+                return _ok(result)
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
         dispatch: dict[str, Any] = {
             "store": _store,
             "get": _get,
             "list": _list,
             "update_metadata": _update_metadata,
             "preview": _preview,
+            "compare": _compare,
         }
 
         handler = dispatch.get(action)  # type: ignore[arg-type]

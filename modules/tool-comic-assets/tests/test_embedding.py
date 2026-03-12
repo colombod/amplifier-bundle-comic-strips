@@ -221,7 +221,7 @@ class TestComputeEmbedding:
         assert result is not None
         # Verify embed_content was called with exactly 2 parts
         call_kwargs = client.aio.models.embed_content.call_args
-        contents = call_kwargs.kwargs.get("contents") or call_kwargs.args[1]
+        contents = call_kwargs.kwargs["contents"]
         assert len(contents) == 2
 
     @pytest.mark.asyncio(loop_scope="function")

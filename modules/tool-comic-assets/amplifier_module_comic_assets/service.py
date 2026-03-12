@@ -148,7 +148,7 @@ class ComicProjectService:
         parts: list[Any] = []
         if image_path is not None:
             image_bytes = await asyncio.to_thread(Path(image_path).read_bytes)
-            parts.append(Part.from_bytes(data=image_bytes, mime_type="image/png"))
+            parts.append(Part.from_bytes(data=image_bytes, mime_type=guess_mime(image_path)))
         if text is not None:
             parts.append(Part.from_text(text=text))
 

@@ -546,7 +546,7 @@ class ComicCharacterTool:
                     include=params.get("include", "metadata"),
                     format=fmt,
                 )
-                return _ok(result)
+                return _ok(_strip_embedding(result))
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
@@ -555,7 +555,7 @@ class ComicCharacterTool:
                 return _missing_error(m)
             try:
                 result = await self._service.list_characters(params["project"])
-                return _ok(result)
+                return _ok([_strip_embedding(r) for r in result])
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
@@ -566,7 +566,7 @@ class ComicCharacterTool:
                 result = await self._service.list_character_versions(
                     params["project"], params["name"]
                 )
-                return _ok(result)
+                return _ok([_strip_embedding(r) for r in result])
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
@@ -593,7 +593,7 @@ class ComicCharacterTool:
                 metadata_filter=params.get("metadata_filter"),
                 project_id=params.get("project"),
             )
-            return _ok(result)
+            return _ok([_strip_embedding(r) for r in result])
 
         dispatch: dict[str, Any] = {
             "store": _store,
@@ -799,7 +799,7 @@ class ComicAssetTool:
                     include=params.get("include", "metadata"),
                     format=fmt,
                 )
-                return _ok(result)
+                return _ok(_strip_embedding(result))
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
@@ -812,7 +812,7 @@ class ComicAssetTool:
                     params["issue"],
                     asset_type=params.get("type"),
                 )
-                return _ok(result)
+                return _ok([_strip_embedding(r) for r in result])
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 

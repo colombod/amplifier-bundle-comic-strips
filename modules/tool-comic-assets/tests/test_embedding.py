@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from amplifier_module_comic_assets import _strip_embedding
+from amplifier_module_comic_assets import ComicAssetTool, ComicCharacterTool, _strip_embedding
 from amplifier_module_comic_assets.service import ComicProjectService, cosine_similarity
 
 # ---------------------------------------------------------------------------
@@ -1102,3 +1102,146 @@ class TestMountEmbeddingDiscovery:
 
         service = captured["comic.project-service"]
         assert service._genai_client is None
+
+
+# ===========================================================================
+# TestEmbeddingIsolation — tool layer must strip embedding vectors
+# ===========================================================================
+
+
+class TestEmbeddingIsolation:
+    """Verify that all get/list/search tool actions strip the embedding vector.
+
+    Characters and assets can carry an ``embedding`` field in their stored
+    metadata. That vector is large and must not be returned to agent context.
+    ``embedding_model`` and ``embedding_dimensions`` *should* be preserved so
+    callers can still identify the model used.
+
+    Tests use mocked service methods so the tool layer is tested in isolation:
+    the mock simulates a service that returns raw metadata including an embedding
+    vector, and we verify the tool strips the vector before returning to the LLM.
+    """
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_get_character_strips_embedding(
+        self, service: ComicProjectService
+    ) -> None:
+        """ComicCharacterTool get: 'embedding' absent; embedding_model/dimensions present."""
+        # Arrange — mock get_character to return metadata that includes an embedding vector
+        raw_char_meta = {
+            "name": "Hero",
+            "project_id": "test_proj",
+            "style": "manga",
+            "version": 1,
+            "created_at": "2025-01-01T00:00:00+00:00",
+            "origin_issue_id": "issue-001",
+            "role": "protagonist",
+            "character_type": "main",
+            "bundle": "comic-strips",
+            "visual_traits": "tall, blue eyes",
+            "team_markers": "hero badge",
+            "distinctive_features": "scar",
+            "backstory": "",
+            "motivations": "",
+            "personality": "",
+            "review_status": "",
+            "review_feedback": "",
+            "metadata": {},
+            "uri": "comic://test_proj/characters/hero?v=1",
+            "embedding": [0.1, 0.2, 0.3, 0.4],
+            "embedding_model": "gemini-embedding-2-preview",
+            "embedding_dimensions": 4,
+        }
+        service.get_character = AsyncMock(return_value=raw_char_meta)  # type: ignore[method-assign]
+
+        tool = ComicCharacterTool(service)
+        result = await tool.execute(
+            {"action": "get", "project": "test_proj", "name": "Hero"}
+        )
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert "embedding" not in data
+        assert "embedding_model" in data
+        assert "embedding_dimensions" in data
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_list_characters_strips_embedding(
+        self, service: ComicProjectService
+    ) -> None:
+        """ComicCharacterTool list: no entry in the list contains an 'embedding' key."""
+        # Arrange — mock list_characters to return entries with embedding vectors
+        raw_entries = [
+            {
+                "name": "Alpha",
+                "char_slug": "alpha",
+                "styles": {"manga": 1},
+                "total_versions": 1,
+                "uri": "comic://proj/characters/alpha?v=1",
+                "embedding": [0.1, 0.2, 0.3, 0.4],
+                "embedding_model": "gemini-embedding-2-preview",
+                "embedding_dimensions": 4,
+            },
+            {
+                "name": "Beta",
+                "char_slug": "beta",
+                "styles": {"manga": 1},
+                "total_versions": 1,
+                "uri": "comic://proj/characters/beta?v=1",
+                "embedding": [0.5, 0.6, 0.7, 0.8],
+                "embedding_model": "gemini-embedding-2-preview",
+                "embedding_dimensions": 4,
+            },
+        ]
+        service.list_characters = AsyncMock(return_value=raw_entries)  # type: ignore[method-assign]
+
+        tool = ComicCharacterTool(service)
+        result = await tool.execute({"action": "list", "project": "test_proj"})
+
+        assert result.success is True
+        entries = json.loads(result.output)
+        assert len(entries) == 2
+        for entry in entries:
+            assert "embedding" not in entry
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_get_asset_strips_embedding(
+        self, service: ComicProjectService
+    ) -> None:
+        """ComicAssetTool get: 'embedding' absent; embedding_model/dimensions present."""
+        # Arrange — mock get_asset to return metadata that includes an embedding vector
+        raw_asset_meta = {
+            "name": "panel01",
+            "asset_type": "panel",
+            "project_id": "test_proj",
+            "issue_id": "issue-001",
+            "version": 1,
+            "created_at": "2025-01-01T00:00:00+00:00",
+            "mime_type": "image/png",
+            "size_bytes": 108,
+            "review_status": "",
+            "review_feedback": "",
+            "metadata": {"prompt": "A hero stands tall"},
+            "uri": "comic://test_proj/issues/issue-001/panels/panel01?v=1",
+            "embedding": [0.1, 0.2, 0.3, 0.4],
+            "embedding_model": "gemini-embedding-2-preview",
+            "embedding_dimensions": 4,
+        }
+        service.get_asset = AsyncMock(return_value=raw_asset_meta)  # type: ignore[method-assign]
+
+        tool = ComicAssetTool(service)
+        result = await tool.execute(
+            {
+                "action": "get",
+                "project": "test_proj",
+                "issue": "issue-001",
+                "type": "panel",
+                "name": "panel01",
+            }
+        )
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert "embedding" not in data
+        assert "embedding_model" in data
+        assert "embedding_dimensions" in data

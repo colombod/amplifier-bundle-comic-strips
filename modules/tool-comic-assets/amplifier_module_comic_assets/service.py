@@ -28,10 +28,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from google.genai.types import EmbedContentConfig, Part
 
 from .comic_uri import ComicURI
 from .encoding import bytes_to_base64, bytes_to_data_uri, guess_mime
@@ -43,6 +46,8 @@ from .models import (
     slugify,
 )
 from .storage import StorageProtocol
+
+logger = logging.getLogger(__name__)
 
 _SAFE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
@@ -128,6 +133,41 @@ class ComicProjectService:
         """Set the generative AI client and embedding dimension for embeddings."""
         self._genai_client = client
         self._embedding_dim = embedding_dim
+
+    async def _compute_embedding(
+        self, image_path: str | None, text: str | None
+    ) -> list[float] | None:
+        """Compute a multimodal embedding via the Gemini Embedding 2 API.
+
+        Returns None when no client is configured, no input is provided, or
+        the API call raises an exception (error is logged at DEBUG level).
+        """
+        if self._genai_client is None:
+            return None
+
+        parts: list[Any] = []
+        if image_path is not None:
+            image_bytes = await asyncio.to_thread(Path(image_path).read_bytes)
+            parts.append(Part.from_bytes(data=image_bytes, mime_type="image/png"))
+        if text is not None:
+            parts.append(Part.from_text(text=text))
+
+        if not parts:
+            return None
+
+        try:
+            result = await self._genai_client.aio.models.embed_content(
+                model="gemini-embedding-2-preview",
+                contents=parts,
+                config=EmbedContentConfig(
+                    output_dimensionality=self._embedding_dim,
+                    task_type="SEMANTIC_SIMILARITY",
+                ),
+            )
+            return list(result.embeddings[0].values)
+        except Exception:
+            logger.debug("_compute_embedding failed", exc_info=True)
+            return None
 
     # ------------------------------------------------------------------
     # Private helpers

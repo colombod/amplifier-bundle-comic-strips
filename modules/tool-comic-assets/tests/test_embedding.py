@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -140,3 +140,99 @@ class TestSetEmbeddingClient:
         service.set_embedding_client(None)
         assert service._genai_client is None
         assert service._embedding_dim == 1536  # default restored
+
+
+# ===========================================================================
+# _make_embedding_client helper
+# ===========================================================================
+
+
+def _make_embedding_client(dim: int = 4) -> MagicMock:
+    """Create a mock genai client that returns a dim-dimensional embedding."""
+    embedding_values = [0.1 * (i + 1) for i in range(dim)]
+    mock_embedding = MagicMock()
+    mock_embedding.values = embedding_values
+    mock_result = MagicMock()
+    mock_result.embeddings = [mock_embedding]
+
+    client = MagicMock()
+    client.aio = MagicMock()
+    client.aio.models = MagicMock()
+    client.aio.models.embed_content = AsyncMock(return_value=mock_result)
+    return client
+
+
+# ===========================================================================
+# TestComputeEmbedding
+# ===========================================================================
+
+
+class TestComputeEmbedding:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_returns_none_when_no_client(
+        self, service: ComicProjectService
+    ) -> None:
+        """Returns None when no genai client is set."""
+        assert service._genai_client is None
+        result = await service._compute_embedding(None, "test text")
+        assert result is None
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_returns_none_when_no_parts(
+        self, service: ComicProjectService
+    ) -> None:
+        """Returns None when neither image_path nor text is provided."""
+        client = _make_embedding_client()
+        service.set_embedding_client(client, embedding_dim=4)
+        result = await service._compute_embedding(None, None)
+        assert result is None
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_text_only_embedding(self, service: ComicProjectService) -> None:
+        """Returns a float list embedding for text-only input."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+        result = await service._compute_embedding(None, "hello world")
+        assert result is not None
+        assert isinstance(result, list)
+        assert len(result) == 4
+        assert result == pytest.approx([0.1 * (i + 1) for i in range(4)])
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_image_only_embedding(
+        self, service: ComicProjectService, sample_png: str
+    ) -> None:
+        """Returns embedding for image-only input using sample_png fixture."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+        result = await service._compute_embedding(sample_png, None)
+        assert result is not None
+        assert isinstance(result, list)
+        assert len(result) == 4
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_interleaved_image_and_text(
+        self, service: ComicProjectService, sample_png: str
+    ) -> None:
+        """Verifies that 2 content parts are sent when both image and text provided."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+        result = await service._compute_embedding(sample_png, "caption text")
+        assert result is not None
+        # Verify embed_content was called with exactly 2 parts
+        call_kwargs = client.aio.models.embed_content.call_args
+        contents = call_kwargs.kwargs.get("contents") or call_kwargs.args[1]
+        assert len(contents) == 2
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_api_error_returns_none(self, service: ComicProjectService) -> None:
+        """Returns None when the API raises an exception (caught and logged)."""
+        client = MagicMock()
+        client.aio = MagicMock()
+        client.aio.models = MagicMock()
+        client.aio.models.embed_content = AsyncMock(
+            side_effect=RuntimeError("API error")
+        )
+        service.set_embedding_client(client, embedding_dim=4)
+        result = await service._compute_embedding(None, "hello")
+        assert result is None

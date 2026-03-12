@@ -127,6 +127,7 @@ class TestSetEmbeddingClient:
         mock_client = MagicMock()
         service.set_embedding_client(mock_client)
         assert service._genai_client is mock_client
+        assert service._embedding_dim == 1536  # default preserved when dim omitted
 
     def test_set_client_with_custom_dim(self, service: ComicProjectService) -> None:
         mock_client = MagicMock()

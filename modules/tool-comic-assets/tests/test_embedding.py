@@ -1528,3 +1528,22 @@ class TestToolEmbedAction:
         data = json.loads(result.output)
         assert data["embedded"] is True
         assert "embedding" not in data
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_asset_embed_action(
+        self, service: ComicProjectService, sample_png: str
+    ) -> None:
+        pid, iid = await _new_issue(service, "tool_bf_asset", "I1")
+        await service.store_asset(
+            pid, iid, "panel", "p01", source_path=sample_png, metadata={"prompt": "hero on cliff"}
+        )
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+        tool = ComicAssetTool(service)
+        result = await tool.execute(
+            {"action": "embed", "project": pid, "issue": iid, "type": "panel", "name": "p01"}
+        )
+        assert result.success is True
+        data = json.loads(result.output)
+        assert data["embedded"] is True
+        assert "embedding" not in data

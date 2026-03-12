@@ -979,6 +979,20 @@ class ComicAssetTool:
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
+        async def _embed() -> ToolResult:
+            if m := _require(params, "project", "issue", "type", "name"):
+                return _missing_error(m)
+            try:
+                result = await self._service.embed_asset(
+                    params["project"],
+                    params["issue"],
+                    params["type"],
+                    params["name"],
+                )
+                return _ok(result)
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
         dispatch: dict[str, Any] = {
             "store": _store,
             "get": _get,
@@ -987,6 +1001,7 @@ class ComicAssetTool:
             "preview": _preview,
             "compare": _compare,
             "search_similar": _search_similar,
+            "embed": _embed,
         }
 
         handler = dispatch.get(action)  # type: ignore[arg-type]

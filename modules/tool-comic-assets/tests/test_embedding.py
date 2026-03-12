@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import math
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -236,3 +237,133 @@ class TestComputeEmbedding:
         service.set_embedding_client(client, embedding_dim=4)
         result = await service._compute_embedding(None, "hello")
         assert result is None
+
+
+# ===========================================================================
+# TestStoreCharacterEmbedding
+# ===========================================================================
+
+
+class TestStoreCharacterEmbedding:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_without_embedding_has_no_embedding_fields(
+        self, service: ComicProjectService
+    ) -> None:
+        """Default compute_embedding=False: metadata.json has no embedding fields."""
+        pid, iid = await _new_issue(service)
+        await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+        )
+        char_slug = "hero"
+        meta_text = await service._storage.read_text(
+            f"projects/{pid}/characters/{char_slug}/manga_v1/metadata.json"
+        )
+        meta = json.loads(meta_text)
+        assert "embedding" not in meta
+        assert "embedding_model" not in meta
+        assert "embedding_dimensions" not in meta
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_with_embedding_writes_vector(
+        self, service: ComicProjectService
+    ) -> None:
+        """compute_embedding=True with client: embedding vector written to metadata.json."""
+        mock_embedding = MagicMock()
+        mock_embedding.values = [0.1] * 4
+        mock_result = MagicMock()
+        mock_result.embeddings = [mock_embedding]
+        client = MagicMock()
+        client.aio = MagicMock()
+        client.aio.models = MagicMock()
+        client.aio.models.embed_content = AsyncMock(return_value=mock_result)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+            compute_embedding=True,
+        )
+        char_slug = "hero"
+        meta_text = await service._storage.read_text(
+            f"projects/{pid}/characters/{char_slug}/manga_v1/metadata.json"
+        )
+        meta = json.loads(meta_text)
+        assert meta["embedding"] == pytest.approx([0.1] * 4)
+        assert meta["embedding_model"] == "gemini-embedding-2-preview"
+        assert meta["embedding_dimensions"] == 4
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_with_embedding_noop_when_no_client(
+        self, service: ComicProjectService
+    ) -> None:
+        """compute_embedding=True but no client: store still succeeds, no embedding."""
+        assert service._genai_client is None
+        pid, iid = await _new_issue(service)
+        result = await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+            compute_embedding=True,
+        )
+        assert "uri" in result  # store succeeded
+        char_slug = "hero"
+        meta_text = await service._storage.read_text(
+            f"projects/{pid}/characters/{char_slug}/manga_v1/metadata.json"
+        )
+        meta = json.loads(meta_text)
+        assert "embedding" not in meta
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_with_embedding_uses_correct_text(
+        self, service: ComicProjectService
+    ) -> None:
+        """Verify embed text includes visual_traits, distinctive_features, personality."""
+        captured_args: list[tuple[str | None, str | None]] = []
+
+        async def mock_compute(image_path: str | None, text: str | None) -> list[float]:
+            captured_args.append((image_path, text))
+            return [0.1] * 4
+
+        # Give the service a non-None client so the compute_embedding branch fires.
+        service._genai_client = MagicMock()
+
+        pid, iid = await _new_issue(service)
+        char_meta = dict(
+            role="protagonist",
+            character_type="main",
+            bundle="comic-strips",
+            visual_traits="tall blue eyes",
+            team_markers="hero badge",
+            distinctive_features="scar on left cheek",
+            personality="brave and bold",
+        )
+        with patch.object(service, "_compute_embedding", side_effect=mock_compute):
+            await service.store_character(
+                pid,
+                iid,
+                "Hero",
+                "manga",
+                **char_meta,
+                data=_PNG,
+                compute_embedding=True,
+            )
+
+        assert captured_args, "Expected _compute_embedding to be called"
+        _, text = captured_args[0]
+        assert text is not None
+        assert "tall blue eyes" in text
+        assert "scar on left cheek" in text
+        assert "brave and bold" in text

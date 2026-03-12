@@ -148,7 +148,9 @@ class ComicProjectService:
         parts: list[Any] = []
         if image_path is not None:
             image_bytes = await asyncio.to_thread(Path(image_path).read_bytes)
-            parts.append(Part.from_bytes(data=image_bytes, mime_type=guess_mime(image_path)))
+            parts.append(
+                Part.from_bytes(data=image_bytes, mime_type=guess_mime(image_path))
+            )
         if text is not None:
             parts.append(Part.from_text(text=text))
 
@@ -471,6 +473,7 @@ class ComicProjectService:
         metadata: dict[str, Any] | None = None,
         source_path: str | None = None,
         data: bytes | None = None,
+        compute_embedding: bool = False,
     ) -> dict[str, Any]:
         """Store a character design (metadata.json + reference.png).
 
@@ -538,7 +541,25 @@ class ComicProjectService:
                 metadata_rel, json.dumps(design.to_dict(include_image=True), indent=2)
             )
             if image_bytes is not None:
-                await self._storage.write_bytes(image_rel, image_bytes)
+                await self._storage.write_bytes(image_rel, image_bytes)  # type: ignore[arg-type]
+
+            # Optionally compute and persist a multimodal embedding.
+            if compute_embedding and self._genai_client is not None:
+                emb_text = ". ".join([visual_traits, distinctive_features, personality])
+                abs_image: str | None = (
+                    await self._storage.abs_path(image_rel)
+                    if image_rel is not None
+                    else None
+                )
+                vec = await self._compute_embedding(abs_image, emb_text)
+                if vec is not None:
+                    meta_dict = json.loads(await self._storage.read_text(metadata_rel))
+                    meta_dict["embedding"] = vec
+                    meta_dict["embedding_model"] = "gemini-embedding-2-preview"
+                    meta_dict["embedding_dimensions"] = self._embedding_dim
+                    await self._storage.write_text(
+                        metadata_rel, json.dumps(meta_dict, indent=2)
+                    )
 
             # Register char_slug in project manifest (idempotent).
             if char_slug not in project_manifest.get("characters", []):

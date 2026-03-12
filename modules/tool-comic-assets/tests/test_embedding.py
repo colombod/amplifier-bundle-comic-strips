@@ -1444,3 +1444,65 @@ class TestToolCompareAction:
         assert result.success is True
         data = json.loads(result.output)
         assert data["similarity"] == pytest.approx(1.0)
+
+
+# ===========================================================================
+# TestToolSearchSimilarAction — tool layer search_similar action
+# ===========================================================================
+
+
+class TestToolSearchSimilarAction:
+    """Verify search_similar action works through the tool layer."""
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_character_search_similar_action(
+        self, service: ComicProjectService, sample_png: str
+    ) -> None:
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+        pid, iid = await _new_issue(service, "tool_ss_char", "I1")
+        for char_name in ["Alpha", "Beta"]:
+            await service.store_character(
+                pid,
+                iid,
+                char_name,
+                "manga",
+                **_CHAR_META,
+                source_path=sample_png,
+                compute_embedding=True,
+            )
+        tool = ComicCharacterTool(service)
+        result = await tool.execute(
+            {
+                "action": "search_similar",
+                "project": pid,
+                "name": "Alpha",
+                "top_k": 1,
+            }
+        )
+        assert result.success is True
+        data = json.loads(result.output)
+        assert data["query_uri"].startswith("comic://")
+        assert len(data["results"]) == 1
+        assert data["results"][0]["name"] == "Beta"
+        for r in data["results"]:
+            assert "embedding" not in r
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_asset_search_similar_action(
+        self, service: ComicProjectService, sample_png: str
+    ) -> None:
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+        pid, iid = await _new_issue(service, "tool_ss_asset", "I1")
+        for n in ["p01", "p02"]:
+            await service.store_asset(
+                pid, iid, "panel", n, source_path=sample_png, metadata={"prompt": "hero"}, compute_embedding=True
+            )
+        tool = ComicAssetTool(service)
+        result = await tool.execute(
+            {"action": "search_similar", "project": pid, "issue": iid, "type": "panel", "name": "p01", "top_k": 1}
+        )
+        assert result.success is True
+        data = json.loads(result.output)
+        assert len(data["results"]) == 1

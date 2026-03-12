@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import math
 from typing import Any
@@ -1262,8 +1263,6 @@ class TestToolComputeEmbedding:
         self, service: ComicProjectService
     ) -> None:
         """store via tool with compute_embedding=True writes embedding to metadata.json."""
-        import base64
-
         # Arrange: give the service an embedding client
         client = _make_embedding_client(dim=4)
         service.set_embedding_client(client, embedding_dim=4)
@@ -1313,8 +1312,6 @@ class TestToolComputeEmbedding:
         self, service: ComicProjectService
     ) -> None:
         """store panel via tool with compute_embedding=True writes embedding to metadata.json."""
-        import base64
-
         # Arrange: give the service an embedding client
         client = _make_embedding_client(dim=4)
         service.set_embedding_client(client, embedding_dim=4)

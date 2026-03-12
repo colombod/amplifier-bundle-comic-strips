@@ -1065,7 +1065,11 @@ async def mount(coordinator: Any, config: Any = None) -> Any:
     genai_client: Any = None
 
     # Phase 1 – coordinator providers
-    providers = coordinator.get("providers") if callable(getattr(coordinator, "get", None)) else None
+    providers = (
+        coordinator.get("providers")
+        if callable(getattr(coordinator, "get", None))
+        else None
+    )
     if providers and hasattr(providers, "items"):
         for name, provider in providers.items():
             name_lower = name.lower() if isinstance(name, str) else ""
@@ -1084,7 +1088,8 @@ async def mount(coordinator: Any, config: Any = None) -> Any:
     if genai_client is not None:
         service.set_embedding_client(genai_client, embedding_dim=embedding_dim)
         logger.info(
-            "tool-comic-assets: Gemini embedding client configured (dim=%d)", embedding_dim
+            "tool-comic-assets: Gemini embedding client configured (dim=%d)",
+            embedding_dim,
         )
     else:
         logger.debug("tool-comic-assets: No Gemini client found; embeddings disabled")

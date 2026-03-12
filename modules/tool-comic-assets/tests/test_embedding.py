@@ -19,7 +19,7 @@ from amplifier_module_comic_assets.service import ComicProjectService, cosine_si
 _PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
 # Minimal keyword args for store_character
-_CHAR_META = dict(
+_CHAR_META: dict[str, Any] = dict(
     role="protagonist",
     character_type="main",
     bundle="comic-strips",
@@ -342,7 +342,7 @@ class TestStoreCharacterEmbedding:
         service._genai_client = MagicMock()
 
         pid, iid = await _new_issue(service)
-        char_meta = dict(
+        char_meta: dict[str, Any] = dict(
             role="protagonist",
             character_type="main",
             bundle="comic-strips",
@@ -1068,7 +1068,9 @@ class TestMountEmbeddingDiscovery:
         )
         coordinator.get = MagicMock(return_value={"gemini-flash": FakeProvider()})
 
-        from amplifier_module_comic_assets import mount
+        from amplifier_module_comic_assets import (
+            mount,
+        )  # import inline to avoid early-mount side effects
 
         await mount(coordinator)
 
@@ -1090,7 +1092,9 @@ class TestMountEmbeddingDiscovery:
         )
         coordinator.get = MagicMock(return_value=None)
 
-        from amplifier_module_comic_assets import mount
+        from amplifier_module_comic_assets import (
+            mount,
+        )  # import inline to avoid early-mount side effects
 
         await mount(coordinator)
 

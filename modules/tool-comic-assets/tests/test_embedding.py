@@ -744,3 +744,128 @@ class TestSearchSimilarCharacters:
         result_names = [r["name"] for r in result["results"]]
         assert "Beta" not in result_names
         assert "Gamma" in result_names
+
+
+# ===========================================================================
+# TestSearchSimilarAssets
+# ===========================================================================
+
+
+class TestSearchSimilarAssets:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_returns_sorted_panel_results(
+        self, service: ComicProjectService
+    ) -> None:
+        """3 panels, top_k=2: returns top 2 results sorted descending by similarity."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+
+        # All three panels get the same mock embedding → similarity 1.0
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "hero stands tall"},
+            compute_embedding=True,
+        )
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel02",
+            data=_PNG,
+            metadata={"prompt": "villain looms"},
+            compute_embedding=True,
+        )
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel03",
+            data=_PNG,
+            metadata={"prompt": "battle scene"},
+            compute_embedding=True,
+        )
+
+        result = await service.search_similar_assets(
+            pid, iid, "panel", "panel01", top_k=2
+        )
+
+        assert "query_uri" in result
+        assert "results" in result
+        assert len(result["results"]) == 2
+        # All should have similarity ~1.0 since they all use the same mock embedding
+        for r in result["results"]:
+            assert r["similarity"] == pytest.approx(1.0)
+        # Verify sorted descending
+        sims = [r["similarity"] for r in result["results"]]
+        assert sims == sorted(sims, reverse=True)
+        # Verify each result has required fields
+        for r in result["results"]:
+            assert "uri" in r
+            assert "name" in r
+            assert "asset_type" in r
+            assert r["asset_type"] == "panel"
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_excludes_source_asset(self, service: ComicProjectService) -> None:
+        """Source asset is not included in results (skipped by name)."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "hero stands tall"},
+            compute_embedding=True,
+        )
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel02",
+            data=_PNG,
+            metadata={"prompt": "villain looms"},
+            compute_embedding=True,
+        )
+
+        result = await service.search_similar_assets(
+            pid, iid, "panel", "panel01", top_k=5
+        )
+
+        query_uri = result["query_uri"]
+        result_uris = [r["uri"] for r in result["results"]]
+        assert query_uri not in result_uris
+        # Verify source asset name is not in results
+        result_names = [r["name"] for r in result["results"]]
+        assert "panel01" not in result_names
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_missing_source_embedding(self, service: ComicProjectService) -> None:
+        """Returns error dict when source asset has no embedding."""
+        pid, iid = await _new_issue(service)
+
+        # Store panel without embedding (no client / compute_embedding=False)
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "hero stands tall"},
+        )
+
+        result = await service.search_similar_assets(pid, iid, "panel", "panel01")
+
+        assert result["similarity"] is None
+        assert result["reason"] == "missing_embedding"
+        assert "query_uri" in result

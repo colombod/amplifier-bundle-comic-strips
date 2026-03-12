@@ -1022,9 +1022,7 @@ class ComicProjectService:
             )
 
             try:
-                cand_meta = json.loads(
-                    await self._storage.read_text(cand_meta_path)
-                )
+                cand_meta = json.loads(await self._storage.read_text(cand_meta_path))
             except (FileNotFoundError, json.JSONDecodeError):
                 continue
 
@@ -1473,6 +1471,108 @@ class ComicProjectService:
             "similarity": cosine_similarity(emb_a, emb_b),
             "a_uri": a_uri,
             "b_uri": b_uri,
+        }
+
+    async def search_similar_assets(
+        self,
+        project_id: str,
+        issue_id: str,
+        asset_type: str,
+        name: str,
+        *,
+        top_k: int = 5,
+    ) -> dict[str, Any]:
+        """Brute-force embedding search for assets similar to a source asset.
+
+        Gets the source asset and reads its embedding from raw metadata.json
+        via ``_asset_version_dir``.  Returns an error dict if the source asset
+        has no embedding stored.
+
+        Uses ``list_assets(project_id, issue_id, asset_type=asset_type)`` to
+        scan all assets of the same type within the same issue.  Skips self by
+        name.  For each candidate, reads its metadata.json and skips those
+        without embeddings or with dimension mismatch.  Scores with
+        ``cosine_similarity``, sorts descending, and returns top_k results.
+
+        Returns:
+            On success:
+                ``{query_uri, results: [{uri, name, asset_type, similarity}]}``
+            On missing source embedding:
+                ``{query_uri, similarity: None, reason: 'missing_embedding'}``
+        """
+        _validate_id(project_id, "project_id")
+        _validate_id(issue_id, "issue_id")
+
+        # Get source asset to resolve latest version and URI.
+        source = await self.get_asset(project_id, issue_id, asset_type, name)
+        source_uri: str = source["uri"]
+        source_ver: int = source["version"]
+
+        # Read source embedding from raw metadata.json.
+        meta_path = (
+            f"{self._asset_version_dir(project_id, issue_id, asset_type, name, source_ver)}"
+            f"/metadata.json"
+        )
+        source_meta = json.loads(await self._storage.read_text(meta_path))
+        source_emb: list[float] | None = source_meta.get("embedding")
+
+        if source_emb is None:
+            return {
+                "query_uri": source_uri,
+                "similarity": None,
+                "reason": "missing_embedding",
+            }
+
+        # Scan all same-type assets within the same issue.
+        candidates = await self.list_assets(project_id, issue_id, asset_type=asset_type)
+
+        scored: list[dict[str, Any]] = []
+        for cand in candidates:
+            cand_name: str = cand["name"]
+
+            # Skip self by name.
+            if cand_name == name:
+                continue
+
+            cand_ver: int = cand["latest_version"]
+            cand_uri: str = cand["uri"]
+
+            cand_meta_path = (
+                f"{self._asset_version_dir(project_id, issue_id, asset_type, cand_name, cand_ver)}"
+                f"/metadata.json"
+            )
+
+            try:
+                cand_meta = json.loads(await self._storage.read_text(cand_meta_path))
+            except (FileNotFoundError, json.JSONDecodeError):
+                continue
+
+            cand_emb: list[float] | None = cand_meta.get("embedding")
+
+            # Skip candidates without embeddings.
+            if cand_emb is None:
+                continue
+
+            # Skip candidates with dimension mismatch.
+            if len(cand_emb) != len(source_emb):
+                continue
+
+            sim = cosine_similarity(source_emb, cand_emb)
+            scored.append(
+                {
+                    "uri": cand_uri,
+                    "name": cand_name,
+                    "asset_type": asset_type,
+                    "similarity": sim,
+                }
+            )
+
+        # Sort descending by similarity and return top_k.
+        scored.sort(key=lambda x: x["similarity"], reverse=True)
+
+        return {
+            "query_uri": source_uri,
+            "results": scored[:top_k],
         }
 
     async def batch_encode(

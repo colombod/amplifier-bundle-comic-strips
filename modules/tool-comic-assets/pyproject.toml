@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "amplifier-module-tool-comic-assets"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["google-genai>=1.0.0",]
 
 [dependency-groups]
 dev = [

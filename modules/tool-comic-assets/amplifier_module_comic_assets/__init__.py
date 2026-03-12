@@ -363,8 +363,6 @@ class ComicCharacterTool:
                         "update_metadata",
                         "search",
                         "compare",
-                        "search_similar",
-                        "embed",
                     ],
                 },
                 "project": {

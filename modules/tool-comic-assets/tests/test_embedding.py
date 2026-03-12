@@ -1386,3 +1386,21 @@ class TestToolCompareAction:
         data = json.loads(result.output)
         assert data["similarity"] == pytest.approx(1.0)
         assert "embedding" not in data
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_character_compare_missing_name_b(
+        self, service: ComicProjectService
+    ) -> None:
+        """compare action without name_b returns a clean error, not an exception."""
+        tool = ComicCharacterTool(service)
+        result = await tool.execute(
+            {
+                "action": "compare",
+                "project": "some_project",
+                "name": "Alpha",
+                # name_b intentionally omitted
+            }
+        )
+
+        assert result.success is False
+        assert "name_b" in result.output

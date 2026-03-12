@@ -1078,7 +1078,9 @@ class TestMountEmbeddingDiscovery:
         assert service._genai_client is mock_client
 
     @pytest.mark.asyncio(loop_scope="function")
-    async def test_mount_works_without_provider(self, monkeypatch) -> None:
+    async def test_mount_works_without_provider(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """No providers, no env vars: mount() leaves service._genai_client as None."""
         monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)

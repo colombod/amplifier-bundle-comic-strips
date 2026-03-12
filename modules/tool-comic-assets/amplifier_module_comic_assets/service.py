@@ -47,6 +47,19 @@ from .storage import StorageProtocol
 _SAFE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Return the cosine similarity between two vectors.
+
+    Returns 0.0 if either vector has zero norm (to avoid division by zero).
+    """
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(x * x for x in b) ** 0.5
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
 def _validate_id(value: str, label: str) -> str:
     """Validate that value is a safe identifier."""
     if not value or not _SAFE_ID_RE.match(value):

@@ -1506,3 +1506,25 @@ class TestToolSearchSimilarAction:
         assert result.success is True
         data = json.loads(result.output)
         assert len(data["results"]) == 1
+
+
+# ===========================================================================
+# TestToolEmbedAction — tool layer embed action
+# ===========================================================================
+
+
+class TestToolEmbedAction:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_character_embed_action(
+        self, service: ComicProjectService, sample_png: str
+    ) -> None:
+        pid, iid = await _new_issue(service, "tool_bf_char", "I1")
+        await service.store_character(pid, iid, "Hero", "manga", **_CHAR_META, source_path=sample_png)
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+        tool = ComicCharacterTool(service)
+        result = await tool.execute({"action": "embed", "project": pid, "name": "Hero"})
+        assert result.success is True
+        data = json.loads(result.output)
+        assert data["embedded"] is True
+        assert "embedding" not in data

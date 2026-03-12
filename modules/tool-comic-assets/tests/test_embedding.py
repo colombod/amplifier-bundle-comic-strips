@@ -1307,3 +1307,46 @@ class TestToolComputeEmbedding:
         assert len(meta["embedding"]) == 4
         assert meta["embedding_model"] == "gemini-embedding-2-preview"
         assert meta["embedding_dimensions"] == 4
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_asset_tool_passes_compute_embedding(
+        self, service: ComicProjectService
+    ) -> None:
+        """store panel via tool with compute_embedding=True writes embedding to metadata.json."""
+        import base64
+
+        # Arrange: give the service an embedding client
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        # Create a project/issue so the store can succeed
+        r = await service.create_issue("test_project", "Issue 1")
+        pid = r["project_id"]
+        iid = r["issue_id"]
+
+        tool = ComicAssetTool(service)
+        png_b64 = base64.b64encode(_PNG).decode()
+
+        # Act: invoke the tool with compute_embedding=True
+        result = await tool.execute(
+            {
+                "action": "store",
+                "project": pid,
+                "issue": iid,
+                "type": "panel",
+                "name": "panel01",
+                "data": png_b64,
+                "compute_embedding": True,
+            }
+        )
+
+        assert result.success is True, f"Tool store failed: {result.output}"
+
+        # Assert: verify the embedding was written to metadata.json on disk
+        version_dir = f"projects/{pid}/issues/{iid}/panels/panel01_v1"
+        meta_text = await service._storage.read_text(f"{version_dir}/metadata.json")
+        meta = json.loads(meta_text)
+        assert "embedding" in meta, "embedding key missing from metadata.json on disk"
+        assert len(meta["embedding"]) == 4
+        assert meta["embedding_model"] == "gemini-embedding-2-preview"
+        assert meta["embedding_dimensions"] == 4

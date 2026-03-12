@@ -669,6 +669,9 @@ class ComicAssetTool:
                         "list",
                         "update_metadata",
                         "preview",
+                        "compare",
+                        "search_similar",
+                        "embed",
                     ],
                 },
                 "project": {
@@ -750,6 +753,16 @@ class ComicAssetTool:
                         "Issue-scoped format: comic://project/issues/issue-id/collection/name[?v=N]."
                     ),
                 },
+                "compute_embedding": {
+                    "type": "boolean",
+                    "description": (
+                        "If true, compute a Gemini embedding for binary assets (panels, covers, "
+                        "avatars, qa_screenshots) at store time and persist it in metadata.json. "
+                        "Has no effect on structured assets (research, storyboard, final). "
+                        "Requires a Gemini client to be configured. Defaults to false."
+                    ),
+                    "default": False,
+                },
             },
             "required": ["action"],
         }
@@ -786,6 +799,7 @@ class ComicAssetTool:
                     data=data_bytes,
                     content=params.get("content"),
                     metadata=params.get("metadata"),
+                    compute_embedding=bool(params.get("compute_embedding", False)),
                 )
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:

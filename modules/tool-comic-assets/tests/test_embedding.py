@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -110,3 +111,31 @@ class TestStripEmbedding:
         _strip_embedding(metadata)
         assert set(metadata.keys()) == original_keys
         assert "embedding" in metadata
+
+
+# ===========================================================================
+# TestSetEmbeddingClient
+# ===========================================================================
+
+
+class TestSetEmbeddingClient:
+    def test_initially_no_client(self, service: ComicProjectService) -> None:
+        assert service._genai_client is None
+        assert service._embedding_dim == 1536
+
+    def test_set_client_stores_client(self, service: ComicProjectService) -> None:
+        mock_client = MagicMock()
+        service.set_embedding_client(mock_client)
+        assert service._genai_client is mock_client
+
+    def test_set_client_with_custom_dim(self, service: ComicProjectService) -> None:
+        mock_client = MagicMock()
+        service.set_embedding_client(mock_client, embedding_dim=768)
+        assert service._embedding_dim == 768
+
+    def test_set_client_none_resets(self, service: ComicProjectService) -> None:
+        mock_client = MagicMock()
+        service.set_embedding_client(mock_client)
+        assert service._genai_client is mock_client
+        service.set_embedding_client(None)
+        assert service._genai_client is None

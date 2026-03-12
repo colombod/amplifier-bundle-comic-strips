@@ -119,6 +119,15 @@ class ComicProjectService:
         self._storage = storage
         self._locks: dict[str, asyncio.Lock] = {}
         self._meta_lock = asyncio.Lock()
+        self._genai_client: Any | None = None
+        self._embedding_dim: int = 1536
+
+    def set_embedding_client(
+        self, client: Any | None, embedding_dim: int = 1536
+    ) -> None:
+        """Set the generative AI client and embedding dimension for embeddings."""
+        self._genai_client = client
+        self._embedding_dim = embedding_dim
 
     # ------------------------------------------------------------------
     # Private helpers

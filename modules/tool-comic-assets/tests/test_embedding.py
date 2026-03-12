@@ -367,3 +367,106 @@ class TestStoreCharacterEmbedding:
         assert "tall blue eyes" in text
         assert "scar on left cheek" in text
         assert "brave and bold" in text
+
+
+# ===========================================================================
+# TestStoreAssetEmbedding
+# ===========================================================================
+
+
+class TestStoreAssetEmbedding:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_panel_with_embedding(
+        self, service: ComicProjectService
+    ) -> None:
+        """compute_embedding=True with client: embedding written to panel metadata.json."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "A hero stands tall", "description": "Scene 1"},
+            compute_embedding=True,
+        )
+
+        # Find and read the metadata.json for the panel
+        version_dir = f"projects/{pid}/issues/{iid}/panels/panel01_v1"
+        meta_text = await service._storage.read_text(f"{version_dir}/metadata.json")
+        meta = json.loads(meta_text)
+        assert "embedding" in meta
+        assert meta["embedding"] == pytest.approx([0.1 * (i + 1) for i in range(4)])
+        assert meta["embedding_model"] == "gemini-embedding-2-preview"
+        assert meta["embedding_dimensions"] == 4
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_panel_without_embedding(
+        self, service: ComicProjectService
+    ) -> None:
+        """Default compute_embedding=False: metadata.json has no embedding fields."""
+        pid, iid = await _new_issue(service)
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "A hero stands tall"},
+        )
+
+        version_dir = f"projects/{pid}/issues/{iid}/panels/panel01_v1"
+        meta_text = await service._storage.read_text(f"{version_dir}/metadata.json")
+        meta = json.loads(meta_text)
+        assert "embedding" not in meta
+        assert "embedding_model" not in meta
+        assert "embedding_dimensions" not in meta
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_structured_asset_skips_embedding(
+        self, service: ComicProjectService
+    ) -> None:
+        """Research asset with compute_embedding=True: embed_content is NOT called."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        await service.store_asset(
+            pid,
+            iid,
+            "research",
+            "research",
+            content={"data": "some research"},
+            metadata={"description": "research data"},
+            compute_embedding=True,
+        )
+
+        # embed_content should NOT have been called for structured assets
+        client.aio.models.embed_content.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_asset_embedding_noop_when_no_client(
+        self, service: ComicProjectService
+    ) -> None:
+        """compute_embedding=True but no client: store still succeeds, no embedding."""
+        assert service._genai_client is None
+
+        pid, iid = await _new_issue(service)
+        result = await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "A hero stands tall"},
+            compute_embedding=True,
+        )
+        assert "uri" in result  # store succeeded
+
+        version_dir = f"projects/{pid}/issues/{iid}/panels/panel01_v1"
+        meta_text = await service._storage.read_text(f"{version_dir}/metadata.json")
+        meta = json.loads(meta_text)
+        assert "embedding" not in meta

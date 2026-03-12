@@ -889,6 +889,7 @@ class ComicProjectService:
         data: bytes | None = None,
         content: dict[str, Any] | str | None = None,
         metadata: dict[str, Any] | None = None,
+        compute_embedding: bool = False,
     ) -> dict[str, Any]:
         """Store a versioned asset under an issue.
 
@@ -1016,6 +1017,24 @@ class ComicProjectService:
                     metadata_rel,
                     json.dumps(asset_obj.to_dict(include_payload=True), indent=2),
                 )
+
+                # Optionally compute and persist a multimodal embedding.
+                if compute_embedding and self._genai_client is not None:
+                    emb_text = (metadata or {}).get("prompt") or (metadata or {}).get(
+                        "description"
+                    )
+                    abs_image = await self._storage.abs_path(image_rel)
+                    vec = await self._compute_embedding(abs_image, emb_text)
+                    if vec is not None:
+                        meta_dict = json.loads(
+                            await self._storage.read_text(metadata_rel)
+                        )
+                        meta_dict["embedding"] = vec
+                        meta_dict["embedding_model"] = "gemini-embedding-2-preview"
+                        meta_dict["embedding_dimensions"] = self._embedding_dim
+                        await self._storage.write_text(
+                            metadata_rel, json.dumps(meta_dict, indent=2)
+                        )
 
             # Update issue manifest — record latest version for this asset key.
             issue_manifest.setdefault("assets", {})[asset_key] = {

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import sys
 import pytest
 
 from amplifier_module_comic_assets import ComicAssetTool, ComicProjectTool

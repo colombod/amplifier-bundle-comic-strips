@@ -260,7 +260,7 @@ class TestStoreCharacterEmbedding:
     async def test_store_without_embedding_has_no_embedding_fields(
         self, service: ComicProjectService
     ) -> None:
-        """Default compute_embedding=False: metadata.json has no embedding fields."""
+        """compute_embedding=False: metadata.json has no embedding fields."""
         pid, iid = await _new_issue(service)
         await service.store_character(
             pid,
@@ -269,6 +269,7 @@ class TestStoreCharacterEmbedding:
             "manga",
             **_CHAR_META,
             data=_PNG,
+            compute_embedding=False,
         )
         char_slug = "hero"
         meta_text = await service._storage.read_text(
@@ -1735,3 +1736,141 @@ class TestCircuitBreakerIntegration:
         service._breaker.record_failure()
         service._breaker.record_failure()
         assert service._breaker.state == "closed"  # would be open if not reset
+
+
+# ===========================================================================
+# TestAutoEmbeddingDefault — compute_embedding defaults to True
+# ===========================================================================
+
+
+class TestAutoEmbeddingDefault:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_character_embeds_by_default(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_character with client but no compute_embedding arg: embedding is written."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+            # compute_embedding NOT specified — should default to True
+        )
+        char_slug = "hero"
+        meta_text = await service._storage.read_text(
+            f"projects/{pid}/characters/{char_slug}/manga_v1/metadata.json"
+        )
+        meta = json.loads(meta_text)
+        assert "embedding" in meta, (
+            "embedding should be present when client is configured"
+        )
+        assert "embedding_model" in meta
+        assert "embedding_dimensions" in meta
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_character_skips_when_no_client(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_character with no client: silently skips embedding, no error."""
+        assert service._genai_client is None
+
+        pid, iid = await _new_issue(service)
+        result = await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+            # compute_embedding NOT specified — defaults to True but no client
+        )
+        assert "uri" in result  # store succeeded
+        char_slug = "hero"
+        meta_text = await service._storage.read_text(
+            f"projects/{pid}/characters/{char_slug}/manga_v1/metadata.json"
+        )
+        meta = json.loads(meta_text)
+        assert "embedding" not in meta
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_asset_embeds_by_default_for_binary_types(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_asset (panel) with client but no compute_embedding arg: embedding is written."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "A hero stands tall"},
+            # compute_embedding NOT specified — should default to True
+        )
+
+        version_dir = f"projects/{pid}/issues/{iid}/panels/panel01_v1"
+        meta_text = await service._storage.read_text(f"{version_dir}/metadata.json")
+        meta = json.loads(meta_text)
+        assert "embedding" in meta, (
+            "embedding should be present when client is configured"
+        )
+        assert "embedding_model" in meta
+        assert "embedding_dimensions" in meta
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_structured_types_skip_embedding_by_default(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_asset for research type: embed_content NOT called even with client configured."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        await service.store_asset(
+            pid,
+            iid,
+            "research",
+            "research",
+            content={"data": "some research"},
+            metadata={"description": "research data"},
+            # compute_embedding NOT specified — defaults to True but structured type skips
+        )
+
+        # embed_content should NOT have been called for structured assets
+        client.aio.models.embed_content.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_character_can_opt_out_with_compute_embedding_false(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_character with client but compute_embedding=False: no embedding written."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+            compute_embedding=False,
+        )
+        char_slug = "hero"
+        meta_text = await service._storage.read_text(
+            f"projects/{pid}/characters/{char_slug}/manga_v1/metadata.json"
+        )
+        meta = json.loads(meta_text)
+        assert "embedding" not in meta
+        assert "embedding_model" not in meta
+        assert "embedding_dimensions" not in meta

@@ -531,7 +531,7 @@ class ComicProjectService:
         metadata: dict[str, Any] | None = None,
         source_path: str | None = None,
         data: bytes | None = None,
-        compute_embedding: bool = False,
+        compute_embedding: bool = True,
     ) -> dict[str, Any]:
         """Store a character design (metadata.json + reference.png).
 
@@ -1198,7 +1198,7 @@ class ComicProjectService:
         data: bytes | None = None,
         content: dict[str, Any] | str | None = None,
         metadata: dict[str, Any] | None = None,
-        compute_embedding: bool = False,
+        compute_embedding: bool = True,
     ) -> dict[str, Any]:
         """Store a versioned asset under an issue.
 

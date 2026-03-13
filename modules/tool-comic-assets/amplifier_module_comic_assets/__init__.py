@@ -472,11 +472,11 @@ class ComicCharacterTool:
                 "compute_embedding": {
                     "type": "boolean",
                     "description": (
-                        "If true, compute a Gemini embedding for the character at store time "
-                        "and persist it in metadata.json. Requires a Gemini client to be "
-                        "configured. Defaults to false."
+                        "Compute a Gemini embedding at store time. Defaults to true. "
+                        "Set to false to skip. Silently skipped when no client is "
+                        "configured or the circuit breaker is open."
                     ),
-                    "default": False,
+                    "default": True,
                 },
                 "name_b": {
                     "type": "string",
@@ -542,7 +542,7 @@ class ComicCharacterTool:
                     metadata=params.get("metadata"),
                     source_path=params.get("source_path"),
                     data=data_bytes,
-                    compute_embedding=bool(params.get("compute_embedding", False)),
+                    compute_embedding=bool(params.get("compute_embedding", True)),
                 )
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:
@@ -810,12 +810,11 @@ class ComicAssetTool:
                 "compute_embedding": {
                     "type": "boolean",
                     "description": (
-                        "If true, compute a Gemini embedding for binary assets (panels, covers, "
-                        "avatars, qa_screenshots) at store time and persist it in metadata.json. "
-                        "Has no effect on structured assets (research, storyboard, final). "
-                        "Requires a Gemini client to be configured. Defaults to false."
+                        "Compute a Gemini embedding at store time. Defaults to true. "
+                        "Set to false to skip. Silently skipped when no client is "
+                        "configured or the circuit breaker is open."
                     ),
-                    "default": False,
+                    "default": True,
                 },
                 "name_b": {
                     "type": "string",
@@ -862,7 +861,7 @@ class ComicAssetTool:
                     data=data_bytes,
                     content=params.get("content"),
                     metadata=params.get("metadata"),
-                    compute_embedding=bool(params.get("compute_embedding", False)),
+                    compute_embedding=bool(params.get("compute_embedding", True)),
                 )
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:

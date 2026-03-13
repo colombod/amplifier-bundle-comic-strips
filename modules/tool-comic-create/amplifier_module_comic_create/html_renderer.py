@@ -212,6 +212,107 @@ def validate_layout_ids(
 
 
 # ---------------------------------------------------------------------------
+# Layout slot counts
+# ---------------------------------------------------------------------------
+
+# Maps every legacy alias (non-primary-name layout) to its panel slot count.
+# Primary layouts (matching ^(\d+)p-) have their count embedded in the name.
+_LEGACY_SLOT_COUNTS: dict[str, int] = {
+    # 1-panel
+    "1x1": 1,
+    "full-bleed": 1,
+    "hero_splash": 1,
+    # 2-panel
+    "1x2": 2,
+    "2-row": 2,
+    "2x1": 2,
+    "dialogue-focus": 2,
+    "manga_dynamic_2": 2,
+    "splash_plus_strip": 2,
+    # 3-panel
+    "3-row": 3,
+    "3x1": 3,
+    "manga_3_panel": 3,
+    "action-sequence": 3,
+    "manga_widescreen": 3,
+    "manga_vertical_triptych": 3,
+    "panoramic": 3,
+    "asymmetric_3": 3,
+    # 4-panel
+    "2x2": 4,
+    "wide-establishing-plus-grid": 4,
+    "crescendo": 4,
+    "spotlight": 4,
+    "cliffhanger": 4,
+    "manga_action": 4,
+    "manga_dramatic": 4,
+    "manga_impact": 4,
+    "split_action": 4,
+    "dramatic_reveal": 4,
+    "corner_focus": 4,
+    # 5-panel
+    "hero_plus_grid": 5,
+    "t_shape": 5,
+    "diagonal_energy": 5,
+    "widescreen_stack": 5,
+    # 6-panel
+    "3x2": 6,
+    "2x3": 6,
+    "classic_6": 6,
+    "conversation": 6,
+    "montage": 6,
+    "manga_split": 6,
+    "l_shape": 6,
+    "bookend": 6,
+    "cinematic_widescreen": 6,
+    # 7+ panel
+    "stacked_wides": 4,
+    "grid_9": 9,
+    "classic_9": 9,
+}
+
+
+def get_layout_slot_count(layout_id: str) -> int:
+    """Return the number of panel slots for the given layout identifier.
+
+    Algorithm:
+    1. Raise ``ValueError`` if *layout_id* is not a known template.
+    2. Parse the count from the primary-name prefix ``^(\\d+)p-``.
+    3. Fall back to ``_LEGACY_SLOT_COUNTS`` for legacy aliases.
+    4. Raise ``ValueError`` if the layout is in ``_GRID_TEMPLATES`` but has
+       no entry in ``_LEGACY_SLOT_COUNTS`` (defensive guard for future gaps).
+
+    Args:
+        layout_id: A layout identifier from ``_GRID_TEMPLATES``.
+
+    Returns:
+        Integer panel slot count (>= 1).
+
+    Raises:
+        ValueError: For unknown layout IDs or layouts missing a slot count.
+    """
+    if layout_id not in _GRID_TEMPLATES:
+        raise ValueError(
+            f"unknown layout ID {layout_id!r}. "
+            "Call get_available_layouts() to see valid options."
+        )
+
+    # Primary layouts encode the count in their name, e.g. "3p-top-wide" → 3
+    m = re.match(r"^(\d+)p-", layout_id)
+    if m:
+        return int(m.group(1))
+
+    # Legacy aliases look up the explicit mapping
+    if layout_id in _LEGACY_SLOT_COUNTS:
+        return _LEGACY_SLOT_COUNTS[layout_id]
+
+    raise ValueError(
+        f"layout {layout_id!r} is registered in _GRID_TEMPLATES but has no "
+        "entry in _LEGACY_SLOT_COUNTS. Add a mapping to fix this."
+    )
+
+
+# ---------------------------------------------------------------------------
 # Default CSS custom properties (theming)
 # ---------------------------------------------------------------------------
 

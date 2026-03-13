@@ -199,3 +199,135 @@ async def test_validate_storyboard_reports_valid_ids_used(service) -> None:
     error = json.loads(result.output)
     assert "2p-split" in error["valid_ids_used"]
     assert "4p-grid" in error["valid_ids_used"]
+
+
+# ---------------------------------------------------------------------------
+# get_layout_slot_count
+# ---------------------------------------------------------------------------
+
+
+class TestGetLayoutSlotCount:
+    """Tests for the get_layout_slot_count() helper."""
+
+    def test_primary_1_panel(self) -> None:
+        """1p-splash must return 1."""
+        from amplifier_module_comic_create.html_renderer import get_layout_slot_count
+
+        assert get_layout_slot_count("1p-splash") == 1
+
+    def test_primary_2_panel(self) -> None:
+        """All 6 primary 2-panel layouts must return 2."""
+        from amplifier_module_comic_create.html_renderer import get_layout_slot_count
+
+        layouts = [
+            "2p-split",
+            "2p-top-heavy",
+            "2p-bottom-heavy",
+            "2p-vertical",
+            "2p-left-heavy",
+            "2p-right-heavy",
+        ]
+        for lid in layouts:
+            assert get_layout_slot_count(lid) == 2, f"{lid!r} should return 2"
+
+    def test_primary_3_panel(self) -> None:
+        """All 9 primary 3-panel layouts must return 3."""
+        from amplifier_module_comic_create.html_renderer import get_layout_slot_count
+
+        layouts = [
+            "3p-rows",
+            "3p-top-wide",
+            "3p-bottom-wide",
+            "3p-columns",
+            "3p-left-dominant",
+            "3p-right-dominant",
+            "3p-hero-top",
+            "3p-hero-bottom",
+            "3p-cinematic",
+        ]
+        for lid in layouts:
+            assert get_layout_slot_count(lid) == 3, f"{lid!r} should return 3"
+
+    def test_primary_4_panel(self) -> None:
+        """All 4 primary 4-panel layouts must return 4."""
+        from amplifier_module_comic_create.html_renderer import get_layout_slot_count
+
+        layouts = [
+            "4p-grid",
+            "4p-top-strip",
+            "4p-bottom-strip",
+            "4p-stacked",
+        ]
+        for lid in layouts:
+            assert get_layout_slot_count(lid) == 4, f"{lid!r} should return 4"
+
+    def test_primary_5_panel(self) -> None:
+        """All 3 primary 5-panel layouts must return 5."""
+        from amplifier_module_comic_create.html_renderer import get_layout_slot_count
+
+        layouts = [
+            "5p-classic",
+            "5p-hero-grid",
+            "5p-stacked",
+        ]
+        for lid in layouts:
+            assert get_layout_slot_count(lid) == 5, f"{lid!r} should return 5"
+
+    def test_primary_6_panel(self) -> None:
+        """All 4 primary 6-panel layouts must return 6."""
+        from amplifier_module_comic_create.html_renderer import get_layout_slot_count
+
+        layouts = [
+            "6p-classic",
+            "6p-wide",
+            "6p-manga",
+            "6p-dense",
+        ]
+        for lid in layouts:
+            assert get_layout_slot_count(lid) == 6, f"{lid!r} should return 6"
+
+    def test_legacy_aliases_spot_check(self) -> None:
+        """Spot-check a selection of legacy aliases across all panel counts."""
+        from amplifier_module_comic_create.html_renderer import get_layout_slot_count
+
+        cases = {
+            "1x1": 1,
+            "full-bleed": 1,
+            "hero_splash": 1,
+            "1x2": 2,
+            "manga_dynamic_2": 2,
+            "3-row": 3,
+            "manga_widescreen": 3,
+            "2x2": 4,
+            "corner_focus": 4,
+            "hero_plus_grid": 5,
+            "t_shape": 5,
+            "3x2": 6,
+            "cinematic_widescreen": 6,
+            "stacked_wides": 4,
+            "grid_9": 9,
+            "classic_9": 9,
+        }
+        for lid, expected in cases.items():
+            assert get_layout_slot_count(lid) == expected, (
+                f"{lid!r} should return {expected}"
+            )
+
+    def test_every_grid_template_has_count(self) -> None:
+        """Every layout in _GRID_TEMPLATES must return a valid integer count >= 1."""
+        from amplifier_module_comic_create.html_renderer import (
+            _GRID_TEMPLATES,
+            get_layout_slot_count,
+        )
+
+        for lid in _GRID_TEMPLATES:
+            count = get_layout_slot_count(lid)
+            assert isinstance(count, int), f"{lid!r} returned non-int: {count!r}"
+            assert count >= 1, f"{lid!r} returned count < 1: {count}"
+
+    def test_unknown_layout_raises_value_error(self) -> None:
+        """An unknown layout ID must raise ValueError with a descriptive message."""
+        from amplifier_module_comic_create.html_renderer import get_layout_slot_count
+
+        with pytest.raises(ValueError, match="unknown"):
+            get_layout_slot_count("naruto_wide_99")

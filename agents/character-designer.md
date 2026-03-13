@@ -191,6 +191,33 @@ Read the `{{character_item}}` fields and apply the **first matching case**:
    - This handles visual evolution across a saga: battle damage in issue 3, power-up in issue 4, etc.
    - The panel-artist receives the correct variant URI for each issue, so each issue's panels show the right version of the character.
 
+### Step 1.5: Semantic Duplicate Check (Before Generation)
+
+Before generating a new character (Cases 2 and 3), perform a semantic duplicate check to avoid creating visually redundant characters. This step uses embedding-based similarity search to find characters that look similar to the one you are about to create.
+
+```
+comic_character(action='search_by_description', query='<visual_traits> <distinctive_features>', project='<project_id>')
+```
+
+Replace `<visual_traits>` and `<distinctive_features>` with the values from `{{character_item}}`.
+
+**Interpreting results:**
+
+- **If similar characters are found (similarity > 0.8):** Reference their URIs in your generation notes or flag them as potential duplicates. Consider whether the new character is truly distinct or whether an existing one could be reused or adapted.
+- **If no similar characters found:** Proceed with generation as planned.
+
+**Fallback when semantic search is unavailable:**
+
+If the result contains `embedding_status: 'skipped_circuit_open'` or `embedding_status: 'skipped_no_client'`, semantic search is not available. Fall back to the standard keyword search:
+
+```
+comic_character(action='search', project='<project_id>')
+```
+
+Note: Semantic duplicate detection is unavailable in this run — using name/style search only.
+
+---
+
 ### Step 2: Generate Character Reference (new or redesign)
 
 This step runs for Case 2 (redesign) and Case 3 (new character). Case 1 (reuse) skips directly to Step 3.
@@ -236,6 +263,20 @@ Use the `char_slug` field from `{{character_item}}` for the `name` parameter (e.
 
 The base character URI is project-scoped: `comic://{{project_id}}/characters/{{char_slug}}` — this is the **v1** (base variant).
 
+### Step 2.6: Embedding Status Check
+
+After `comic_create` stores the character, check the `embedding_status` field in the returned metadata to understand whether the character will be discoverable via semantic search:
+
+| `embedding_status` | Meaning | Action |
+|--------------------|---------|--------|
+| `embedded` | Embedding generated successfully. Semantic search will find this character. | No action needed — character is fully indexed. |
+| `skipped_circuit_open` | Embedding service is degraded (circuit breaker open). Character stored but semantic search is temporarily unavailable. | Note the degraded state. The character will be stored and retrievable by name/style, but `search_by_description` may not return it until the circuit recovers. |
+| `skipped_no_client` | No embedding client configured. Semantic search is not available in this environment. | No action needed — this is a configuration choice, not an error. Fall back to `action='search'` for discovery. |
+
+If `embedding_status` is absent from the response, assume the character is stored but not embedded.
+
+---
+
 ### Step 2.5: Self-Review (Vision Inspection)
 
 Use `comic_create(action='review_asset')` to inspect the generated character reference sheet. Apply the **Character Reference Quality Checklist**:
@@ -265,6 +306,27 @@ If checks 1 (face clearly visible), 2 (no baked-in text), or 4 (reference-sheet 
 Keep the same character identity details when regenerating. Only adjust the constraint/remediation portion of the prompt.
 
 **Maximum 3 attempts total.** If all 3 attempts fail the quality checklist, use the best result and log a warning for `/comic-review` so it can be flagged for manual inspection.
+
+---
+
+### Step 2.7: Cross-Version Consistency
+
+After self-review passes (or reaches the maximum attempt limit), check whether this character exists in other style versions. If the character has previously been designed in a different style, use `comic_character(action='compare')` to verify visual consistency — ensuring core identity markers (silhouette, distinctive features, team markers) are preserved across styles.
+
+```
+comic_character(action='compare', name='{{character_item}}.char_slug', project='{{project_id}}')
+```
+
+**When to run this check:**
+- The character was found in cross-project discovery (Step 0) with versions in other styles
+- The character has `needs_redesign: true` (Case 2) — you are creating a new style variant of an existing character
+- The character's `existing_uri` points to a design from a different project or style
+
+**Interpreting compare results:**
+- **Consistent**: Core visual identity is preserved across versions — the character is recognizable regardless of style. No action needed.
+- **Inconsistent** (e.g., face structure, silhouette, or team markers changed significantly): Note the inconsistency for the `/comic-review` stage. Consider whether the design needs adjustment to better preserve identity across styles.
+
+If `action='compare'` returns no other versions (character is new or only exists in this style), skip this step.
 
 ---
 

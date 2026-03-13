@@ -2689,8 +2689,12 @@ class TestSearchStylesByDescription:
         }
 
         # Store two styles with embeddings
-        await service.store_style(pid, iid, "manga-action", definition, compute_embedding=True)
-        await service.store_style(pid, iid, "superhero", definition, compute_embedding=True)
+        await service.store_style(
+            pid, iid, "manga-action", definition, compute_embedding=True
+        )
+        await service.store_style(
+            pid, iid, "superhero", definition, compute_embedding=True
+        )
 
         result = await service.search_styles_by_description(
             pid, "fast paced bold manga", top_k=5

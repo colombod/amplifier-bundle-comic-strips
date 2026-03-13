@@ -2621,9 +2621,7 @@ class ComicProjectService:
             cand_ver: int = cand["latest_version"]
             cand_uri: str = cand["uri"]
 
-            cand_def_path = (
-                f"{style_base_dir}/{cand_slug}_v{cand_ver}/definition.json"
-            )
+            cand_def_path = f"{style_base_dir}/{cand_slug}_v{cand_ver}/definition.json"
 
             try:
                 cand_def = json.loads(await self._storage.read_text(cand_def_path))

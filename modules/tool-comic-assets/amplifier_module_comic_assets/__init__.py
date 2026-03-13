@@ -1046,9 +1046,7 @@ class ComicAssetTool:
                 )
                 # Strip embedding vectors from results
                 if "results" in result:
-                    result["results"] = [
-                        _strip_embedding(r) for r in result["results"]
-                    ]
+                    result["results"] = [_strip_embedding(r) for r in result["results"]]
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
@@ -1288,9 +1286,7 @@ class ComicStyleTool:
                 )
                 # Strip embedding vectors from results
                 if "results" in result:
-                    result["results"] = [
-                        _strip_embedding(r) for r in result["results"]
-                    ]
+                    result["results"] = [_strip_embedding(r) for r in result["results"]]
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)

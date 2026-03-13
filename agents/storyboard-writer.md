@@ -614,12 +614,12 @@ These rules are NON-NEGOTIABLE. Every storyboard must follow them.
 - **Antagonists** = environmental threats (storms, walls, barriers), NOT characters with portraits
 - **Bundle affiliation** = agents from the same bundle share visual team markers
 - **Character roster vs per-issue lists**: The `character_roster[]` tracks all characters with full metadata and evolution maps. Each issue's `character_list[]` contains only the slugs of characters appearing in that issue.
-- **Cross-project discovery**: Always search for existing characters via `comic_character(action='search', style='{{style}}')` before creating new ones
+- **Cross-project discovery**: Always attempt semantic search first via `comic_character(action='search_by_description')`, then complement with `comic_character(action='search', style='{{style}}')` — see Step 4.
 
 ## Rules
 
 - **MANDATORY: Call `comic_create(action='list_layouts')` BEFORE selecting any page layouts.** Only use layout IDs that appear in the tool response. Do NOT invent layout names — invented names cause the entire pipeline to fail.
-- **MANDATORY: Call `comic_character(action='search', style='{{style}}')` BEFORE building the character roster.** Discover and reuse existing characters across projects.
+- **MANDATORY: Use `comic_character(action='search_by_description')` (semantic, preferred) or `comic_character(action='search', style='{{style}}')` (tag-based fallback) BEFORE building the character roster.** Discover and reuse existing characters across projects.
 - Respect `max_issues` (default 5), `max_pages` (default 5), `max_characters` (default 5-6), and `panels_per_page` (default 3-6) from recipe params
 - ALWAYS include `saga_plan` with `total_issues`, `arc_summary`, and `issues[]` array in the output JSON
 - ALWAYS include top-level `character_roster[]` with per-issue evolution maps

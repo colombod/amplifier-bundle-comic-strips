@@ -2033,3 +2033,162 @@ class TestEmbeddingStatus:
         )
         assert "embedding_status" in result
         assert result["embedding_status"] == "skipped_not_requested"
+
+
+# ===========================================================================
+# TestStyleEmbedding — store_style and embed_style embedding support
+# ===========================================================================
+
+
+class TestStyleEmbedding:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_style_embeds_by_default(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_style with client writes embedding and embedding_model to definition.json."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        definition = {
+            "name": "Manga Action",
+            "description": "Fast paced manga style",
+            "aesthetic_direction": "bold lines",
+            "color_palette": {"primary": "black", "secondary": "white"},
+            "panel_conventions": "N/N/N panel grid",
+        }
+        result = await service.store_style(pid, iid, "manga-action", definition)
+
+        # Verify embedding_status in return dict
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "embedded"
+
+        # Verify definition.json has embedding and embedding_model
+        style_slug = "manga-action"
+        version = result["version"]
+        def_path = f"projects/{pid}/styles/{style_slug}_v{version}/definition.json"
+        def_text = await service._storage.read_text(def_path)
+        def_data = json.loads(def_text)
+        assert "embedding" in def_data
+        assert "embedding_model" in def_data
+        assert def_data["embedding_model"] == "gemini-embedding-2-preview"
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_style_no_client_skips(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_style without client skips embedding; no embedding fields in definition.json."""
+        assert service._genai_client is None
+
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        definition = {
+            "name": "Manga Action",
+            "description": "Fast paced manga style",
+        }
+        result = await service.store_style(pid, iid, "manga-action", definition)
+
+        assert "uri" in result  # store succeeded
+        assert "embedding_status" in result
+        assert result["embedding_status"] != "embedded"
+
+        # No embedding fields in definition.json
+        style_slug = "manga-action"
+        version = result["version"]
+        def_path = f"projects/{pid}/styles/{style_slug}_v{version}/definition.json"
+        def_text = await service._storage.read_text(def_path)
+        def_data = json.loads(def_text)
+        assert "embedding" not in def_data
+        assert "embedding_model" not in def_data
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_embed_style_backfills_existing(
+        self, service: ComicProjectService
+    ) -> None:
+        """embed_style backfills embedding for a stored style that has no embedding."""
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        # Store style without embedding (no client)
+        definition = {
+            "name": "Manga Action",
+            "description": "Fast paced manga style",
+            "aesthetic_direction": "bold lines",
+        }
+        store_result = await service.store_style(pid, iid, "manga-action", definition)
+        version = store_result["version"]
+
+        # Now set up client and backfill
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        result = await service.embed_style(pid, "manga-action")
+
+        assert result["embedded"] is True
+        assert "uri" in result
+        assert result["uri"].startswith("comic://")
+
+        # Verify definition.json now has embedding fields
+        style_slug = "manga-action"
+        def_path = f"projects/{pid}/styles/{style_slug}_v{version}/definition.json"
+        def_text = await service._storage.read_text(def_path)
+        def_data = json.loads(def_text)
+        assert "embedding" in def_data
+        assert def_data["embedding_model"] == "gemini-embedding-2-preview"
+        assert "embedding_dimensions" in def_data
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_embed_style_no_client_returns_no_client(
+        self, service: ComicProjectService
+    ) -> None:
+        """embed_style without client returns {embedded: False, reason: 'no_client'}."""
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        definition = {"name": "Manga Action", "description": "Fast paced manga style"}
+        await service.store_style(pid, iid, "manga-action", definition)
+
+        # No client set (default)
+        assert service._genai_client is None
+
+        result = await service.embed_style(pid, "manga-action")
+
+        assert result["embedded"] is False
+        assert result["reason"] == "no_client"
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_style_embed_is_text_only(
+        self, service: ComicProjectService
+    ) -> None:
+        """Style embeddings are text-only: image_path is None in _compute_embedding call."""
+        captured_args: list[tuple[str | None, str | None]] = []
+
+        async def mock_compute(image_path: str | None, text: str | None) -> list[float]:
+            captured_args.append((image_path, text))
+            return [0.1] * 4
+
+        # Give the service a non-None client so the compute_embedding branch fires.
+        service._genai_client = MagicMock()
+
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        definition = {
+            "name": "Manga Action",
+            "description": "Fast paced manga style",
+            "aesthetic_direction": "bold lines",
+            "color_palette": {"primary": "black"},
+            "panel_conventions": "N/N/N panel grid",
+        }
+        with patch.object(service, "_compute_embedding", side_effect=mock_compute):
+            await service.store_style(pid, iid, "manga-action", definition)
+
+        assert captured_args, "Expected _compute_embedding to be called"
+        image_path, text = captured_args[0]
+        # Must be text-only: no image
+        assert image_path is None
+        # Text must contain definition content
+        assert text is not None

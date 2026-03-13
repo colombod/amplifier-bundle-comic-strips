@@ -1929,6 +1929,7 @@ class ComicProjectService:
         definition: dict[str, Any],
         *,
         metadata: dict[str, Any] | None = None,
+        compute_embedding: bool = True,
     ) -> dict[str, Any]:
         """Store a style guide definition under the project.
 
@@ -1940,6 +1941,7 @@ class ComicProjectService:
         _validate_id(style_slug, "name")
         lock = await self._get_lock(project_id)
 
+        _embedded = False
         async with lock:
             project_manifest = await self._read_project_manifest(project_id)
             now = self._now()
@@ -1972,13 +1974,42 @@ class ComicProjectService:
                 json.dumps(style_obj.to_dict(include_definition=True), indent=2),
             )
 
+            # Optionally compute and persist a text-only embedding.
+            if compute_embedding and self._genai_client is not None:
+                color_palette = definition.get("color_palette", "")
+                emb_text = ". ".join([
+                    str(definition.get("name", name)),
+                    str(definition.get("description", "")),
+                    str(definition.get("aesthetic_direction", "")),
+                    str(color_palette),
+                    str(definition.get("panel_conventions", "")),
+                ])
+                vec = await self._compute_embedding(None, emb_text)
+                if vec is not None:
+                    _embedded = True
+                    def_dict = json.loads(await self._storage.read_text(definition_rel))
+                    def_dict["embedding"] = vec
+                    def_dict["embedding_model"] = "gemini-embedding-2-preview"
+                    def_dict["embedding_dimensions"] = self._embedding_dim
+                    await self._storage.write_text(
+                        definition_rel, json.dumps(def_dict, indent=2)
+                    )
+
             # Register style_slug in project manifest (idempotent).
             if style_slug not in project_manifest.get("styles", []):
                 project_manifest.setdefault("styles", []).append(style_slug)
                 await self._write_project_manifest(project_id, project_manifest)
 
         uri = ComicURI.for_style(project_id, style_slug, version=version)
-        return {"name": name, "version": version, "uri": str(uri)}
+        return {
+            "name": name,
+            "version": version,
+            "uri": str(uri),
+            "embedding_status": self._embedding_status(
+                embedded=_embedded,
+                compute_requested=compute_embedding,
+            ),
+        }
 
     async def get_style(
         self,
@@ -2062,3 +2093,75 @@ class ComicProjectService:
             result.append(style_entry)
 
         return result
+
+    async def embed_style(
+        self,
+        project_id: str,
+        name: str,
+    ) -> dict[str, Any]:
+        """Backfill embedding for an existing style guide.
+
+        Reads the style's definition.json, builds emb_text from definition
+        fields (name, description, aesthetic_direction, color_palette,
+        panel_conventions), calls _compute_embedding (text-only, no image),
+        and writes the embedding back under a project lock.
+
+        Returns:
+            ``{embedded: False, reason: 'no_client'}`` if no embedding client.
+            ``{embedded: False, reason: 'compute_failed'}`` if embedding fails.
+            ``{embedded: True, uri}`` on success.
+        """
+        if self._genai_client is None:
+            return {"embedded": False, "reason": "no_client"}
+
+        _validate_id(project_id, "project_id")
+        style_slug = slugify(name)
+        _validate_id(style_slug, "name")
+
+        # Resolve the latest version.
+        style_base_dir = f"projects/{project_id}/styles"
+        existing_dirs = await self._storage.list_dir(style_base_dir)
+        prefix = f"{style_slug}_v"
+        versions = [
+            int(d[len(prefix) :])
+            for d in existing_dirs
+            if d.startswith(prefix) and d[len(prefix) :].isdigit()
+        ]
+        if not versions:
+            raise FileNotFoundError(
+                f"No versions found for style '{name}' in project '{project_id}'"
+            )
+        version = max(versions)
+
+        definition_rel = f"{style_base_dir}/{style_slug}_v{version}/definition.json"
+        data = json.loads(await self._storage.read_text(definition_rel))
+        definition: dict[str, Any] = data.get("definition", {})
+
+        # Build text-only embedding text from definition fields.
+        color_palette = definition.get("color_palette", "")
+        emb_text = ". ".join([
+            str(definition.get("name", name)),
+            str(definition.get("description", "")),
+            str(definition.get("aesthetic_direction", "")),
+            str(color_palette),
+            str(definition.get("panel_conventions", "")),
+        ])
+
+        # Compute text-only embedding (no image).
+        vec = await self._compute_embedding(None, emb_text)
+        if vec is None:
+            return {"embedded": False, "reason": "compute_failed"}
+
+        # Under lock: re-read definition.json, write embedding fields, re-write.
+        lock = await self._get_lock(project_id)
+        async with lock:
+            def_dict = json.loads(await self._storage.read_text(definition_rel))
+            def_dict["embedding"] = vec
+            def_dict["embedding_model"] = "gemini-embedding-2-preview"
+            def_dict["embedding_dimensions"] = self._embedding_dim
+            await self._storage.write_text(
+                definition_rel, json.dumps(def_dict, indent=2)
+            )
+
+        uri = ComicURI.for_style(project_id, style_slug, version=version)
+        return {"embedded": True, "uri": str(uri)}

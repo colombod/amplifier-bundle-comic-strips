@@ -1047,7 +1047,7 @@ class ComicStyleTool:
                 "action": {
                     "type": "string",
                     "description": "Operation to perform.",
-                    "enum": ["store", "get", "list"],
+                    "enum": ["store", "get", "list", "embed"],
                 },
                 "project": {
                     "type": "string",
@@ -1086,6 +1086,13 @@ class ComicStyleTool:
                         "Project-scoped format: comic://project/styles/name[?v=N]."
                     ),
                 },
+                "compute_embedding": {
+                    "type": "boolean",
+                    "description": (
+                        "Compute a Gemini embedding at store time. Defaults to true. "
+                        "Set to false to skip embedding generation."
+                    ),
+                },
             },
             "required": ["action"],
         }
@@ -1108,6 +1115,7 @@ class ComicStyleTool:
                     params["name"],
                     params["definition"],
                     metadata=params.get("metadata"),
+                    compute_embedding=bool(params.get("compute_embedding", True)),
                 )
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:
@@ -1138,10 +1146,23 @@ class ComicStyleTool:
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
+        async def _embed() -> ToolResult:
+            if m := _require(params, "project", "name"):
+                return _missing_error(m)
+            try:
+                result = await self._service.embed_style(
+                    params["project"],
+                    params["name"],
+                )
+                return _ok(_strip_embedding(result))
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
         dispatch: dict[str, Any] = {
             "store": _store,
             "get": _get,
             "list": _list,
+            "embed": _embed,
         }
 
         handler = dispatch.get(action)  # type: ignore[arg-type]

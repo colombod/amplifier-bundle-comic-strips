@@ -1837,6 +1837,128 @@ class ComicProjectService:
             "results": scored[:top_k],
         }
 
+    async def search_assets_by_description(
+        self,
+        project_id: str,
+        query_text: str,
+        *,
+        top_k: int = 5,
+        asset_type: str | None = None,
+        search_project_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Cross-modal text search: embed a text query and find similar assets.
+
+        Embeds *query_text* using the Gemini embedding client and compares
+        the resulting vector against stored asset embeddings using cosine
+        similarity.
+
+        Returns graceful fallbacks when embeddings are unavailable:
+        - ``{query_text, results: [], embedding_status: 'skipped_no_client', message}``
+          when no embedding client is configured.
+        - ``{query_text, results: [], embedding_status: 'skipped_circuit_open', message}``
+          when the embedding circuit breaker is open.
+
+        On success returns:
+        ``{query_text, embedding_status: 'embedded',
+           results: [{uri, name, asset_type, similarity, issue_id}, ...]}``
+        sorted descending by similarity, limited to top_k results.
+        """
+        # Short-circuit when no client is configured.
+        if self._genai_client is None:
+            return {
+                "query_text": query_text,
+                "results": [],
+                "embedding_status": "skipped_no_client",
+                "message": "No embedding client configured. Results fall back to empty list.",
+            }
+
+        # Embed the query text.
+        query_emb = await self._compute_embedding(None, query_text)
+
+        # If embedding failed (circuit open or other error), return gracefully.
+        if query_emb is None:
+            return {
+                "query_text": query_text,
+                "results": [],
+                "embedding_status": "skipped_circuit_open",
+                "message": (
+                    "Embedding circuit breaker is open or embedding failed. "
+                    "Results fall back to empty list."
+                ),
+            }
+
+        # Determine which project to scan.
+        target_pid = search_project_id if search_project_id is not None else project_id
+
+        # Get all issues in the target project.
+        try:
+            issues = await self.list_issues(target_pid)
+        except FileNotFoundError:
+            issues = []
+
+        scored: list[dict[str, Any]] = []
+        for issue_summary in issues:
+            iid: str = issue_summary["issue_id"]
+            # List assets for this issue, filtered by type if specified.
+            try:
+                candidates = await self.list_assets(
+                    target_pid, iid, asset_type=asset_type
+                )
+            except (FileNotFoundError, ValueError):
+                continue
+
+            for cand in candidates:
+                cand_name: str = cand["name"]
+                cand_type: str = cand["asset_type"]
+                cand_ver: int = cand["latest_version"]
+                cand_uri: str = cand["uri"]
+
+                # Skip structured asset types (no embeddings).
+                if cand_type in _STRUCTURED_TYPES:
+                    continue
+
+                cand_meta_path = (
+                    f"{self._asset_version_dir(target_pid, iid, cand_type, cand_name, cand_ver)}"
+                    f"/metadata.json"
+                )
+
+                try:
+                    cand_meta = json.loads(
+                        await self._storage.read_text(cand_meta_path)
+                    )
+                except (FileNotFoundError, json.JSONDecodeError):
+                    continue
+
+                cand_emb: list[float] | None = cand_meta.get("embedding")
+
+                # Skip candidates without embeddings.
+                if cand_emb is None:
+                    continue
+
+                # Skip candidates with dimension mismatch.
+                if len(cand_emb) != len(query_emb):
+                    continue
+
+                sim = cosine_similarity(query_emb, cand_emb)
+                scored.append(
+                    {
+                        "uri": cand_uri,
+                        "name": cand_name,
+                        "asset_type": cand_type,
+                        "similarity": sim,
+                        "issue_id": iid,
+                    }
+                )
+
+        # Sort descending by similarity and return top_k.
+        scored.sort(key=lambda x: x["similarity"], reverse=True)
+
+        return {
+            "query_text": query_text,
+            "embedding_status": "embedded",
+            "results": scored[:top_k],
+        }
+
     async def embed_asset(
         self,
         project_id: str,

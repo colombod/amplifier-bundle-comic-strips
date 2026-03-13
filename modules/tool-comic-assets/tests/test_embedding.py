@@ -2538,3 +2538,126 @@ class TestSearchCharactersByDescription:
             assert "embedding" not in r, (
                 "Raw embedding vector must not appear in results"
             )
+
+
+# ===========================================================================
+# TestSearchAssetsByDescription — cross-modal text search for assets
+# ===========================================================================
+
+
+class TestSearchAssetsByDescription:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_returns_matching_assets_with_embedded_status(
+        self, service: ComicProjectService
+    ) -> None:
+        """Text query is embedded and matched against stored asset embeddings; returns embedding_status='embedded'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+
+        # Store two panels with embeddings
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "A hero stands tall"},
+            compute_embedding=True,
+        )
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel02",
+            data=_PNG,
+            metadata={"prompt": "A villain looms"},
+            compute_embedding=True,
+        )
+
+        result = await service.search_assets_by_description(
+            pid, "a tall hero with blue eyes", top_k=5
+        )
+
+        assert "query_text" in result
+        assert result["query_text"] == "a tall hero with blue eyes"
+        assert "results" in result
+        assert len(result["results"]) >= 1
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "embedded"
+
+        # Verify result fields
+        for r in result["results"]:
+            assert "uri" in r
+            assert "name" in r
+            assert "asset_type" in r
+            assert "similarity" in r
+            assert "issue_id" in r
+
+        # Verify sorted descending by similarity
+        sims = [r["similarity"] for r in result["results"]]
+        assert sims == sorted(sims, reverse=True)
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_no_client_returns_empty_with_skipped_no_client(
+        self, service: ComicProjectService
+    ) -> None:
+        """No embedding client: returns empty results with embedding_status='skipped_no_client'."""
+        assert service._genai_client is None
+
+        result = await service.search_assets_by_description(
+            "some_project", "a tall hero with blue eyes"
+        )
+
+        assert result["query_text"] == "a tall hero with blue eyes"
+        assert result["results"] == []
+        assert result["embedding_status"] == "skipped_no_client"
+        assert "message" in result
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_asset_type_filter_narrows_results(
+        self, service: ComicProjectService
+    ) -> None:
+        """asset_type filter: stores panel and cover, searches only panel type; cover not in results."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+
+        # Store a panel with embedding
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "A hero stands tall"},
+            compute_embedding=True,
+        )
+        # Store a cover with embedding
+        await service.store_asset(
+            pid,
+            iid,
+            "cover",
+            "cover01",
+            data=_PNG,
+            metadata={"prompt": "Epic cover art"},
+            compute_embedding=True,
+        )
+
+        # Search only for panels
+        result = await service.search_assets_by_description(
+            pid, "a hero standing", top_k=5, asset_type="panel"
+        )
+
+        assert result["embedding_status"] == "embedded"
+        assert "results" in result
+
+        # Verify all results are panels (no covers)
+        result_types = [r["asset_type"] for r in result["results"]]
+        assert "cover" not in result_types
+        # Panel should be in results
+        result_names = [r["name"] for r in result["results"]]
+        assert "panel01" in result_names
+        assert "cover01" not in result_names

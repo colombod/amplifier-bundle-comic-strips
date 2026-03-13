@@ -364,6 +364,7 @@ class ComicCharacterTool:
                         "search",
                         "compare",
                         "search_similar",
+                        "search_by_description",
                         "embed",
                     ],
                 },
@@ -486,6 +487,13 @@ class ComicCharacterTool:
                     "type": "integer",
                     "description": "Maximum number of results to return for search_similar. Defaults to 5.",
                     "default": 5,
+                },
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Text query for search_by_description action. "
+                        "Embedded and compared against stored character embeddings."
+                    ),
                 },
             },
             "required": ["action"],
@@ -659,6 +667,24 @@ class ComicCharacterTool:
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
+        async def _search_by_description() -> ToolResult:
+            if m := _require(params, "project", "query"):
+                return _missing_error(m)
+            try:
+                result = await self._service.search_characters_by_description(
+                    params["project"],
+                    params["query"],
+                    top_k=int(params.get("top_k", 5)),
+                    search_project_id=params.get("search_project_id"),
+                    style=params.get("style"),
+                )
+                # Strip embedding vectors from results
+                if "results" in result:
+                    result["results"] = [_strip_embedding(r) for r in result["results"]]
+                return _ok(result)
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
         dispatch: dict[str, Any] = {
             "store": _store,
             "get": _get,
@@ -668,6 +694,7 @@ class ComicCharacterTool:
             "search": _search,
             "compare": _compare,
             "search_similar": _search_similar,
+            "search_by_description": _search_by_description,
             "embed": _embed,
         }
 

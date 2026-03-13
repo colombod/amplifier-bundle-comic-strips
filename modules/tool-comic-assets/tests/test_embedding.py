@@ -2422,3 +2422,117 @@ class TestStyleStripEmbedding:
         assert len(entries) == 2
         for entry in entries:
             assert "embedding" not in entry
+
+
+# ===========================================================================
+# TestSearchCharactersByDescription — cross-modal text search
+# ===========================================================================
+
+
+class TestSearchCharactersByDescription:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_returns_matching_characters_with_embedded_status(
+        self, service: ComicProjectService
+    ) -> None:
+        """Text query is embedded and matched against stored character embeddings; returns embedding_status='embedded'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+
+        # Store two characters with embeddings
+        await service.store_character(
+            pid, iid, "Alpha", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+        await service.store_character(
+            pid, iid, "Beta", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+
+        result = await service.search_characters_by_description(
+            pid, "a tall hero with blue eyes", top_k=5
+        )
+
+        assert "query_text" in result
+        assert result["query_text"] == "a tall hero with blue eyes"
+        assert "results" in result
+        assert len(result["results"]) >= 1
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "embedded"
+
+        # Verify result fields
+        for r in result["results"]:
+            assert "uri" in r
+            assert "name" in r
+            assert "style" in r
+            assert "similarity" in r
+            assert "originating_project" in r
+
+        # Verify sorted descending by similarity
+        sims = [r["similarity"] for r in result["results"]]
+        assert sims == sorted(sims, reverse=True)
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_circuit_open_returns_empty_with_skipped_circuit_open(
+        self, service: ComicProjectService
+    ) -> None:
+        """Open circuit breaker: returns empty results with embedding_status='skipped_circuit_open'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        # Trip the circuit breaker
+        service._breaker.record_failure()
+        service._breaker.record_failure()
+        service._breaker.record_failure()
+        assert service._breaker.state == "open"
+
+        result = await service.search_characters_by_description(
+            "some_project", "a tall hero with blue eyes"
+        )
+
+        assert result["query_text"] == "a tall hero with blue eyes"
+        assert result["results"] == []
+        assert result["embedding_status"] == "skipped_circuit_open"
+        assert "message" in result
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_no_client_returns_empty_with_skipped_no_client(
+        self, service: ComicProjectService
+    ) -> None:
+        """No embedding client: returns empty results with embedding_status='skipped_no_client'."""
+        assert service._genai_client is None
+
+        result = await service.search_characters_by_description(
+            "some_project", "a tall hero with blue eyes"
+        )
+
+        assert result["query_text"] == "a tall hero with blue eyes"
+        assert result["results"] == []
+        assert result["embedding_status"] == "skipped_no_client"
+        assert "message" in result
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_results_exclude_raw_embedding_vectors(
+        self, service: ComicProjectService
+    ) -> None:
+        """Results must not contain raw embedding vectors."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+
+        await service.store_character(
+            pid, iid, "Alpha", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+        await service.store_character(
+            pid, iid, "Beta", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+
+        result = await service.search_characters_by_description(
+            pid, "a tall hero with blue eyes", top_k=5
+        )
+
+        assert result["embedding_status"] == "embedded"
+        assert len(result["results"]) >= 1
+
+        for r in result["results"]:
+            assert "embedding" not in r, "Raw embedding vector must not appear in results"

@@ -1146,6 +1146,111 @@ class ComicProjectService:
             "results": scored[:top_k],
         }
 
+    async def search_characters_by_description(
+        self,
+        project_id: str,
+        query_text: str,
+        *,
+        top_k: int = 5,
+        search_project_id: str | None = None,
+        style: str | None = None,
+    ) -> dict[str, Any]:
+        """Cross-modal text search: embed a text query and find similar characters.
+
+        Embeds *query_text* using the Gemini embedding client and compares
+        the resulting vector against stored character embeddings using cosine
+        similarity.
+
+        Returns graceful fallbacks when embeddings are unavailable:
+        - ``{query_text, results: [], embedding_status: 'skipped_no_client', message}``
+          when no embedding client is configured.
+        - ``{query_text, results: [], embedding_status: 'skipped_circuit_open', message}``
+          when the embedding circuit breaker is open.
+
+        On success returns:
+        ``{query_text, embedding_status: 'embedded',
+           results: [{uri, name, style, similarity, originating_project}, ...]}``
+        sorted descending by similarity, limited to top_k results.
+        """
+        # Short-circuit when no client is configured.
+        if self._genai_client is None:
+            return {
+                "query_text": query_text,
+                "results": [],
+                "embedding_status": "skipped_no_client",
+                "message": (
+                    "No embedding client configured. "
+                    "Results fall back to empty list."
+                ),
+            }
+
+        # Embed the query text.
+        query_emb = await self._compute_embedding(None, query_text)
+
+        # If embedding failed (circuit open or other error), return gracefully.
+        if query_emb is None:
+            return {
+                "query_text": query_text,
+                "results": [],
+                "embedding_status": "skipped_circuit_open",
+                "message": (
+                    "Embedding circuit breaker is open or embedding failed. "
+                    "Results fall back to empty list."
+                ),
+            }
+
+        # Scan candidates (across all projects, or a specific one if specified).
+        candidates = await self.search_characters(
+            style=style, project_id=search_project_id
+        )
+
+        scored: list[dict[str, Any]] = []
+        for cand in candidates:
+            cand_pid: str = cand["originating_project"]
+            cand_slug: str = cand["char_slug"]
+            cand_style_slug = slugify(cand["style"])
+            cand_ver: int = cand["version"]
+
+            cand_meta_path = (
+                f"projects/{cand_pid}/characters/{cand_slug}"
+                f"/{cand_style_slug}_v{cand_ver}/metadata.json"
+            )
+
+            try:
+                cand_meta = json.loads(await self._storage.read_text(cand_meta_path))
+            except (FileNotFoundError, json.JSONDecodeError):
+                continue
+
+            cand_emb: list[float] | None = cand_meta.get("embedding")
+
+            # Skip candidates without embeddings.
+            if cand_emb is None:
+                continue
+
+            # Skip candidates with dimension mismatch.
+            if len(cand_emb) != len(query_emb):
+                continue
+
+            sim = cosine_similarity(query_emb, cand_emb)
+            scored.append(
+                {
+                    "uri": cand["uri"],
+                    "name": cand["name"],
+                    "style": cand["style"],
+                    "similarity": sim,
+                    "originating_project": cand_pid,
+                }
+            )
+
+        # Sort descending by similarity and return top_k.
+        scored.sort(key=lambda x: x["similarity"], reverse=True)
+
+        return {
+            "query_text": query_text,
+            "embedding_status": "embedded",
+            "results": scored[:top_k],
+        }
+
     async def embed_character(
         self,
         project_id: str,

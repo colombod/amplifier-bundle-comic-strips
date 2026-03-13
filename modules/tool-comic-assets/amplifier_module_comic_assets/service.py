@@ -658,6 +658,8 @@ class ComicProjectService:
             "version": version,
             "storage_path": version_dir,
             "uri": str(uri),
+            # _genai_client is read again here; a concurrent set_embedding_client()
+            # call could change it, but that only affects the diagnostic status field.
             "embedding_status": self._embedding_status(
                 embedded=_embedded,
                 compute_requested=compute_embedding,
@@ -1399,6 +1401,8 @@ class ComicProjectService:
             "storage_path": storage_path,
             "size_bytes": size_bytes,
             "uri": str(uri),
+            # _genai_client is read again here; a concurrent set_embedding_client()
+            # call could change it, but that only affects the diagnostic status field.
             "embedding_status": self._embedding_status(
                 embedded=_embedded,
                 compute_requested=compute_embedding,

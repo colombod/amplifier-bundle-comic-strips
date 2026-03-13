@@ -1977,13 +1977,15 @@ class ComicProjectService:
             # Optionally compute and persist a text-only embedding.
             if compute_embedding and self._genai_client is not None:
                 color_palette = definition.get("color_palette", "")
-                emb_text = ". ".join([
-                    str(definition.get("name", name)),
-                    str(definition.get("description", "")),
-                    str(definition.get("aesthetic_direction", "")),
-                    str(color_palette),
-                    str(definition.get("panel_conventions", "")),
-                ])
+                emb_text = ". ".join(
+                    [
+                        str(definition.get("name", name)),
+                        str(definition.get("description", "")),
+                        str(definition.get("aesthetic_direction", "")),
+                        str(color_palette),
+                        str(definition.get("panel_conventions", "")),
+                    ]
+                )
                 vec = await self._compute_embedding(None, emb_text)
                 if vec is not None:
                     _embedded = True
@@ -2139,13 +2141,15 @@ class ComicProjectService:
 
         # Build text-only embedding text from definition fields.
         color_palette = definition.get("color_palette", "")
-        emb_text = ". ".join([
-            str(definition.get("name", name)),
-            str(definition.get("description", "")),
-            str(definition.get("aesthetic_direction", "")),
-            str(color_palette),
-            str(definition.get("panel_conventions", "")),
-        ])
+        emb_text = ". ".join(
+            [
+                str(definition.get("name", name)),
+                str(definition.get("description", "")),
+                str(definition.get("aesthetic_direction", "")),
+                str(color_palette),
+                str(definition.get("panel_conventions", "")),
+            ]
+        )
 
         # Compute text-only embedding (no image).
         vec = await self._compute_embedding(None, emb_text)
@@ -2231,4 +2235,103 @@ class ComicProjectService:
             "similarity": cosine_similarity(emb_a, emb_b),
             "a_uri": a_uri,
             "b_uri": b_uri,
+        }
+
+    async def search_similar_styles(
+        self,
+        project_id: str,
+        name: str,
+        *,
+        top_k: int = 5,
+        search_project_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Brute-force embedding search for styles similar to a source style.
+
+        Gets the source style and reads its embedding from raw definition.json.
+        Returns ``{query_uri, similarity: None, reason: 'missing_embedding'}``
+        if the source style has no embedding.
+
+        Uses ``list_styles(search_project_id or project_id)`` to scan candidates.
+        Skips self (by URI match). For each candidate, reads its definition.json
+        and skips those without embeddings or with dimension mismatch.
+        Scores with ``cosine_similarity``, sorts descending, and returns top_k results.
+
+        Returns:
+            On success:
+                ``{query_uri, results: [{uri, name, similarity, originating_project}]}``
+            On missing source embedding:
+                ``{query_uri, similarity: None, reason: 'missing_embedding'}``
+        """
+        _validate_id(project_id, "project_id")
+        style_slug = slugify(name)
+
+        # Get source style (resolves latest version).
+        source = await self.get_style(project_id, name)
+        source_uri = source["uri"]
+        source_ver: int = source["version"]
+
+        # Read source embedding from raw definition.json.
+        def_path = (
+            f"projects/{project_id}/styles/{style_slug}_v{source_ver}/definition.json"
+        )
+        source_def = json.loads(await self._storage.read_text(def_path))
+        source_emb: list[float] | None = source_def.get("embedding")
+
+        if source_emb is None:
+            return {
+                "query_uri": source_uri,
+                "similarity": None,
+                "reason": "missing_embedding",
+            }
+
+        # Scan candidates in target project (or source project if not specified).
+        target_pid = search_project_id if search_project_id is not None else project_id
+        candidates = await self.list_styles(target_pid)
+
+        scored: list[dict[str, Any]] = []
+        for cand in candidates:
+            cand_uri = cand["uri"]
+
+            # Skip self.
+            if cand_uri == source_uri:
+                continue
+
+            cand_slug: str = cand["style_slug"]
+            cand_ver: int = cand["latest_version"]
+
+            cand_def_path = (
+                f"projects/{target_pid}/styles/{cand_slug}_v{cand_ver}/definition.json"
+            )
+
+            try:
+                cand_def = json.loads(await self._storage.read_text(cand_def_path))
+            except (FileNotFoundError, json.JSONDecodeError):
+                continue
+
+            cand_emb: list[float] | None = cand_def.get("embedding")
+
+            # Skip candidates without embeddings.
+            if cand_emb is None:
+                continue
+
+            # Skip candidates with dimension mismatch.
+            if len(cand_emb) != len(source_emb):
+                continue
+
+            sim = cosine_similarity(source_emb, cand_emb)
+            scored.append(
+                {
+                    "uri": cand_uri,
+                    "name": cand["name"],
+                    "similarity": sim,
+                    "originating_project": target_pid,
+                }
+            )
+
+        # Sort descending by similarity and return top_k.
+        scored.sort(key=lambda x: x["similarity"], reverse=True)
+
+        return {
+            "query_uri": source_uri,
+            "results": scored[:top_k],
         }

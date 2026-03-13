@@ -1047,7 +1047,14 @@ class ComicStyleTool:
                 "action": {
                     "type": "string",
                     "description": "Operation to perform.",
-                    "enum": ["store", "get", "list", "embed", "compare"],
+                    "enum": [
+                        "store",
+                        "get",
+                        "list",
+                        "embed",
+                        "compare",
+                        "search_similar",
+                    ],
                 },
                 "project": {
                     "type": "string",
@@ -1096,6 +1103,15 @@ class ComicStyleTool:
                 "name_b": {
                     "type": "string",
                     "description": "Second style name for the compare action.",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Maximum number of results to return for search_similar. Defaults to 5.",
+                    "default": 5,
+                },
+                "search_project_id": {
+                    "type": "string",
+                    "description": "Project ID to search in for search_similar. Defaults to the source project.",
                 },
             },
             "required": ["action"],
@@ -1175,12 +1191,27 @@ class ComicStyleTool:
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
+        async def _search_similar() -> ToolResult:
+            if m := _require(params, "project", "name"):
+                return _missing_error(m)
+            try:
+                result = await self._service.search_similar_styles(
+                    params["project"],
+                    params["name"],
+                    top_k=int(params.get("top_k", 5)),
+                    search_project_id=params.get("search_project_id"),
+                )
+                return _ok(result)
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
         dispatch: dict[str, Any] = {
             "store": _store,
             "get": _get,
             "list": _list,
             "embed": _embed,
             "compare": _compare,
+            "search_similar": _search_similar,
         }
 
         handler = dispatch.get(action)  # type: ignore[arg-type]

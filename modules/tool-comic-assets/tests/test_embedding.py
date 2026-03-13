@@ -2160,9 +2160,7 @@ class TestStyleEmbedding:
         assert result["reason"] == "no_client"
 
     @pytest.mark.asyncio(loop_scope="function")
-    async def test_style_embed_is_text_only(
-        self, service: ComicProjectService
-    ) -> None:
+    async def test_style_embed_is_text_only(self, service: ComicProjectService) -> None:
         """Style embeddings are text-only: image_path is None in _compute_embedding call."""
         captured_args: list[tuple[str | None, str | None]] = []
 
@@ -2220,8 +2218,12 @@ class TestCompareStyles:
         }
 
         # Both styles get the same mock embedding (identical vectors → similarity 1.0)
-        await service.store_style(pid, iid, "manga-action", definition, compute_embedding=True)
-        await service.store_style(pid, iid, "superhero", definition, compute_embedding=True)
+        await service.store_style(
+            pid, iid, "manga-action", definition, compute_embedding=True
+        )
+        await service.store_style(
+            pid, iid, "superhero", definition, compute_embedding=True
+        )
 
         result = await service.compare_styles(pid, "manga-action", "superhero")
 
@@ -2244,8 +2246,12 @@ class TestCompareStyles:
 
         definition = {"name": "Manga Action", "description": "Fast paced manga style"}
 
-        await service.store_style(pid, iid, "manga-action", definition, compute_embedding=False)
-        await service.store_style(pid, iid, "superhero", definition, compute_embedding=False)
+        await service.store_style(
+            pid, iid, "manga-action", definition, compute_embedding=False
+        )
+        await service.store_style(
+            pid, iid, "superhero", definition, compute_embedding=False
+        )
 
         result = await service.compare_styles(pid, "manga-action", "superhero")
 
@@ -2253,3 +2259,80 @@ class TestCompareStyles:
         assert result["reason"] == "missing_embedding"
         assert "a_uri" in result
         assert "b_uri" in result
+
+
+# ===========================================================================
+# TestSearchSimilarStyles — search_similar_styles service method
+# ===========================================================================
+
+
+class TestSearchSimilarStyles:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_returns_sorted_results_excluding_source(
+        self, service: ComicProjectService
+    ) -> None:
+        """3 styles with same embedding, top_k=2: returns top 2 sorted descending, source excluded."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        definition = {
+            "name": "Manga Action",
+            "description": "Fast paced manga style",
+            "aesthetic_direction": "bold lines",
+        }
+
+        # All three styles get the same mock embedding → similarity 1.0
+        await service.store_style(
+            pid, iid, "manga-action", definition, compute_embedding=True
+        )
+        await service.store_style(
+            pid, iid, "superhero", definition, compute_embedding=True
+        )
+        await service.store_style(pid, iid, "indie", definition, compute_embedding=True)
+
+        result = await service.search_similar_styles(pid, "manga-action", top_k=2)
+
+        assert "query_uri" in result
+        assert "results" in result
+        assert len(result["results"]) == 2
+
+        # Source should NOT be in results
+        query_uri = result["query_uri"]
+        result_uris = [r["uri"] for r in result["results"]]
+        assert query_uri not in result_uris
+
+        # All results have similarity ~1.0 (same mock embedding)
+        for r in result["results"]:
+            assert r["similarity"] == pytest.approx(1.0)
+            assert "uri" in r
+            assert "name" in r
+            assert "originating_project" in r
+
+        # Verify sorted descending
+        sims = [r["similarity"] for r in result["results"]]
+        assert sims == sorted(sims, reverse=True)
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_missing_source_embedding_returns_error(
+        self, service: ComicProjectService
+    ) -> None:
+        """Returns error dict when source style has no embedding."""
+        # No client configured → no embeddings stored
+        assert service._genai_client is None
+
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        definition = {"name": "Manga Action", "description": "Fast paced manga style"}
+        await service.store_style(
+            pid, iid, "manga-action", definition, compute_embedding=False
+        )
+
+        result = await service.search_similar_styles(pid, "manga-action")
+
+        assert result["similarity"] is None
+        assert result["reason"] == "missing_embedding"
+        assert "query_uri" in result

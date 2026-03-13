@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import math
+import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1622,8 +1623,6 @@ class TestCircuitBreaker:
 
     def test_half_open_after_cooldown(self) -> None:
         """After cooldown expires, open breaker transitions to half_open."""
-        import time
-
         breaker = EmbeddingCircuitBreaker(cooldown_seconds=0.1)
         breaker.record_failure()
         breaker.record_failure()
@@ -1635,8 +1634,6 @@ class TestCircuitBreaker:
 
     def test_successful_probe_closes_breaker(self) -> None:
         """A successful probe in half_open state closes the breaker."""
-        import time
-
         breaker = EmbeddingCircuitBreaker(cooldown_seconds=0.1)
         breaker.record_failure()
         breaker.record_failure()
@@ -1649,8 +1646,6 @@ class TestCircuitBreaker:
 
     def test_failed_probe_reopens_breaker(self) -> None:
         """A failed probe in half_open state re-opens the breaker."""
-        import time
-
         breaker = EmbeddingCircuitBreaker(cooldown_seconds=0.1)
         breaker.record_failure()
         breaker.record_failure()

@@ -1115,6 +1115,66 @@ class TestMountEmbeddingDiscovery:
         service = captured["comic.project-service"]
         assert service._genai_client is None
 
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_mount_survives_stale_service_class_with_google_api_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """mount() must not crash when the service instance lacks set_embedding_client.
+
+        Root cause reproduced: the ToolValidator loads __init__.py via
+        ``spec_from_file_location`` WITHOUT registering the new module in
+        ``sys.modules`` first.  If ``amplifier_module_comic_assets.service`` was
+        previously imported from a stale cache entry (one created before
+        ``set_embedding_client`` was added to ``ComicProjectService``), the
+        relative import ``from .service import ComicProjectService`` in
+        ``__init__.py`` returns that stale class.  With ``GOOGLE_API_KEY`` set,
+        ``mount()`` would then call ``service.set_embedding_client()`` on an
+        instance that doesn't have the method → ``AttributeError``.
+
+        The defensive ``getattr`` guard introduced in mount() must degrade
+        gracefully: log a warning, leave ``_genai_client`` as ``None``, and let
+        the rest of the mount succeed so the ToolValidator reports a pass.
+        """
+        monkeypatch.setenv("GOOGLE_API_KEY", "fake-key-for-regression-test")
+
+        captured: dict[str, Any] = {}
+
+        coordinator = MagicMock()
+        coordinator.mount = AsyncMock()
+        coordinator.register_capability = MagicMock(
+            side_effect=lambda name, svc: captured.update({name: svc})
+        )
+        coordinator.get = MagicMock(return_value=None)
+
+        # Build a "stale" service class that deliberately lacks set_embedding_client,
+        # simulating a ComicProjectService loaded from an older cache entry.
+        class _StaleComicProjectService:
+            """Minimal stand-in for a pre-set_embedding_client ComicProjectService."""
+
+            def __init__(self, storage: Any) -> None:
+                self._storage = storage
+                self._genai_client = None
+
+            # set_embedding_client intentionally absent
+
+        import amplifier_module_comic_assets as _mod
+
+        mock_genai = MagicMock()
+        mock_genai.Client.return_value = MagicMock()
+
+        monkeypatch.setattr(_mod, "ComicProjectService", _StaleComicProjectService)
+        monkeypatch.setattr(_mod, "genai", mock_genai)
+
+        from amplifier_module_comic_assets import mount
+
+        # Must NOT raise AttributeError; must succeed with embeddings disabled.
+        await mount(coordinator)
+
+        service = captured["comic.project-service"]
+        assert service is not None
+        # Embeddings disabled because set_embedding_client was missing — client stays None.
+        assert service._genai_client is None
+
 
 # ===========================================================================
 # TestEmbeddingIsolation — tool layer must strip embedding vectors

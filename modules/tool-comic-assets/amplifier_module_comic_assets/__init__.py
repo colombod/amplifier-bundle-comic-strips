@@ -1379,11 +1379,27 @@ async def mount(coordinator: Any, config: Any = None) -> Any:
             genai_client = genai.Client(api_key=api_key)
 
     if genai_client is not None:
-        service.set_embedding_client(genai_client, embedding_dim=embedding_dim)
-        logger.info(
-            "tool-comic-assets: Gemini embedding client configured (dim=%d)",
-            embedding_dim,
-        )
+        # Guard against sys.modules cache pollution in the ToolValidator: if the
+        # validator loads __init__.py via spec_from_file_location without first
+        # registering the module in sys.modules, the relative import
+        # `from .service import ComicProjectService` can resolve to a stale cached
+        # class (from an older cache entry) that predates set_embedding_client.
+        # In that case we degrade gracefully rather than crashing validation.
+        # The production path is unaffected — ComicProjectService always has the
+        # method when loaded correctly via sys.path.
+        _set_fn = getattr(service, "set_embedding_client", None)
+        if _set_fn is None:
+            logger.warning(
+                "tool-comic-assets: ComicProjectService.set_embedding_client not "
+                "available (stale sys.modules entry during module validation?); "
+                "Gemini embeddings will be disabled for this session"
+            )
+        else:
+            _set_fn(genai_client, embedding_dim=embedding_dim)
+            logger.info(
+                "tool-comic-assets: Gemini embedding client configured (dim=%d)",
+                embedding_dim,
+            )
     else:
         logger.debug("tool-comic-assets: No Gemini client found; embeddings disabled")
     # ─────────────────────────────────────────────────────────────────────────

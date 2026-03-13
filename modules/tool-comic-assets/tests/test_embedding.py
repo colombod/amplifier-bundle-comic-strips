@@ -1655,3 +1655,85 @@ class TestCircuitBreaker:
         breaker.record_failure()
         assert breaker.state == "open"
         assert breaker.allow_request() is False
+
+
+# ===========================================================================
+# TestCircuitBreakerIntegration — breaker wired into ComicProjectService
+# ===========================================================================
+
+
+class TestCircuitBreakerIntegration:
+    def test_service_has_breaker_attribute(
+        self, service: ComicProjectService
+    ) -> None:
+        """ComicProjectService.__init__ creates a _breaker as EmbeddingCircuitBreaker."""
+        assert hasattr(service, "_breaker")
+        assert isinstance(service._breaker, EmbeddingCircuitBreaker)
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_open_breaker_skips_embedding_and_doesnt_call_api(
+        self, service: ComicProjectService
+    ) -> None:
+        """Open breaker causes _compute_embedding to return None without calling the API."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        # Trip the breaker by recording 3 failures
+        service._breaker.record_failure()
+        service._breaker.record_failure()
+        service._breaker.record_failure()
+        assert service._breaker.state == "open"
+
+        # _compute_embedding should return None without calling the API
+        result = await service._compute_embedding(None, "hello world")
+        assert result is None
+        client.aio.models.embed_content.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_api_failures_record_on_breaker_and_trip_it(
+        self, service: ComicProjectService
+    ) -> None:
+        """Three API failures record on the breaker and trip it to 'open' state."""
+        client = MagicMock()
+        client.aio = MagicMock()
+        client.aio.models = MagicMock()
+        client.aio.models.embed_content = AsyncMock(
+            side_effect=RuntimeError("API error")
+        )
+        service.set_embedding_client(client, embedding_dim=4)
+
+        # Breaker starts closed
+        assert service._breaker.state == "closed"
+
+        # 3 consecutive failures should trip the breaker
+        await service._compute_embedding(None, "text 1")
+        assert service._breaker.state == "closed"  # still closed after 1
+
+        await service._compute_embedding(None, "text 2")
+        assert service._breaker.state == "closed"  # still closed after 2
+
+        await service._compute_embedding(None, "text 3")
+        assert service._breaker.state == "open"  # tripped after 3
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_api_success_calls_record_success_keeping_breaker_closed(
+        self, service: ComicProjectService
+    ) -> None:
+        """Successful API call records success, keeping the breaker closed."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        # Record 2 failures to get close to the threshold
+        service._breaker.record_failure()
+        service._breaker.record_failure()
+        assert service._breaker.state == "closed"
+
+        # A successful call should record success (reset failure count)
+        result = await service._compute_embedding(None, "hello world")
+        assert result is not None
+        assert service._breaker.state == "closed"
+        # Breaker failure count should be reset — verify by checking we can
+        # take 2 more failures before tripping (would trip at 3 total if reset)
+        service._breaker.record_failure()
+        service._breaker.record_failure()
+        assert service._breaker.state == "closed"  # would be open if not reset

@@ -177,6 +177,7 @@ class ComicProjectService:
         self._meta_lock = asyncio.Lock()
         self._genai_client: Any | None = None
         self._embedding_dim: int = 1536
+        self._breaker = EmbeddingCircuitBreaker()
 
     def set_embedding_client(
         self, client: Any | None, embedding_dim: int = 1536
@@ -190,10 +191,14 @@ class ComicProjectService:
     ) -> list[float] | None:
         """Compute a multimodal embedding via the Gemini Embedding 2 API.
 
-        Returns None when no client is configured, no input is provided, or
-        the API call raises an exception (error is logged at DEBUG level).
+        Returns None when no client is configured, the circuit breaker is open,
+        no input is provided, or the API call raises an exception (error is
+        logged at DEBUG level).
         """
         if self._genai_client is None:
+            return None
+
+        if not self._breaker.allow_request():
             return None
 
         parts: list[Any] = []
@@ -217,8 +222,10 @@ class ComicProjectService:
                     task_type="SEMANTIC_SIMILARITY",
                 ),
             )
+            self._breaker.record_success()
             return list(result.embeddings[0].values)
         except Exception:
+            self._breaker.record_failure()
             logger.debug("_compute_embedding failed", exc_info=True)
             return None
 

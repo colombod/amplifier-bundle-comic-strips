@@ -6,16 +6,12 @@ build-backend = "hatchling.build"
 name = "amplifier-module-tool-comic-assets"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = []
-
-[project.optional-dependencies]
-embeddings = ["google-genai>=1.0.0"]
+dependencies = ["google-genai>=1.0.0"]
 
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
-    "google-genai>=1.0.0",
 ]
 
 [project.entry-points."amplifier.modules"]

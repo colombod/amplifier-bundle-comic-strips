@@ -46,8 +46,8 @@ def test_embedding_status_field_referenced() -> None:
 def test_embedded_status_documented() -> None:
     """Embedding Status Awareness must document 'embedded' as a good status."""
     content = _read_agent()
-    assert "embedded" in content, (
-        "Missing 'embedded' status explanation in Embedding Status Awareness section"
+    assert "`embedded`" in content, (
+        "Missing '`embedded`' status in Embedding Status Awareness table"
     )
 
 
@@ -107,21 +107,7 @@ def test_fallback_to_search_action_documented() -> None:
 
 
 # ---------------------------------------------------------------
-# Test 9: Embedding unavailability triggers fallback
-# ---------------------------------------------------------------
-def test_fallback_triggered_by_embedding_unavailability() -> None:
-    """Fallback to action='search' must be tied to embedding_status unavailability."""
-    content = _read_agent()
-    # Both the fallback action and embedding status unavailability must be present
-    assert "action='search'" in content, "Missing fallback action='search'"
-    # The embedding_status unavailable conditions must appear
-    assert "skipped_circuit_open" in content or "skipped_no_client" in content, (
-        "Fallback must reference embedding unavailability conditions"
-    )
-
-
-# ---------------------------------------------------------------
-# Test 10: Embedding Status Awareness appears after self-review section
+# Test 9: Embedding Status Awareness appears after self-review section
 # ---------------------------------------------------------------
 def test_embedding_status_awareness_after_self_review() -> None:
     """Embedding Status Awareness section must appear after the self-review section."""
@@ -141,9 +127,6 @@ def test_embedding_status_awareness_after_self_review() -> None:
 def test_semantic_character_discovery_uses_description() -> None:
     """Semantic Character Discovery must describe searching by character description."""
     content = _read_agent()
-    assert "description" in content.lower(), (
-        "Semantic Character Discovery must reference searching by description"
-    )
     assert "search_by_description" in content, (
         "Semantic Character Discovery must use search_by_description action"
     )

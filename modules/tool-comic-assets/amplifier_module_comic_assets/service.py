@@ -35,7 +35,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from google.genai.types import EmbedContentConfig, Part
+# google-genai is an optional dependency.  Types are imported lazily inside
+# _compute_embedding() (after verifying a client exists) so the module loads
+# even when google-genai is not installed.
 
 from .comic_uri import ComicURI
 from .encoding import bytes_to_base64, bytes_to_data_uri, guess_mime
@@ -200,6 +202,10 @@ class ComicProjectService:
 
         if not self._breaker.allow_request():
             return None
+
+        # Lazy import: only reached when a genai client exists, which means
+        # google-genai IS installed.  Keeps the module loadable without it.
+        from google.genai.types import EmbedContentConfig, Part
 
         parts: list[Any] = []
         if image_path is not None:

@@ -5,12 +5,13 @@ from pathlib import Path
 
 
 def test_google_genai_dependency_present():
-    """google-genai>=1.0.0 must be listed in project.dependencies."""
+    """google-genai>=1.0.0 must be listed in optional-dependencies[embeddings]."""
     pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
     with pyproject_path.open("rb") as f:
         config = tomllib.load(f)
 
-    dependencies = config["project"]["dependencies"]
-    assert "google-genai>=1.0.0" in dependencies, (
-        f"Expected 'google-genai>=1.0.0' in dependencies, got: {dependencies}"
+    optional = config["project"].get("optional-dependencies", {})
+    embeddings = optional.get("embeddings", [])
+    assert "google-genai>=1.0.0" in embeddings, (
+        f"Expected 'google-genai>=1.0.0' in optional-dependencies.embeddings, got: {embeddings}"
     )

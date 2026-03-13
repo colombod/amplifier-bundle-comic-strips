@@ -331,3 +331,94 @@ class TestGetLayoutSlotCount:
 
         with pytest.raises(ValueError, match="unknown"):
             get_layout_slot_count("naruto_wide_99")
+
+
+# ---------------------------------------------------------------------------
+# find_best_layout
+# ---------------------------------------------------------------------------
+
+
+class TestFindBestLayout:
+    """Tests for find_best_layout() helper."""
+
+    def test_returns_primary_layout_for_counts_1_to_6(self) -> None:
+        """For each panel count 1-6, find_best_layout must return a matching primary layout."""
+        from amplifier_module_comic_create.html_renderer import find_best_layout
+
+        for count in range(1, 7):
+            result = find_best_layout(count)
+            assert result.startswith(f"{count}p-"), (
+                f"find_best_layout({count}) returned {result!r}, "
+                f"expected a layout starting with '{count}p-'"
+            )
+
+    def test_valid_layout_for_9_panels(self) -> None:
+        """find_best_layout(9) must return a valid entry in _GRID_TEMPLATES."""
+        from amplifier_module_comic_create.html_renderer import (
+            _GRID_TEMPLATES,
+            find_best_layout,
+        )
+
+        result = find_best_layout(9)
+        assert result in _GRID_TEMPLATES, (
+            f"find_best_layout(9) returned {result!r}, which is not in _GRID_TEMPLATES"
+        )
+
+    def test_valid_layout_for_7_panels(self) -> None:
+        """find_best_layout(7) must return a valid entry in _GRID_TEMPLATES."""
+        from amplifier_module_comic_create.html_renderer import (
+            _GRID_TEMPLATES,
+            find_best_layout,
+        )
+
+        result = find_best_layout(7)
+        assert result in _GRID_TEMPLATES, (
+            f"find_best_layout(7) returned {result!r}, which is not in _GRID_TEMPLATES"
+        )
+
+    def test_valid_layout_for_8_panels(self) -> None:
+        """find_best_layout(8) must return a valid entry in _GRID_TEMPLATES."""
+        from amplifier_module_comic_create.html_renderer import (
+            _GRID_TEMPLATES,
+            find_best_layout,
+        )
+
+        result = find_best_layout(8)
+        assert result in _GRID_TEMPLATES, (
+            f"find_best_layout(8) returned {result!r}, which is not in _GRID_TEMPLATES"
+        )
+
+    def test_prefers_simple_layouts(self) -> None:
+        """find_best_layout must prefer simpler layouts via _SIMPLE_LAYOUT_PREFERENCE.
+
+        4 panels -> 4p-grid (grid ranks higher than stacked/others)
+        6 panels -> 6p-classic (classic ranks higher than wide/manga/dense)
+        """
+        from amplifier_module_comic_create.html_renderer import find_best_layout
+
+        assert find_best_layout(4) == "4p-grid", (
+            f"find_best_layout(4) should return '4p-grid', got {find_best_layout(4)!r}"
+        )
+        assert find_best_layout(6) == "6p-classic", (
+            f"find_best_layout(6) should return '6p-classic', got {find_best_layout(6)!r}"
+        )
+
+    def test_single_panel_returns_1p_splash(self) -> None:
+        """find_best_layout(1) must return '1p-splash'."""
+        from amplifier_module_comic_create.html_renderer import find_best_layout
+
+        assert find_best_layout(1) == "1p-splash"
+
+    def test_result_always_in_grid_templates(self) -> None:
+        """For any panel count 1-9, find_best_layout must return a key in _GRID_TEMPLATES."""
+        from amplifier_module_comic_create.html_renderer import (
+            _GRID_TEMPLATES,
+            find_best_layout,
+        )
+
+        for count in range(1, 10):
+            result = find_best_layout(count)
+            assert result in _GRID_TEMPLATES, (
+                f"find_best_layout({count}) returned {result!r}, "
+                "which is not a key in _GRID_TEMPLATES"
+            )

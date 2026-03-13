@@ -22,8 +22,12 @@ dependencies = [
 name = "amplifier-module-tool-comic-assets"
 version = "0.1.0"
 source = { editable = "../tool-comic-assets" }
+dependencies = [
+    { name = "google-genai" },
+]
 
 [package.metadata]
+requires-dist = [{ name = "google-genai", specifier = ">=1.0.0" }]
 
 [package.metadata.requires-dev]
 dev = [

@@ -313,6 +313,83 @@ def get_layout_slot_count(layout_id: str) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Layout preference ordering for tie-breaking in find_best_layout()
+# ---------------------------------------------------------------------------
+
+_SIMPLE_LAYOUT_PREFERENCE: list[str] = [
+    "splash",
+    "split",
+    "grid",
+    "rows",
+    "classic",
+    "stacked",
+    "columns",
+    "top-wide",
+    "bottom-wide",
+    "vertical",
+    "wide",
+    "manga",
+    "dense",
+]
+
+
+def find_best_layout(panel_count: int) -> str:
+    """Return the best primary layout for the given panel count.
+
+    Primary layouts are those matching the ``{count}p-{description}`` naming
+    convention (e.g. ``"4p-grid"``).
+
+    Algorithm:
+    1. Collect all primary layouts with their slot counts from ``_GRID_TEMPLATES``.
+    2. For exact matches (slot count == panel_count), sort by simplicity using
+       the layout suffix against ``_SIMPLE_LAYOUT_PREFERENCE``; lower index wins.
+    3. If no exact match exists, find the smallest primary layout with >= slots.
+    4. If no layout has enough slots, return the largest available primary layout.
+    5. Final fallback: ``'4p-grid'``.
+
+    Args:
+        panel_count: Number of panels to accommodate.
+
+    Returns:
+        A layout identifier that is a key in ``_GRID_TEMPLATES``.
+    """
+    # Collect all primary layouts ({count}p-*) with their slot counts
+    primary_layouts: list[tuple[str, int]] = []
+    for layout_id in _GRID_TEMPLATES:
+        m = re.match(r"^(\d+)p-", layout_id)
+        if m:
+            count = int(m.group(1))
+            primary_layouts.append((layout_id, count))
+
+    if not primary_layouts:
+        return "4p-grid"
+
+    def _suffix_rank(layout_id: str) -> int:
+        """Return the preference rank for a layout's suffix (lower = simpler)."""
+        suffix = re.sub(r"^\d+p-", "", layout_id)
+        try:
+            return _SIMPLE_LAYOUT_PREFERENCE.index(suffix)
+        except ValueError:
+            return len(_SIMPLE_LAYOUT_PREFERENCE)
+
+    # Step 2: exact matches — pick simplest by preference
+    exact = [(lid, c) for lid, c in primary_layouts if c == panel_count]
+    if exact:
+        exact.sort(key=lambda x: _suffix_rank(x[0]))
+        return exact[0][0]
+
+    # Step 3: no exact match — smallest primary layout with >= slots
+    larger = [(lid, c) for lid, c in primary_layouts if c >= panel_count]
+    if larger:
+        larger.sort(key=lambda x: (x[1], _suffix_rank(x[0])))
+        return larger[0][0]
+
+    # Step 4: nothing large enough — return largest available primary layout
+    primary_layouts.sort(key=lambda x: (-x[1], _suffix_rank(x[0])))
+    return primary_layouts[0][0]
+
+
+# ---------------------------------------------------------------------------
 # Default CSS custom properties (theming)
 # ---------------------------------------------------------------------------
 

@@ -1663,9 +1663,7 @@ class TestCircuitBreaker:
 
 
 class TestCircuitBreakerIntegration:
-    def test_service_has_breaker_attribute(
-        self, service: ComicProjectService
-    ) -> None:
+    def test_service_has_breaker_attribute(self, service: ComicProjectService) -> None:
         """ComicProjectService.__init__ creates a _breaker as EmbeddingCircuitBreaker."""
         assert hasattr(service, "_breaker")
         assert isinstance(service._breaker, EmbeddingCircuitBreaker)

@@ -2661,3 +2661,71 @@ class TestSearchAssetsByDescription:
         result_names = [r["name"] for r in result["results"]]
         assert "panel01" in result_names
         assert "cover01" not in result_names
+
+
+# ===========================================================================
+# TestSearchStylesByDescription — cross-modal text search for style guides
+# ===========================================================================
+
+
+class TestSearchStylesByDescription:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_returns_matching_styles_with_embedded_status(
+        self, service: ComicProjectService
+    ) -> None:
+        """Text query is embedded and matched against stored style embeddings; returns embedding_status='embedded'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        definition = {
+            "name": "Manga Action",
+            "description": "Fast paced manga style",
+            "aesthetic_direction": "bold lines",
+            "color_palette": {"primary": "black", "secondary": "white"},
+            "panel_conventions": "N/N/N panel grid",
+        }
+
+        # Store two styles with embeddings
+        await service.store_style(pid, iid, "manga-action", definition, compute_embedding=True)
+        await service.store_style(pid, iid, "superhero", definition, compute_embedding=True)
+
+        result = await service.search_styles_by_description(
+            pid, "fast paced bold manga", top_k=5
+        )
+
+        assert "query_text" in result
+        assert result["query_text"] == "fast paced bold manga"
+        assert "results" in result
+        assert len(result["results"]) >= 1
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "embedded"
+
+        # Verify result fields
+        for r in result["results"]:
+            assert "uri" in r
+            assert "name" in r
+            assert "similarity" in r
+            assert "originating_project" in r
+
+        # Verify sorted descending by similarity
+        sims = [r["similarity"] for r in result["results"]]
+        assert sims == sorted(sims, reverse=True)
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_no_client_returns_empty_with_skipped_no_client(
+        self, service: ComicProjectService
+    ) -> None:
+        """No embedding client: returns empty results with embedding_status='skipped_no_client'."""
+        assert service._genai_client is None
+
+        result = await service.search_styles_by_description(
+            "some_project", "fast paced bold manga"
+        )
+
+        assert result["query_text"] == "fast paced bold manga"
+        assert result["results"] == []
+        assert result["embedding_status"] == "skipped_no_client"
+        assert "message" in result

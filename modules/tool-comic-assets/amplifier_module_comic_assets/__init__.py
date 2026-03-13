@@ -1117,6 +1117,7 @@ class ComicStyleTool:
                         "embed",
                         "compare",
                         "search_similar",
+                        "search_by_description",
                     ],
                 },
                 "project": {
@@ -1169,12 +1170,19 @@ class ComicStyleTool:
                 },
                 "top_k": {
                     "type": "integer",
-                    "description": "Maximum number of results to return for search_similar. Defaults to 5.",
+                    "description": "Maximum number of results to return for search_similar and search_by_description. Defaults to 5.",
                     "default": 5,
                 },
                 "search_project_id": {
                     "type": "string",
-                    "description": "Project ID to search in for search_similar. Defaults to the source project.",
+                    "description": "Project ID to search in for search_similar and search_by_description. Defaults to the source project.",
+                },
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Text query for search_by_description action. "
+                        "Embedded and compared against stored style guide embeddings."
+                    ),
                 },
             },
             "required": ["action"],
@@ -1268,6 +1276,25 @@ class ComicStyleTool:
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
+        async def _search_by_description() -> ToolResult:
+            if m := _require(params, "project", "query"):
+                return _missing_error(m)
+            try:
+                result = await self._service.search_styles_by_description(
+                    params["project"],
+                    params["query"],
+                    top_k=int(params.get("top_k", 5)),
+                    search_project_id=params.get("search_project_id"),
+                )
+                # Strip embedding vectors from results
+                if "results" in result:
+                    result["results"] = [
+                        _strip_embedding(r) for r in result["results"]
+                    ]
+                return _ok(result)
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
         dispatch: dict[str, Any] = {
             "store": _store,
             "get": _get,
@@ -1275,6 +1302,7 @@ class ComicStyleTool:
             "embed": _embed,
             "compare": _compare,
             "search_similar": _search_similar,
+            "search_by_description": _search_by_description,
         }
 
         handler = dispatch.get(action)  # type: ignore[arg-type]

@@ -2559,3 +2559,102 @@ class ComicProjectService:
             "query_uri": source_uri,
             "results": scored[:top_k],
         }
+
+    async def search_styles_by_description(
+        self,
+        project_id: str,
+        query_text: str,
+        *,
+        top_k: int = 5,
+        search_project_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Cross-modal text search: embed a text query and find similar style guides.
+
+        Embeds *query_text* using the Gemini embedding client and compares
+        the resulting vector against stored style embeddings using cosine
+        similarity.
+
+        Returns graceful fallbacks when embeddings are unavailable:
+        - ``{query_text, results: [], embedding_status: 'skipped_no_client', message}``
+          when no embedding client is configured.
+        - ``{query_text, results: [], embedding_status: 'skipped_circuit_open', message}``
+          when the embedding circuit breaker is open.
+
+        On success returns:
+        ``{query_text, embedding_status: 'embedded',
+           results: [{uri, name, similarity, originating_project}, ...]}``
+        sorted descending by similarity, limited to top_k results.
+        """
+        # Short-circuit when no client is configured.
+        if self._genai_client is None:
+            return {
+                "query_text": query_text,
+                "results": [],
+                "embedding_status": "skipped_no_client",
+                "message": "No embedding client configured. Results fall back to empty list.",
+            }
+
+        # Embed the query text.
+        query_emb = await self._compute_embedding(None, query_text)
+
+        # If embedding failed (circuit open or other error), return gracefully.
+        if query_emb is None:
+            return {
+                "query_text": query_text,
+                "results": [],
+                "embedding_status": "skipped_circuit_open",
+                "message": (
+                    "Embedding circuit breaker is open or embedding failed. "
+                    "Results fall back to empty list."
+                ),
+            }
+
+        # Scan candidates in target project (or source project if not specified).
+        target_pid = search_project_id if search_project_id is not None else project_id
+        candidates = await self.list_styles(target_pid)
+
+        style_base_dir = f"projects/{target_pid}/styles"
+
+        scored: list[dict[str, Any]] = []
+        for cand in candidates:
+            cand_slug: str = cand["style_slug"]
+            cand_ver: int = cand["latest_version"]
+            cand_uri: str = cand["uri"]
+
+            cand_def_path = (
+                f"{style_base_dir}/{cand_slug}_v{cand_ver}/definition.json"
+            )
+
+            try:
+                cand_def = json.loads(await self._storage.read_text(cand_def_path))
+            except (FileNotFoundError, json.JSONDecodeError):
+                continue
+
+            cand_emb: list[float] | None = cand_def.get("embedding")
+
+            # Skip candidates without embeddings.
+            if cand_emb is None:
+                continue
+
+            # Skip candidates with dimension mismatch.
+            if len(cand_emb) != len(query_emb):
+                continue
+
+            sim = cosine_similarity(query_emb, cand_emb)
+            scored.append(
+                {
+                    "uri": cand_uri,
+                    "name": cand["name"],
+                    "similarity": sim,
+                    "originating_project": target_pid,
+                }
+            )
+
+        # Sort descending by similarity and return top_k.
+        scored.sort(key=lambda x: x["similarity"], reverse=True)
+
+        return {
+            "query_text": query_text,
+            "embedding_status": "embedded",
+            "results": scored[:top_k],
+        }

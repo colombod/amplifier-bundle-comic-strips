@@ -12,9 +12,15 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import platform
 from dataclasses import dataclass
 from typing import Any
+
+try:
+    import google.genai as genai  # type: ignore[import-untyped]
+except ImportError:  # pragma: no cover — optional dependency
+    genai = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +67,7 @@ __all__ = [
     "COMIC_URI_TYPES",
     "pluralize_type",
     "singularize_type",
+    "_strip_embedding",
 ]
 
 
@@ -119,6 +126,16 @@ def _exc_error(exc: Exception) -> ToolResult:
 
 def _ok(result: Any) -> ToolResult:
     return ToolResult(success=True, output=json.dumps(result))
+
+
+def _strip_embedding(metadata: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of *metadata* with the ``embedding`` vector removed.
+
+    Keeps ``embedding_model`` and ``embedding_dimensions`` so callers can
+    still identify which model produced the embedding without leaking the
+    potentially-large vector into agent context.
+    """
+    return {k: v for k, v in metadata.items() if k != "embedding"}
 
 
 # ── ComicProjectTool ────────────────────────────────────────────────────────
@@ -345,6 +362,9 @@ class ComicCharacterTool:
                         "list_versions",
                         "update_metadata",
                         "search",
+                        "compare",
+                        "search_similar",
+                        "embed",
                     ],
                 },
                 "project": {
@@ -449,6 +469,24 @@ class ComicCharacterTool:
                         "Project-scoped format: comic://project/characters/name[?v=N]."
                     ),
                 },
+                "compute_embedding": {
+                    "type": "boolean",
+                    "description": (
+                        "If true, compute a Gemini embedding for the character at store time "
+                        "and persist it in metadata.json. Requires a Gemini client to be "
+                        "configured. Defaults to false."
+                    ),
+                    "default": False,
+                },
+                "name_b": {
+                    "type": "string",
+                    "description": "Second character name for the compare action.",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Maximum number of results to return for search_similar. Defaults to 5.",
+                    "default": 5,
+                },
             },
             "required": ["action"],
         }
@@ -504,6 +542,7 @@ class ComicCharacterTool:
                     metadata=params.get("metadata"),
                     source_path=params.get("source_path"),
                     data=data_bytes,
+                    compute_embedding=bool(params.get("compute_embedding", False)),
                 )
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:
@@ -529,7 +568,7 @@ class ComicCharacterTool:
                     include=params.get("include", "metadata"),
                     format=fmt,
                 )
-                return _ok(result)
+                return _ok(_strip_embedding(result))
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
@@ -538,7 +577,7 @@ class ComicCharacterTool:
                 return _missing_error(m)
             try:
                 result = await self._service.list_characters(params["project"])
-                return _ok(result)
+                return _ok([_strip_embedding(r) for r in result])
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
@@ -549,7 +588,7 @@ class ComicCharacterTool:
                 result = await self._service.list_character_versions(
                     params["project"], params["name"]
                 )
-                return _ok(result)
+                return _ok([_strip_embedding(r) for r in result])
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
@@ -576,7 +615,49 @@ class ComicCharacterTool:
                 metadata_filter=params.get("metadata_filter"),
                 project_id=params.get("project"),
             )
-            return _ok(result)
+            return _ok([_strip_embedding(r) for r in result])
+
+        async def _compare() -> ToolResult:
+            if m := _require(params, "project", "name", "name_b"):
+                return _missing_error(m)
+            project = params["project"]
+            name = params["name"]
+            name_b = params["name_b"]
+            style = params.get("style")
+            try:
+                result = await self._service.compare_characters(
+                    project, name, name_b, style=style
+                )
+                return _ok(result)
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
+        async def _search_similar() -> ToolResult:
+            if m := _require(params, "project", "name"):
+                return _missing_error(m)
+            try:
+                result = await self._service.search_similar_characters(
+                    params["project"],
+                    params["name"],
+                    top_k=int(params.get("top_k", 5)),
+                    style=params.get("style"),
+                )
+                return _ok(result)
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
+        async def _embed() -> ToolResult:
+            if m := _require(params, "project", "name"):
+                return _missing_error(m)
+            try:
+                result = await self._service.embed_character(
+                    params["project"],
+                    params["name"],
+                    style=params.get("style"),
+                )
+                return _ok(result)
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
 
         dispatch: dict[str, Any] = {
             "store": _store,
@@ -585,6 +666,9 @@ class ComicCharacterTool:
             "list_versions": _list_versions,
             "update_metadata": _update_metadata,
             "search": _search,
+            "compare": _compare,
+            "search_similar": _search_similar,
+            "embed": _embed,
         }
 
         handler = dispatch.get(action)  # type: ignore[arg-type]
@@ -639,6 +723,9 @@ class ComicAssetTool:
                         "list",
                         "update_metadata",
                         "preview",
+                        "compare",
+                        "search_similar",
+                        "embed",
                     ],
                 },
                 "project": {
@@ -720,6 +807,25 @@ class ComicAssetTool:
                         "Issue-scoped format: comic://project/issues/issue-id/collection/name[?v=N]."
                     ),
                 },
+                "compute_embedding": {
+                    "type": "boolean",
+                    "description": (
+                        "If true, compute a Gemini embedding for binary assets (panels, covers, "
+                        "avatars, qa_screenshots) at store time and persist it in metadata.json. "
+                        "Has no effect on structured assets (research, storyboard, final). "
+                        "Requires a Gemini client to be configured. Defaults to false."
+                    ),
+                    "default": False,
+                },
+                "name_b": {
+                    "type": "string",
+                    "description": "Second asset name for compare action.",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Max results for search_similar. Default 5.",
+                    "default": 5,
+                },
             },
             "required": ["action"],
         }
@@ -756,6 +862,7 @@ class ComicAssetTool:
                     data=data_bytes,
                     content=params.get("content"),
                     metadata=params.get("metadata"),
+                    compute_embedding=bool(params.get("compute_embedding", False)),
                 )
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:
@@ -782,7 +889,7 @@ class ComicAssetTool:
                     include=params.get("include", "metadata"),
                     format=fmt,
                 )
-                return _ok(result)
+                return _ok(_strip_embedding(result))
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
@@ -795,7 +902,7 @@ class ComicAssetTool:
                     params["issue"],
                     asset_type=params.get("type"),
                 )
-                return _ok(result)
+                return _ok([_strip_embedding(r) for r in result])
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
@@ -841,12 +948,59 @@ class ComicAssetTool:
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
+        async def _compare() -> ToolResult:
+            if m := _require(params, "project", "issue", "type", "name", "name_b"):
+                return _missing_error(m)
+            try:
+                result = await self._service.compare_assets(
+                    params["project"],
+                    params["issue"],
+                    params["type"],
+                    params["name"],
+                    params["name_b"],
+                )
+                return _ok(result)
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
+        async def _search_similar() -> ToolResult:
+            if m := _require(params, "project", "issue", "type", "name"):
+                return _missing_error(m)
+            try:
+                result = await self._service.search_similar_assets(
+                    params["project"],
+                    params["issue"],
+                    params["type"],
+                    params["name"],
+                    top_k=int(params.get("top_k", 5)),
+                )
+                return _ok(result)
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
+        async def _embed() -> ToolResult:
+            if m := _require(params, "project", "issue", "type", "name"):
+                return _missing_error(m)
+            try:
+                result = await self._service.embed_asset(
+                    params["project"],
+                    params["issue"],
+                    params["type"],
+                    params["name"],
+                )
+                return _ok(result)
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
         dispatch: dict[str, Any] = {
             "store": _store,
             "get": _get,
             "list": _list,
             "update_metadata": _update_metadata,
             "preview": _preview,
+            "compare": _compare,
+            "search_similar": _search_similar,
+            "embed": _embed,
         }
 
         handler = dispatch.get(action)  # type: ignore[arg-type]
@@ -1042,6 +1196,42 @@ async def mount(coordinator: Any, config: Any = None) -> Any:
     cfg = config or {}
     storage = _build_storage(cfg.get("storage", {}))
     service = ComicProjectService(storage=storage)
+
+    # ── Gemini embedding-client discovery ────────────────────────────────────
+    embedding_dim: int = cfg.get("asset_embedding_dimension", 1536)
+    genai_client: Any = None
+
+    # Phase 1 – coordinator providers
+    providers = (
+        coordinator.get("providers")
+        if callable(getattr(coordinator, "get", None))
+        else None
+    )
+    if providers and hasattr(providers, "items"):
+        for name, provider in providers.items():
+            name_lower = name.lower() if isinstance(name, str) else ""
+            if "gemini" in name_lower or "google" in name_lower:
+                client = getattr(provider, "client", None)
+                if client is not None:
+                    genai_client = client
+                    break
+
+    # Phase 2 – environment-variable fallback
+    if genai_client is None and genai is not None:
+        api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+        if api_key:
+            genai_client = genai.Client(api_key=api_key)
+
+    if genai_client is not None:
+        service.set_embedding_client(genai_client, embedding_dim=embedding_dim)
+        logger.info(
+            "tool-comic-assets: Gemini embedding client configured (dim=%d)",
+            embedding_dim,
+        )
+    else:
+        logger.debug("tool-comic-assets: No Gemini client found; embeddings disabled")
+    # ─────────────────────────────────────────────────────────────────────────
+
     tools = [
         ComicProjectTool(service),
         ComicCharacterTool(service),

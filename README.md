@@ -17,6 +17,12 @@ Having **both** providers configured gives the best results -- the model selecto
 picks the optimal model per task and falls back across providers on moderation
 blocks or failures.
 
+**Optional: Gemini for embedding-based similarity** -- When a Gemini provider is
+mounted (or `GOOGLE_API_KEY` / `GEMINI_API_KEY` is set), the bundle automatically
+enables multimodal embedding for character and asset similarity search using
+Gemini Embedding 2. No extra configuration needed -- the feature activates when
+a Gemini key is discoverable and is a silent noop otherwise.
+
 ## Installation
 
 ```bash
@@ -301,6 +307,67 @@ sub-recipes in sequence. Each sub-recipe is independently invocable.
 - **`issue-compose.yaml`** -- Reassembles HTML from existing assets with zero image generation (includes inspect-flagged-panels and review-panel-compositions steps aligned with the primary path)
 - **`issue-retry.yaml`** -- Surgical single-issue re-generation from existing storyboard and characters (includes inspect-flagged-panels and review-panel-compositions steps aligned with the primary path)
 
+## Character & Asset Similarity
+
+When a Gemini provider is available, the bundle computes multimodal embeddings
+for characters and assets using **Gemini Embedding 2**. Each embedding captures
+both the visual appearance (reference image) and semantic description (traits,
+features, personality) in a single vector, enabling fast similarity comparisons
+without expensive LLM vision calls.
+
+### How It Works
+
+Embeddings are computed at storage time when `compute_embedding=True` is passed
+to `comic_character(action='store')` or `comic_asset(action='store')`. The vector
+is persisted in `metadata.json` alongside existing fields. If no Gemini key is
+available, the parameter is silently ignored -- the pipeline works identically
+to before.
+
+Three new tool actions use stored embeddings:
+
+| Action | Tool | What It Does |
+|--------|------|-------------|
+| `compare` | `comic_character`, `comic_asset` | Cosine similarity between two assets. Returns a single float (0-1). |
+| `search_similar` | `comic_character`, `comic_asset` | Find the top-k most similar assets across projects. Returns ranked results with scores. |
+| `embed` | `comic_character`, `comic_asset` | Backfill an embedding for an asset stored without one. |
+
+### Use Cases
+
+**Character reuse across projects** -- `storyboard-writer` calls `search_similar`
+to find visually similar characters from other projects before creating new ones.
+
+**Duplicate prevention** -- `character-designer` calls `compare` after generating
+a new reference sheet. Similarity > 0.95 means near-duplicate; regenerate with
+more variety.
+
+**Drift detection** -- When redesigning a character for a new style, `compare`
+the old and new versions. Similarity < 0.5 means the character drifted too far
+from the original identity.
+
+**Panel variety enforcement** -- `panel-artist` calls `search_similar` against
+other panels in the same issue. Similarity > 0.92 means compositions are too
+repetitive; adjust framing.
+
+### Embedding Isolation
+
+Embedding vectors (~12KB each) never appear in tool results returned to agents.
+The tool layer strips them before any data reaches agent context. Agents see only
+the similarity scores (a single float) or short ranked result lists. The fields
+`embedding_model` and `embedding_dimensions` remain visible so agents know whether
+an asset has been embedded.
+
+### Configuration
+
+```yaml
+tools:
+  - module: tool-comic-assets
+    config:
+      asset_embedding_dimension: 1536  # default; 768 or 3072 also supported
+```
+
+The default of 1536 dimensions offers the best quality-to-storage ratio per
+Google's MTEB benchmarks (score 68.17, half the storage of 3072).
+
 ## Output Format
 
 Each comic is a **single self-contained HTML file**:
@@ -331,7 +398,7 @@ Open in any browser. No server needed.
 
 | Module | Purpose |
 |--------|---------|
-| `tool-comic-assets` | Project/issue/character/style asset management with `comic://` URI protocol |
+| `tool-comic-assets` | Project/issue/character/style asset management with `comic://` URI protocol. Multimodal embedding support via Gemini Embedding 2 for similarity search, duplicate detection, and variety enforcement. |
 | `tool-comic-create` | High-level comic creation: image generation, storage, review, HTML assembly |
 | `tool-comic-image-gen` | Image generation bridge with 12-model capability registry and cross-provider fallback (temporary -- see Issue #90) |
 

@@ -28,10 +28,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from google.genai.types import EmbedContentConfig, Part
 
 from .comic_uri import ComicURI
 from .encoding import bytes_to_base64, bytes_to_data_uri, guess_mime
@@ -44,7 +47,22 @@ from .models import (
 )
 from .storage import StorageProtocol
 
+logger = logging.getLogger(__name__)
+
 _SAFE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Return the cosine similarity between two vectors.
+
+    Returns 0.0 if either vector has zero norm (to avoid division by zero).
+    """
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(x * x for x in b) ** 0.5
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
 
 
 def _validate_id(value: str, label: str) -> str:
@@ -106,6 +124,52 @@ class ComicProjectService:
         self._storage = storage
         self._locks: dict[str, asyncio.Lock] = {}
         self._meta_lock = asyncio.Lock()
+        self._genai_client: Any | None = None
+        self._embedding_dim: int = 1536
+
+    def set_embedding_client(
+        self, client: Any | None, embedding_dim: int = 1536
+    ) -> None:
+        """Set the generative AI client and embedding dimension for embeddings."""
+        self._genai_client = client
+        self._embedding_dim = embedding_dim
+
+    async def _compute_embedding(
+        self, image_path: str | None, text: str | None
+    ) -> list[float] | None:
+        """Compute a multimodal embedding via the Gemini Embedding 2 API.
+
+        Returns None when no client is configured, no input is provided, or
+        the API call raises an exception (error is logged at DEBUG level).
+        """
+        if self._genai_client is None:
+            return None
+
+        parts: list[Any] = []
+        if image_path is not None:
+            image_bytes = await asyncio.to_thread(Path(image_path).read_bytes)
+            parts.append(
+                Part.from_bytes(data=image_bytes, mime_type=guess_mime(image_path))
+            )
+        if text is not None:
+            parts.append(Part.from_text(text=text))
+
+        if not parts:
+            return None
+
+        try:
+            result = await self._genai_client.aio.models.embed_content(
+                model="gemini-embedding-2-preview",
+                contents=parts,
+                config=EmbedContentConfig(
+                    output_dimensionality=self._embedding_dim,
+                    task_type="SEMANTIC_SIMILARITY",
+                ),
+            )
+            return list(result.embeddings[0].values)
+        except Exception:
+            logger.debug("_compute_embedding failed", exc_info=True)
+            return None
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -409,6 +473,7 @@ class ComicProjectService:
         metadata: dict[str, Any] | None = None,
         source_path: str | None = None,
         data: bytes | None = None,
+        compute_embedding: bool = False,
     ) -> dict[str, Any]:
         """Store a character design (metadata.json + reference.png).
 
@@ -476,7 +541,25 @@ class ComicProjectService:
                 metadata_rel, json.dumps(design.to_dict(include_image=True), indent=2)
             )
             if image_bytes is not None:
-                await self._storage.write_bytes(image_rel, image_bytes)
+                await self._storage.write_bytes(image_rel, image_bytes)  # type: ignore[arg-type]
+
+            # Optionally compute and persist a multimodal embedding.
+            if compute_embedding and self._genai_client is not None:
+                emb_text = ". ".join([visual_traits, distinctive_features, personality])
+                abs_image: str | None = (
+                    await self._storage.abs_path(image_rel)
+                    if image_rel is not None
+                    else None
+                )
+                vec = await self._compute_embedding(abs_image, emb_text)
+                if vec is not None:
+                    meta_dict = json.loads(await self._storage.read_text(metadata_rel))
+                    meta_dict["embedding"] = vec
+                    meta_dict["embedding_model"] = "gemini-embedding-2-preview"
+                    meta_dict["embedding_dimensions"] = self._embedding_dim
+                    await self._storage.write_text(
+                        metadata_rel, json.dumps(meta_dict, indent=2)
+                    )
 
             # Register char_slug in project manifest (idempotent).
             if char_slug not in project_manifest.get("characters", []):
@@ -791,6 +874,257 @@ class ComicProjectService:
 
         return results
 
+    async def compare_characters(
+        self,
+        project_id: str,
+        name_a: str,
+        name_b: str,
+        *,
+        style: str | None = None,
+    ) -> dict[str, Any]:
+        """Compare two characters by cosine similarity of their stored embeddings.
+
+        Gets both characters via ``get_character``, then reads the raw
+        ``metadata.json`` for each to extract their ``embedding`` vectors.
+
+        Returns:
+            ``{similarity: float, a_uri: str, b_uri: str}`` on success.
+            ``{similarity: None, reason: 'missing_embedding', a_uri, b_uri}``
+                if either character's metadata lacks an ``embedding`` key.
+            ``{similarity: None, reason: 'dimension_mismatch', a_uri, b_uri}``
+                if the two embedding vectors have different lengths.
+        """
+        _validate_id(project_id, "project_id")
+
+        char_a = await self.get_character(project_id, name_a, style=style)
+        char_b = await self.get_character(project_id, name_b, style=style)
+
+        a_uri = char_a["uri"]
+        b_uri = char_b["uri"]
+
+        # Construct paths to raw metadata.json files using slugified name/style.
+        char_slug_a = slugify(name_a)
+        char_slug_b = slugify(name_b)
+        style_slug_a = slugify(char_a["style"])
+        style_slug_b = slugify(char_b["style"])
+        ver_a: int = char_a["version"]
+        ver_b: int = char_b["version"]
+
+        meta_path_a = (
+            f"projects/{project_id}/characters/{char_slug_a}"
+            f"/{style_slug_a}_v{ver_a}/metadata.json"
+        )
+        meta_path_b = (
+            f"projects/{project_id}/characters/{char_slug_b}"
+            f"/{style_slug_b}_v{ver_b}/metadata.json"
+        )
+
+        meta_a = json.loads(await self._storage.read_text(meta_path_a))
+        meta_b = json.loads(await self._storage.read_text(meta_path_b))
+
+        emb_a: list[float] | None = meta_a.get("embedding")
+        emb_b: list[float] | None = meta_b.get("embedding")
+
+        if emb_a is None or emb_b is None:
+            return {
+                "similarity": None,
+                "reason": "missing_embedding",
+                "a_uri": a_uri,
+                "b_uri": b_uri,
+            }
+
+        if len(emb_a) != len(emb_b):
+            return {
+                "similarity": None,
+                "reason": "dimension_mismatch",
+                "a_uri": a_uri,
+                "b_uri": b_uri,
+            }
+
+        return {
+            "similarity": cosine_similarity(emb_a, emb_b),
+            "a_uri": a_uri,
+            "b_uri": b_uri,
+        }
+
+    async def search_similar_characters(
+        self,
+        project_id: str,
+        name: str,
+        *,
+        top_k: int = 5,
+        style: str | None = None,
+        search_project_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Brute-force embedding search for characters similar to a source character.
+
+        Gets the source character and reads its embedding from raw metadata.json.
+        Returns ``{query_uri, similarity: None, reason: 'missing_embedding'}``
+        if the source character has no embedding.
+
+        Uses ``search_characters(style=style, project_id=search_project_id)`` to
+        scan candidates. Skips self (by URI match). For each candidate, reads its
+        metadata.json and skips those without embeddings or with dimension mismatch.
+        Scores with ``cosine_similarity``, sorts descending, and returns top_k results.
+
+        Returns:
+            On success:
+                ``{query_uri, results: [{uri, name, style, similarity,
+                originating_project}]}``
+            On missing source embedding:
+                ``{query_uri, similarity: None, reason: 'missing_embedding'}``
+        """
+        _validate_id(project_id, "project_id")
+        char_slug = slugify(name)
+
+        # Get source character (resolves latest version for the given style).
+        source = await self.get_character(project_id, name, style=style)
+        source_uri = source["uri"]
+        source_style_slug = slugify(source["style"])
+        source_ver: int = source["version"]
+
+        # Read source embedding from raw metadata.json.
+        meta_path = (
+            f"projects/{project_id}/characters/{char_slug}"
+            f"/{source_style_slug}_v{source_ver}/metadata.json"
+        )
+        source_meta = json.loads(await self._storage.read_text(meta_path))
+        source_emb: list[float] | None = source_meta.get("embedding")
+
+        if source_emb is None:
+            return {
+                "query_uri": source_uri,
+                "similarity": None,
+                "reason": "missing_embedding",
+            }
+
+        # Scan candidates across projects (or a single project if specified).
+        candidates = await self.search_characters(
+            style=style, project_id=search_project_id
+        )
+
+        scored: list[dict[str, Any]] = []
+        for cand in candidates:
+            cand_uri = cand["uri"]
+
+            # Skip self.
+            if cand_uri == source_uri:
+                continue
+
+            cand_pid: str = cand["originating_project"]
+            cand_slug: str = cand["char_slug"]
+            cand_style_slug = slugify(cand["style"])
+            cand_ver: int = cand["version"]
+
+            cand_meta_path = (
+                f"projects/{cand_pid}/characters/{cand_slug}"
+                f"/{cand_style_slug}_v{cand_ver}/metadata.json"
+            )
+
+            try:
+                cand_meta = json.loads(await self._storage.read_text(cand_meta_path))
+            except (FileNotFoundError, json.JSONDecodeError):
+                continue
+
+            cand_emb: list[float] | None = cand_meta.get("embedding")
+
+            # Skip candidates without embeddings.
+            if cand_emb is None:
+                continue
+
+            # Skip candidates with dimension mismatch.
+            if len(cand_emb) != len(source_emb):
+                continue
+
+            sim = cosine_similarity(source_emb, cand_emb)
+            scored.append(
+                {
+                    "uri": cand_uri,
+                    "name": cand["name"],
+                    "style": cand["style"],
+                    "similarity": sim,
+                    "originating_project": cand_pid,
+                }
+            )
+
+        # Sort descending by similarity and return top_k.
+        scored.sort(key=lambda x: x["similarity"], reverse=True)
+
+        return {
+            "query_uri": source_uri,
+            "results": scored[:top_k],
+        }
+
+    async def embed_character(
+        self,
+        project_id: str,
+        name: str,
+        *,
+        style: str | None = None,
+    ) -> dict[str, Any]:
+        """Backfill embedding for an existing character.
+
+        Gets the character's metadata.json, computes a multimodal embedding
+        from its visual_traits, distinctive_features, personality, and image,
+        then writes the embedding back under a project lock.
+
+        Returns:
+            ``{embedded: False, reason: 'no_client'}`` if no embedding client.
+            ``{embedded: False, reason: 'compute_failed'}`` if embedding fails.
+            ``{embedded: True, uri, style}`` on success.
+        """
+        if self._genai_client is None:
+            return {"embedded": False, "reason": "no_client"}
+
+        _validate_id(project_id, "project_id")
+        char_slug = slugify(name)
+        _validate_id(char_slug, "name")
+
+        # Get character to resolve latest version and style.
+        char = await self.get_character(project_id, name, style=style)
+        resolved_style: str = char["style"]
+        style_slug = slugify(resolved_style)
+        ver: int = char["version"]
+
+        # Read metadata.json from the versioned directory.
+        metadata_rel = (
+            f"projects/{project_id}/characters/{char_slug}"
+            f"/{style_slug}_v{ver}/metadata.json"
+        )
+        meta = json.loads(await self._storage.read_text(metadata_rel))
+
+        # Build embedding text from visual traits, distinctive features, personality.
+        emb_text = ". ".join(
+            [
+                meta.get("visual_traits", ""),
+                meta.get("distinctive_features", ""),
+                meta.get("personality", ""),
+            ]
+        )
+
+        # Get absolute image path if available.
+        image_path: str | None = meta.get("image_path")
+        abs_image: str | None = None
+        if image_path is not None:
+            abs_image = await self._storage.abs_path(image_path)
+
+        # Compute embedding.
+        vec = await self._compute_embedding(abs_image, emb_text)
+        if vec is None:
+            return {"embedded": False, "reason": "compute_failed"}
+
+        # Under lock: re-read metadata, write embedding fields, re-write.
+        lock = await self._get_lock(project_id)
+        async with lock:
+            meta = json.loads(await self._storage.read_text(metadata_rel))
+            meta["embedding"] = vec
+            meta["embedding_model"] = "gemini-embedding-2-preview"
+            meta["embedding_dimensions"] = self._embedding_dim
+            await self._storage.write_text(metadata_rel, json.dumps(meta, indent=2))
+
+        uri = ComicURI.for_character(project_id, char_slug, version=ver)
+        return {"embedded": True, "uri": str(uri), "style": resolved_style}
+
     # ------------------------------------------------------------------
     # Assets
     # ------------------------------------------------------------------
@@ -806,6 +1140,7 @@ class ComicProjectService:
         data: bytes | None = None,
         content: dict[str, Any] | str | None = None,
         metadata: dict[str, Any] | None = None,
+        compute_embedding: bool = False,
     ) -> dict[str, Any]:
         """Store a versioned asset under an issue.
 
@@ -816,6 +1151,10 @@ class ComicProjectService:
 
         Version is auto-incremented per (asset_type, name) within the issue,
         tracked in issue.json assets dict.
+
+        compute_embedding only applies to binary asset types (panel, cover, avatar,
+        qa_screenshot); it is silently ignored for structured types (research,
+        storyboard, final).
         """
         if asset_type not in ASSET_TYPES:
             raise ValueError(
@@ -933,6 +1272,23 @@ class ComicProjectService:
                     metadata_rel,
                     json.dumps(asset_obj.to_dict(include_payload=True), indent=2),
                 )
+
+                # Optionally compute and persist a multimodal embedding.
+                if compute_embedding and self._genai_client is not None:
+                    _meta = metadata or {}
+                    emb_text = _meta.get("prompt") or _meta.get("description")
+                    abs_image = await self._storage.abs_path(image_rel)
+                    vec = await self._compute_embedding(abs_image, emb_text)
+                    if vec is not None:
+                        meta_dict = json.loads(
+                            await self._storage.read_text(metadata_rel)
+                        )
+                        meta_dict["embedding"] = vec
+                        meta_dict["embedding_model"] = "gemini-embedding-2-preview"
+                        meta_dict["embedding_dimensions"] = self._embedding_dim
+                        await self._storage.write_text(
+                            metadata_rel, json.dumps(meta_dict, indent=2)
+                        )
 
             # Update issue manifest — record latest version for this asset key.
             issue_manifest.setdefault("assets", {})[asset_key] = {
@@ -1117,6 +1473,230 @@ class ComicProjectService:
             )
 
         return sorted(result, key=lambda x: (x["asset_type"], x["name"]))
+
+    async def compare_assets(
+        self,
+        project_id: str,
+        issue_id: str,
+        asset_type: str,
+        name_a: str,
+        name_b: str,
+    ) -> dict[str, Any]:
+        """Compare two assets by cosine similarity of their stored embeddings.
+
+        Gets both assets via ``get_asset``, then reads the raw
+        ``metadata.json`` for each to extract their ``embedding`` vectors.
+
+        Returns:
+            ``{similarity: float, a_uri: str, b_uri: str}`` on success.
+            ``{similarity: None, reason: 'missing_embedding', a_uri, b_uri}``
+                if either asset's metadata lacks an ``embedding`` key.
+            ``{similarity: None, reason: 'dimension_mismatch', a_uri, b_uri}``
+                if the two embedding vectors have different lengths.
+        """
+        _validate_id(project_id, "project_id")
+        _validate_id(issue_id, "issue_id")
+
+        asset_a = await self.get_asset(project_id, issue_id, asset_type, name_a)
+        asset_b = await self.get_asset(project_id, issue_id, asset_type, name_b)
+
+        a_uri = asset_a["uri"]
+        b_uri = asset_b["uri"]
+
+        ver_a: int = asset_a["version"]
+        ver_b: int = asset_b["version"]
+
+        meta_path_a = f"{self._asset_version_dir(project_id, issue_id, asset_type, name_a, ver_a)}/metadata.json"
+        meta_path_b = f"{self._asset_version_dir(project_id, issue_id, asset_type, name_b, ver_b)}/metadata.json"
+
+        meta_a = json.loads(await self._storage.read_text(meta_path_a))
+        meta_b = json.loads(await self._storage.read_text(meta_path_b))
+
+        emb_a: list[float] | None = meta_a.get("embedding")
+        emb_b: list[float] | None = meta_b.get("embedding")
+
+        if emb_a is None or emb_b is None:
+            return {
+                "similarity": None,
+                "reason": "missing_embedding",
+                "a_uri": a_uri,
+                "b_uri": b_uri,
+            }
+
+        if len(emb_a) != len(emb_b):
+            return {
+                "similarity": None,
+                "reason": "dimension_mismatch",
+                "a_uri": a_uri,
+                "b_uri": b_uri,
+            }
+
+        return {
+            "similarity": cosine_similarity(emb_a, emb_b),
+            "a_uri": a_uri,
+            "b_uri": b_uri,
+        }
+
+    async def search_similar_assets(
+        self,
+        project_id: str,
+        issue_id: str,
+        asset_type: str,
+        name: str,
+        *,
+        top_k: int = 5,
+    ) -> dict[str, Any]:
+        """Brute-force embedding search for assets similar to a source asset.
+
+        Gets the source asset and reads its embedding from raw metadata.json
+        via ``_asset_version_dir``.  Returns an error dict if the source asset
+        has no embedding stored.
+
+        Uses ``list_assets(project_id, issue_id, asset_type=asset_type)`` to
+        scan all assets of the same type within the same issue.  Skips self by
+        name.  For each candidate, reads its metadata.json and skips those
+        without embeddings or with dimension mismatch.  Scores with
+        ``cosine_similarity``, sorts descending, and returns top_k results.
+
+        Returns:
+            On success:
+                ``{query_uri, results: [{uri, name, asset_type, similarity}]}``
+            On missing source embedding:
+                ``{query_uri, similarity: None, reason: 'missing_embedding'}``
+        """
+        _validate_id(project_id, "project_id")
+        _validate_id(issue_id, "issue_id")
+
+        # Get source asset to resolve latest version and URI.
+        source = await self.get_asset(project_id, issue_id, asset_type, name)
+        source_uri: str = source["uri"]
+        source_ver: int = source["version"]
+
+        # Read source embedding from raw metadata.json.
+        meta_path = f"{self._asset_version_dir(project_id, issue_id, asset_type, name, source_ver)}/metadata.json"
+        source_meta = json.loads(await self._storage.read_text(meta_path))
+        source_emb: list[float] | None = source_meta.get("embedding")
+
+        if source_emb is None:
+            return {
+                "query_uri": source_uri,
+                "similarity": None,
+                "reason": "missing_embedding",
+            }
+
+        # Scan all same-type assets within the same issue.
+        candidates = await self.list_assets(project_id, issue_id, asset_type=asset_type)
+
+        scored: list[dict[str, Any]] = []
+        for cand in candidates:
+            cand_name: str = cand["name"]
+
+            # Skip self by name.
+            if cand_name == name:
+                continue
+
+            cand_ver: int = cand["latest_version"]
+            cand_uri: str = cand["uri"]
+
+            cand_meta_path = f"{self._asset_version_dir(project_id, issue_id, asset_type, cand_name, cand_ver)}/metadata.json"
+
+            try:
+                cand_meta = json.loads(await self._storage.read_text(cand_meta_path))
+            except (FileNotFoundError, json.JSONDecodeError):
+                continue
+
+            cand_emb: list[float] | None = cand_meta.get("embedding")
+
+            # Skip candidates without embeddings.
+            if cand_emb is None:
+                continue
+
+            # Skip candidates with dimension mismatch.
+            if len(cand_emb) != len(source_emb):
+                continue
+
+            sim = cosine_similarity(source_emb, cand_emb)
+            scored.append(
+                {
+                    "uri": cand_uri,
+                    "name": cand_name,
+                    "asset_type": asset_type,
+                    "similarity": sim,
+                }
+            )
+
+        # Sort descending by similarity and return top_k.
+        scored.sort(key=lambda x: x["similarity"], reverse=True)
+
+        return {
+            "query_uri": source_uri,
+            "results": scored[:top_k],
+        }
+
+    async def embed_asset(
+        self,
+        project_id: str,
+        issue_id: str,
+        asset_type: str,
+        name: str,
+    ) -> dict[str, Any]:
+        """Backfill embedding for an existing asset.
+
+        Gets the asset's metadata.json, computes a multimodal embedding from
+        its prompt/description text and image, then writes the embedding back
+        under a project lock.
+
+        Returns:
+            ``{embedded: False, reason: 'no_client'}`` if no embedding client.
+            ``{embedded: False, reason: 'structured_asset'}`` if asset_type is
+                a structured type (research, storyboard, final).
+            ``{embedded: True, uri}`` on success.
+        """
+        if self._genai_client is None:
+            return {"embedded": False, "reason": "no_client"}
+
+        if asset_type in _STRUCTURED_TYPES:
+            return {"embedded": False, "reason": "structured_asset"}
+
+        _validate_id(project_id, "project_id")
+        _validate_id(issue_id, "issue_id")
+        _validate_id(name, "name")
+
+        # Get asset to resolve latest version.
+        asset = await self.get_asset(project_id, issue_id, asset_type, name)
+        version: int = asset["version"]
+
+        # Read metadata.json from the versioned directory.
+        version_dir = self._asset_version_dir(project_id, issue_id, asset_type, name, version)
+        metadata_rel = f"{version_dir}/metadata.json"
+        meta = json.loads(await self._storage.read_text(metadata_rel))
+
+        # Get embedding text from metadata prompt or description.
+        asset_metadata: dict[str, Any] = meta.get("metadata", {})
+        emb_text: str | None = asset_metadata.get("prompt") or asset_metadata.get("description")
+
+        # Get image absolute path from storage_path.
+        image_rel: str | None = meta.get("storage_path")
+        abs_image: str | None = None
+        if image_rel is not None:
+            abs_image = await self._storage.abs_path(image_rel)
+
+        # Compute embedding.
+        vec = await self._compute_embedding(abs_image, emb_text)
+        if vec is None:
+            return {"embedded": False, "reason": "compute_failed"}
+
+        # Under lock: re-read metadata, write embedding fields, re-write.
+        lock = await self._get_lock(project_id)
+        async with lock:
+            meta = json.loads(await self._storage.read_text(metadata_rel))
+            meta["embedding"] = vec
+            meta["embedding_model"] = "gemini-embedding-2-preview"
+            meta["embedding_dimensions"] = self._embedding_dim
+            await self._storage.write_text(metadata_rel, json.dumps(meta, indent=2))
+
+        uri = ComicURI.for_asset(project_id, issue_id, asset_type, name, version=version)
+        return {"embedded": True, "uri": str(uri)}
 
     async def batch_encode(
         self,

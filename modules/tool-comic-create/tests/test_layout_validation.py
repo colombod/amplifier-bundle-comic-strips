@@ -422,3 +422,125 @@ class TestFindBestLayout:
                 f"find_best_layout({count}) returned {result!r}, "
                 "which is not a key in _GRID_TEMPLATES"
             )
+
+
+# ---------------------------------------------------------------------------
+# validate_storyboard with panel_list — Phase 2 auto-correction tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_validate_storyboard_corrects_mismatched_layouts(service) -> None:
+    """When panel_list shows page 1 has 2 panels but layout is 3p-top-wide, correct it."""
+    tool = ComicCreateTool(service=service)
+    page_layouts = [{"page": 1, "layout": "3p-top-wide", "panel_count": 3}]
+    panel_list = [
+        {"page": 1, "scene": "Opening"},
+        {"page": 1, "scene": "Action"},
+    ]
+    result = await tool.execute(
+        {
+            "action": "validate_storyboard",
+            "page_layouts": page_layouts,
+            "panel_list": panel_list,
+        }
+    )
+    assert result.success is True
+    data = json.loads(result.output)
+    assert data["validation"] == "CORRECTED"
+    assert len(data["corrections"]) == 1
+    correction = data["corrections"][0]
+    assert correction["page"] == 1
+    assert correction["original_layout"] == "3p-top-wide"
+    assert correction["actual_panels"] == 2
+    assert correction["corrected_layout"].startswith("2p-")
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_validate_storyboard_no_correction_when_counts_match(service) -> None:
+    """When panel_list matches page layouts, validation is PASSED with empty corrections."""
+    tool = ComicCreateTool(service=service)
+    page_layouts = [{"page": 1, "layout": "3p-top-wide", "panel_count": 3}]
+    panel_list = [
+        {"page": 1, "scene": "Opening"},
+        {"page": 1, "scene": "Action"},
+        {"page": 1, "scene": "Cliffhanger"},
+    ]
+    result = await tool.execute(
+        {
+            "action": "validate_storyboard",
+            "page_layouts": page_layouts,
+            "panel_list": panel_list,
+        }
+    )
+    assert result.success is True
+    data = json.loads(result.output)
+    assert data["validation"] == "PASSED"
+    assert data["corrections"] == []
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_validate_storyboard_returns_corrected_page_layouts(service) -> None:
+    """Returns corrected_page_layouts with fixed layout and panel_count for mismatched pages."""
+    tool = ComicCreateTool(service=service)
+    page_layouts = [
+        {"page": 1, "layout": "3p-top-wide", "panel_count": 3},
+        {"page": 2, "layout": "4p-grid", "panel_count": 4},
+    ]
+    # Page 1 has 2 panels (mismatch with 3p-top-wide), page 2 has 4 panels (matches 4p-grid)
+    panel_list = [
+        {"page": 1, "scene": "Opening"},
+        {"page": 1, "scene": "Action"},
+        {"page": 2, "scene": "Scene 1"},
+        {"page": 2, "scene": "Scene 2"},
+        {"page": 2, "scene": "Scene 3"},
+        {"page": 2, "scene": "Scene 4"},
+    ]
+    result = await tool.execute(
+        {
+            "action": "validate_storyboard",
+            "page_layouts": page_layouts,
+            "panel_list": panel_list,
+        }
+    )
+    assert result.success is True
+    data = json.loads(result.output)
+    assert data["validation"] == "CORRECTED"
+    corrected = data["corrected_page_layouts"]
+    assert len(corrected) == 2
+    # Page 1 corrected
+    page1 = corrected[0]
+    assert page1["layout"].startswith("2p-")
+    assert page1["panel_count"] == 2
+    # Page 2 unchanged
+    page2 = corrected[1]
+    assert page2["layout"] == "4p-grid"
+    assert page2["panel_count"] == 4
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_validate_storyboard_backward_compat_without_panel_list(service) -> None:
+    """Without panel_list, validate_storyboard behaves as before (Phase 1 only)."""
+    tool = ComicCreateTool(service=service)
+    # Original behavior: valid layouts → PASSED
+    result = await tool.execute(
+        {
+            "action": "validate_storyboard",
+            "page_layouts": [{"page": 1, "layout": "3p-top-wide", "panel_count": 3}],
+        }
+    )
+    assert result.success is True
+    data = json.loads(result.output)
+    assert data["validation"] == "PASSED"
+    # Original behavior: invalid layout → FAILED
+    result2 = await tool.execute(
+        {
+            "action": "validate_storyboard",
+            "page_layouts": [
+                {"page": 1, "layout": "not_a_real_layout", "panel_count": 3}
+            ],
+        }
+    )
+    assert result2.success is False
+    data2 = json.loads(result2.output)
+    assert data2["validation"] == "FAILED"

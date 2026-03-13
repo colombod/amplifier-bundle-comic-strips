@@ -14,6 +14,7 @@ import pytest
 from amplifier_module_comic_assets import (
     ComicAssetTool,
     ComicCharacterTool,
+    ComicStyleTool,
     _strip_embedding,
 )
 from amplifier_module_comic_assets.service import (
@@ -2336,3 +2337,88 @@ class TestSearchSimilarStyles:
         assert result["similarity"] is None
         assert result["reason"] == "missing_embedding"
         assert "query_uri" in result
+
+
+# ===========================================================================
+# TestStyleStripEmbedding — tool layer must strip embedding vectors from style responses
+# ===========================================================================
+
+
+class TestStyleStripEmbedding:
+    """Verify that get/list style tool actions strip the embedding vector.
+
+    Styles can carry an ``embedding`` field in their stored definition.
+    That vector is large and must not be returned to agent context.
+    ``embedding_model`` and ``embedding_dimensions`` *should* be preserved so
+    callers can still identify the model used.
+    """
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_get_style_strips_embedding(
+        self, service: ComicProjectService
+    ) -> None:
+        """ComicStyleTool get with include='full': 'embedding' absent; embedding_model/dimensions present."""
+        raw_style = {
+            "name": "manga-action",
+            "project_id": "test_proj",
+            "version": 1,
+            "uri": "comic://test_proj/styles/manga-action?v=1",
+            "definition": {
+                "name": "Manga Action",
+                "description": "Fast paced manga style",
+            },
+            "embedding": [0.1, 0.2, 0.3, 0.4],
+            "embedding_model": "gemini-embedding-2-preview",
+            "embedding_dimensions": 4,
+        }
+        service.get_style = AsyncMock(return_value=raw_style)  # type: ignore[method-assign]
+
+        tool = ComicStyleTool(service)
+        result = await tool.execute(
+            {
+                "action": "get",
+                "project": "test_proj",
+                "name": "manga-action",
+                "include": "full",
+            }
+        )
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert "embedding" not in data
+        assert "embedding_model" in data
+        assert "embedding_dimensions" in data
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_list_styles_strips_embedding(
+        self, service: ComicProjectService
+    ) -> None:
+        """ComicStyleTool list: no item in the list contains an 'embedding' key."""
+        raw_entries = [
+            {
+                "name": "manga-action",
+                "version": 1,
+                "uri": "comic://proj/styles/manga-action?v=1",
+                "embedding": [0.1, 0.2, 0.3, 0.4],
+                "embedding_model": "gemini-embedding-2-preview",
+                "embedding_dimensions": 4,
+            },
+            {
+                "name": "superhero",
+                "version": 1,
+                "uri": "comic://proj/styles/superhero?v=1",
+                "embedding": [0.5, 0.6, 0.7, 0.8],
+                "embedding_model": "gemini-embedding-2-preview",
+                "embedding_dimensions": 4,
+            },
+        ]
+        service.list_styles = AsyncMock(return_value=raw_entries)  # type: ignore[method-assign]
+
+        tool = ComicStyleTool(service)
+        result = await tool.execute({"action": "list", "project": "test_proj"})
+
+        assert result.success is True
+        entries = json.loads(result.output)
+        assert len(entries) == 2
+        for entry in entries:
+            assert "embedding" not in entry

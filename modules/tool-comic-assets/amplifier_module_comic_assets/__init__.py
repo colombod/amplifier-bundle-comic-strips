@@ -1153,7 +1153,7 @@ class ComicStyleTool:
                     version=version,
                     include=params.get("include", "metadata"),
                 )
-                return _ok(result)
+                return _ok(_strip_embedding(result))
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
@@ -1162,7 +1162,7 @@ class ComicStyleTool:
                 return _missing_error(m)
             try:
                 result = await self._service.list_styles(params["project"])
-                return _ok(result)
+                return _ok([_strip_embedding(r) for r in result])
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 

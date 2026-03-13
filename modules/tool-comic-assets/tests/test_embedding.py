@@ -1874,3 +1874,162 @@ class TestAutoEmbeddingDefault:
         assert "embedding" not in meta
         assert "embedding_model" not in meta
         assert "embedding_dimensions" not in meta
+
+
+# ===========================================================================
+# TestEmbeddingStatus — embedding_status field in store_character / store_asset
+# ===========================================================================
+
+
+class TestEmbeddingStatus:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_character_returns_embedded_with_client(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_character with client returns embedding_status='embedded'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        result = await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+            compute_embedding=True,
+        )
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "embedded"
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_character_returns_skipped_no_client(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_character without client returns embedding_status='skipped_no_client'."""
+        assert service._genai_client is None
+
+        pid, iid = await _new_issue(service)
+        result = await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+            compute_embedding=True,
+        )
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "skipped_no_client"
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_character_returns_skipped_circuit_open(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_character with tripped breaker returns embedding_status='skipped_circuit_open'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        # Trip the breaker
+        service._breaker.record_failure()
+        service._breaker.record_failure()
+        service._breaker.record_failure()
+        assert service._breaker.state == "open"
+
+        pid, iid = await _new_issue(service)
+        result = await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+            compute_embedding=True,
+        )
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "skipped_circuit_open"
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_asset_structured_returns_skipped_not_applicable(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_asset for structured type returns embedding_status='skipped_not_applicable'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        result = await service.store_asset(
+            pid,
+            iid,
+            "research",
+            "research",
+            content={"data": "some research"},
+            compute_embedding=True,
+        )
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "skipped_not_applicable"
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_asset_panel_returns_embedded(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_asset panel with client returns embedding_status='embedded'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        result = await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "A hero stands tall"},
+            compute_embedding=True,
+        )
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "embedded"
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_character_opt_out_returns_skipped_not_requested(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_character with compute_embedding=False returns status != 'embedded'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        result = await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+            compute_embedding=False,
+        )
+        assert "embedding_status" in result
+        assert result["embedding_status"] != "embedded"
+        assert result["embedding_status"] == "skipped_not_requested"
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_asset_panel_opt_out_returns_skipped_not_requested(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_asset panel with compute_embedding=False returns embedding_status='skipped_not_requested'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        result = await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "A hero stands tall"},
+            compute_embedding=False,
+        )
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "skipped_not_requested"

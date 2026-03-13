@@ -244,6 +244,31 @@ class ComicProjectService:
         """Return current UTC time as ISO 8601 string."""
         return datetime.now(timezone.utc).isoformat()
 
+    def _embedding_status(
+        self,
+        embedded: bool,
+        compute_requested: bool = True,
+        is_structured: bool = False,
+    ) -> str:
+        """Return a string describing why an embedding was or wasn't computed.
+
+        Returns one of:
+        - 'skipped_not_applicable': asset type is structured (research/storyboard/final)
+        - 'embedded': embedding was successfully computed and stored
+        - 'skipped_not_requested': compute_embedding=False was passed by caller
+        - 'skipped_no_client': no genai client is configured
+        - 'skipped_circuit_open': circuit breaker is open (too many recent failures)
+        """
+        if is_structured:
+            return "skipped_not_applicable"
+        if embedded:
+            return "embedded"
+        if not compute_requested:
+            return "skipped_not_requested"
+        if self._genai_client is None:
+            return "skipped_no_client"
+        return "skipped_circuit_open"
+
     async def _read_workspace(self) -> dict[str, Any]:
         """Read workspace.json; return empty structure if missing."""
         try:
@@ -602,6 +627,7 @@ class ComicProjectService:
                 await self._storage.write_bytes(image_rel, image_bytes)  # type: ignore[arg-type]
 
             # Optionally compute and persist a multimodal embedding.
+            _embedded = False
             if compute_embedding and self._genai_client is not None:
                 emb_text = ". ".join([visual_traits, distinctive_features, personality])
                 abs_image: str | None = (
@@ -611,6 +637,7 @@ class ComicProjectService:
                 )
                 vec = await self._compute_embedding(abs_image, emb_text)
                 if vec is not None:
+                    _embedded = True
                     meta_dict = json.loads(await self._storage.read_text(metadata_rel))
                     meta_dict["embedding"] = vec
                     meta_dict["embedding_model"] = "gemini-embedding-2-preview"
@@ -631,6 +658,10 @@ class ComicProjectService:
             "version": version,
             "storage_path": version_dir,
             "uri": str(uri),
+            "embedding_status": self._embedding_status(
+                embedded=_embedded,
+                compute_requested=compute_embedding,
+            ),
         }
 
     async def get_character(
@@ -1240,6 +1271,9 @@ class ComicProjectService:
         elif data is not None:
             raw_bytes = data
 
+        _embedded = False
+        _is_structured = asset_type in _STRUCTURED_TYPES
+
         lock = await self._get_lock(project_id)
         async with lock:
             issue_manifest = await self._read_issue_manifest(project_id, issue_id)
@@ -1338,6 +1372,7 @@ class ComicProjectService:
                     abs_image = await self._storage.abs_path(image_rel)
                     vec = await self._compute_embedding(abs_image, emb_text)
                     if vec is not None:
+                        _embedded = True
                         meta_dict = json.loads(
                             await self._storage.read_text(metadata_rel)
                         )
@@ -1364,6 +1399,11 @@ class ComicProjectService:
             "storage_path": storage_path,
             "size_bytes": size_bytes,
             "uri": str(uri),
+            "embedding_status": self._embedding_status(
+                embedded=_embedded,
+                compute_requested=compute_embedding,
+                is_structured=_is_structured,
+            ),
         }
 
     async def get_asset(

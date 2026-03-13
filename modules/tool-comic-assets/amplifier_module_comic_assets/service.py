@@ -2165,3 +2165,70 @@ class ComicProjectService:
 
         uri = ComicURI.for_style(project_id, style_slug, version=version)
         return {"embedded": True, "uri": str(uri)}
+
+    async def compare_styles(
+        self,
+        project_id: str,
+        name_a: str,
+        name_b: str,
+    ) -> dict[str, Any]:
+        """Compare two style guides by cosine similarity of their stored embeddings.
+
+        Gets both styles via ``get_style``, then reads the raw
+        ``definition.json`` for each to extract their ``embedding`` vectors.
+
+        Returns:
+            ``{similarity: float, a_uri: str, b_uri: str}`` on success.
+            ``{similarity: None, reason: 'missing_embedding', a_uri, b_uri}``
+                if either style's definition lacks an ``embedding`` key.
+            ``{similarity: None, reason: 'dimension_mismatch', a_uri, b_uri}``
+                if the two embedding vectors have different lengths.
+        """
+        _validate_id(project_id, "project_id")
+
+        style_a = await self.get_style(project_id, name_a)
+        style_b = await self.get_style(project_id, name_b)
+
+        a_uri = style_a["uri"]
+        b_uri = style_b["uri"]
+
+        # Construct paths to raw definition.json files using slugified names and versions.
+        style_slug_a = slugify(name_a)
+        style_slug_b = slugify(name_b)
+        ver_a: int = style_a["version"]
+        ver_b: int = style_b["version"]
+
+        def_path_a = (
+            f"projects/{project_id}/styles/{style_slug_a}_v{ver_a}/definition.json"
+        )
+        def_path_b = (
+            f"projects/{project_id}/styles/{style_slug_b}_v{ver_b}/definition.json"
+        )
+
+        def_a = json.loads(await self._storage.read_text(def_path_a))
+        def_b = json.loads(await self._storage.read_text(def_path_b))
+
+        emb_a: list[float] | None = def_a.get("embedding")
+        emb_b: list[float] | None = def_b.get("embedding")
+
+        if emb_a is None or emb_b is None:
+            return {
+                "similarity": None,
+                "reason": "missing_embedding",
+                "a_uri": a_uri,
+                "b_uri": b_uri,
+            }
+
+        if len(emb_a) != len(emb_b):
+            return {
+                "similarity": None,
+                "reason": "dimension_mismatch",
+                "a_uri": a_uri,
+                "b_uri": b_uri,
+            }
+
+        return {
+            "similarity": cosine_similarity(emb_a, emb_b),
+            "a_uri": a_uri,
+            "b_uri": b_uri,
+        }

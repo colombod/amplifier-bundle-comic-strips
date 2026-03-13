@@ -2192,3 +2192,64 @@ class TestStyleEmbedding:
         assert image_path is None
         # Text must contain definition content
         assert text is not None
+
+
+# ===========================================================================
+# TestCompareStyles — compare_styles service method
+# ===========================================================================
+
+
+class TestCompareStyles:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_compare_identical_styles_returns_similarity(
+        self, service: ComicProjectService
+    ) -> None:
+        """Two styles with the same embedding vector: similarity ~1.0, a_uri and b_uri present."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        definition = {
+            "name": "Manga Action",
+            "description": "Fast paced manga style",
+            "aesthetic_direction": "bold lines",
+            "color_palette": {"primary": "black", "secondary": "white"},
+            "panel_conventions": "N/N/N panel grid",
+        }
+
+        # Both styles get the same mock embedding (identical vectors → similarity 1.0)
+        await service.store_style(pid, iid, "manga-action", definition, compute_embedding=True)
+        await service.store_style(pid, iid, "superhero", definition, compute_embedding=True)
+
+        result = await service.compare_styles(pid, "manga-action", "superhero")
+
+        assert result["similarity"] == pytest.approx(1.0)
+        assert "a_uri" in result
+        assert "b_uri" in result
+        assert result["a_uri"].startswith("comic://")
+        assert result["b_uri"].startswith("comic://")
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_compare_styles_without_embeddings_returns_missing(
+        self, service: ComicProjectService
+    ) -> None:
+        """Styles without embeddings return similarity=None with reason='missing_embedding'."""
+        # No client configured → no embeddings stored
+        assert service._genai_client is None
+
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        definition = {"name": "Manga Action", "description": "Fast paced manga style"}
+
+        await service.store_style(pid, iid, "manga-action", definition, compute_embedding=False)
+        await service.store_style(pid, iid, "superhero", definition, compute_embedding=False)
+
+        result = await service.compare_styles(pid, "manga-action", "superhero")
+
+        assert result["similarity"] is None
+        assert result["reason"] == "missing_embedding"
+        assert "a_uri" in result
+        assert "b_uri" in result

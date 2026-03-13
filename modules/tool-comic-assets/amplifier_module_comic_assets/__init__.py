@@ -1047,7 +1047,7 @@ class ComicStyleTool:
                 "action": {
                     "type": "string",
                     "description": "Operation to perform.",
-                    "enum": ["store", "get", "list", "embed"],
+                    "enum": ["store", "get", "list", "embed", "compare"],
                 },
                 "project": {
                     "type": "string",
@@ -1092,6 +1092,10 @@ class ComicStyleTool:
                         "Compute a Gemini embedding at store time. Defaults to true. "
                         "Set to false to skip embedding generation."
                     ),
+                },
+                "name_b": {
+                    "type": "string",
+                    "description": "Second style name for the compare action.",
                 },
             },
             "required": ["action"],
@@ -1158,11 +1162,25 @@ class ComicStyleTool:
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
+        async def _compare() -> ToolResult:
+            if m := _require(params, "project", "name", "name_b"):
+                return _missing_error(m)
+            try:
+                result = await self._service.compare_styles(
+                    params["project"],
+                    params["name"],
+                    params["name_b"],
+                )
+                return _ok(result)
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
         dispatch: dict[str, Any] = {
             "store": _store,
             "get": _get,
             "list": _list,
             "embed": _embed,
+            "compare": _compare,
         }
 
         handler = dispatch.get(action)  # type: ignore[arg-type]

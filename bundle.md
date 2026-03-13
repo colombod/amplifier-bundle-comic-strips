@@ -5,8 +5,8 @@ bundle:
   description: AI-generated comic strips from Amplifier sessions and project stories
 
 includes:
-  - bundle: git+https://github.com/microsoft/amplifier-bundle-stories@bd2753ec5b69e96aa2a905f8840d257404c717dd
-  - bundle: git+https://github.com/microsoft/amplifier-bundle-browser-tester@728beebcf323729e4e6664ee74d2e2d68c4bfb97#subdirectory=behaviors/browser-tester.yaml
+  - bundle: git+https://github.com/microsoft/amplifier-bundle-stories@main
+  - bundle: git+https://github.com/microsoft/amplifier-bundle-browser-tester@main#subdirectory=behaviors/browser-tester.yaml
   - bundle: comic-strips:behaviors/comic-strips
 ---
 

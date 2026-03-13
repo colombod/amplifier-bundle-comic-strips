@@ -33,9 +33,9 @@ def test_yaml_still_parses(issue_art_recipe):
 # Test 2: Step count is 5
 # ---------------------------------------------------------------
 def test_step_count_is_five(issue_art_steps):
-    """Issue-art recipe must have exactly 5 steps after adding inspect-flagged-panels."""
-    assert len(issue_art_steps) == 5, (
-        f"Expected 5 steps, got {len(issue_art_steps)}: "
+    """Issue-art recipe must have exactly 6 steps (added inspect-flagged-panels and validate-and-fix-layouts)."""
+    assert len(issue_art_steps) == 6, (
+        f"Expected 6 steps, got {len(issue_art_steps)}: "
         f"{[s['id'] for s in issue_art_steps]}"
     )
 
@@ -81,12 +81,16 @@ def test_review_panel_compositions_depends_on_inspect(find_step):
 # Test 6: composition depends_on unchanged
 # ---------------------------------------------------------------
 def test_composition_depends_on_unchanged(find_step):
-    """composition must still depend on review-panel-compositions and generate-cover."""
+    """composition must depend on review-panel-compositions, generate-cover, and validate-and-fix-layouts."""
     step = find_step("composition")
     assert step is not None, "composition step not found"
     deps = sorted(step.get("depends_on", []))
-    assert deps == ["generate-cover", "review-panel-compositions"], (
-        f"composition depends_on must be ['review-panel-compositions', 'generate-cover'], "
+    assert deps == [
+        "generate-cover",
+        "review-panel-compositions",
+        "validate-and-fix-layouts",
+    ], (
+        f"composition depends_on must be ['review-panel-compositions', 'generate-cover', 'validate-and-fix-layouts'], "
         f"got {step.get('depends_on')}"
     )
 
@@ -194,5 +198,9 @@ def test_full_dependency_chain(find_step):
     # review-panel-compositions: depends on inspect-flagged-panels
     assert review["depends_on"] == ["inspect-flagged-panels"]
 
-    # composition: depends on both review-panel-compositions and generate-cover
-    assert sorted(comp["depends_on"]) == ["generate-cover", "review-panel-compositions"]
+    # composition: depends on review-panel-compositions, generate-cover, and validate-and-fix-layouts
+    assert sorted(comp["depends_on"]) == [
+        "generate-cover",
+        "review-panel-compositions",
+        "validate-and-fix-layouts",
+    ]

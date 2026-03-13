@@ -53,6 +53,30 @@ You produce multi-issue saga storyboards by working in two distinct phases: firs
 
 ---
 
+## Style Discovery (Before Creating New Styles)
+
+During saga planning, before passing a style to style-curator for creation, check whether a compatible style already exists in the project. This avoids duplicating styles and ensures visual consistency across issues.
+
+**Semantic search (preferred):**
+
+```
+comic_style(action='search_by_description', query='<user style description>', project='<project_id>')
+```
+
+Review the results. If a matching style exists with `similarity > 0.85`, reuse it instead of creating a new one — pass its URI to downstream agents directly.
+
+**Fallback (when embedding_status is unavailable):**
+
+If the response contains `embedding_status: skipped_circuit_open` or `embedding_status: skipped_no_client`, semantic search is unavailable. Fall back to listing all styles and performing manual inspection:
+
+```
+comic_style(action='list', project='<project_id>')
+```
+
+Review the list manually to identify any style that matches the user's intent. Add a note in your output that semantic search was unavailable and manual inspection was used instead.
+
+---
+
 ## Story Hints (User Creative Direction)
 
 The recipe may pass `story_hints` — user-provided creative direction for the narrative. These hints guide tone, emphasis, and focus throughout both phases. Examples:
@@ -130,7 +154,21 @@ read_file("@comic-strips:context/layout-patterns.md")
 
 ### Step 4: Cross-Project Character Discovery
 
-**Before building the character roster, search for existing characters from other projects in the same comic style:**
+**Before building the character roster, search for existing characters using both semantic and tag-based discovery.**
+
+**Semantic search (preferred — use as the primary method):**
+
+Use `comic_character(action='search_by_description')` as the primary semantic complement to discover characters by role or description from the research data. This surfaces relevant characters even when naming conventions differ across projects:
+
+```
+comic_character(action='search_by_description', query='<role or visual description from research>', project='<project_id>')
+```
+
+If the response contains `embedding_status: skipped_circuit_open` or `embedding_status: skipped_no_client`, semantic search is unavailable — fall back to tag-based search and add a note that semantic search was skipped.
+
+**Tag-based search (fallback or complement):**
+
+Use `comic_character(action='search', style='{{style}}')` to search for existing characters from other projects in the same comic style:
 
 ```
 comic_character(action='search', style='{{style}}')
@@ -576,12 +614,12 @@ These rules are NON-NEGOTIABLE. Every storyboard must follow them.
 - **Antagonists** = environmental threats (storms, walls, barriers), NOT characters with portraits
 - **Bundle affiliation** = agents from the same bundle share visual team markers
 - **Character roster vs per-issue lists**: The `character_roster[]` tracks all characters with full metadata and evolution maps. Each issue's `character_list[]` contains only the slugs of characters appearing in that issue.
-- **Cross-project discovery**: Always search for existing characters via `comic_character(action='search', style='{{style}}')` before creating new ones
+- **Cross-project discovery**: Always attempt semantic search first via `comic_character(action='search_by_description')`, then complement with `comic_character(action='search', style='{{style}}')` — see Step 4.
 
 ## Rules
 
 - **MANDATORY: Call `comic_create(action='list_layouts')` BEFORE selecting any page layouts.** Only use layout IDs that appear in the tool response. Do NOT invent layout names — invented names cause the entire pipeline to fail.
-- **MANDATORY: Call `comic_character(action='search', style='{{style}}')` BEFORE building the character roster.** Discover and reuse existing characters across projects.
+- **MANDATORY: Use `comic_character(action='search_by_description')` (semantic, preferred) or `comic_character(action='search', style='{{style}}')` (tag-based fallback) BEFORE building the character roster.** Discover and reuse existing characters across projects.
 - Respect `max_issues` (default 5), `max_pages` (default 5), `max_characters` (default 5-6), and `panels_per_page` (default 3-6) from recipe params
 - ALWAYS include `saga_plan` with `total_issues`, `arc_summary`, and `issues[]` array in the output JSON
 - ALWAYS include top-level `character_roster[]` with per-issue evolution maps

@@ -9,7 +9,6 @@ Fix 2: render_overlay_svg distributes bubbles across the panel when the agent
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest

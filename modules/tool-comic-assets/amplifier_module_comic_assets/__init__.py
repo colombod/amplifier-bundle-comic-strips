@@ -364,6 +364,7 @@ class ComicCharacterTool:
                         "search",
                         "compare",
                         "search_similar",
+                        "search_by_description",
                         "embed",
                     ],
                 },
@@ -472,11 +473,11 @@ class ComicCharacterTool:
                 "compute_embedding": {
                     "type": "boolean",
                     "description": (
-                        "If true, compute a Gemini embedding for the character at store time "
-                        "and persist it in metadata.json. Requires a Gemini client to be "
-                        "configured. Defaults to false."
+                        "Compute a Gemini embedding at store time. Defaults to true. "
+                        "Set to false to skip. Silently skipped when no client is "
+                        "configured or the circuit breaker is open."
                     ),
-                    "default": False,
+                    "default": True,
                 },
                 "name_b": {
                     "type": "string",
@@ -486,6 +487,13 @@ class ComicCharacterTool:
                     "type": "integer",
                     "description": "Maximum number of results to return for search_similar. Defaults to 5.",
                     "default": 5,
+                },
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Text query for search_by_description action. "
+                        "Embedded and compared against stored character embeddings."
+                    ),
                 },
             },
             "required": ["action"],
@@ -542,7 +550,7 @@ class ComicCharacterTool:
                     metadata=params.get("metadata"),
                     source_path=params.get("source_path"),
                     data=data_bytes,
-                    compute_embedding=bool(params.get("compute_embedding", False)),
+                    compute_embedding=bool(params.get("compute_embedding", True)),
                 )
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:
@@ -659,6 +667,24 @@ class ComicCharacterTool:
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
+        async def _search_by_description() -> ToolResult:
+            if m := _require(params, "project", "query"):
+                return _missing_error(m)
+            try:
+                result = await self._service.search_characters_by_description(
+                    params["project"],
+                    params["query"],
+                    top_k=int(params.get("top_k", 5)),
+                    search_project_id=params.get("search_project_id"),
+                    style=params.get("style"),
+                )
+                # Strip embedding vectors from results
+                if "results" in result:
+                    result["results"] = [_strip_embedding(r) for r in result["results"]]
+                return _ok(result)
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
         dispatch: dict[str, Any] = {
             "store": _store,
             "get": _get,
@@ -668,6 +694,7 @@ class ComicCharacterTool:
             "search": _search,
             "compare": _compare,
             "search_similar": _search_similar,
+            "search_by_description": _search_by_description,
             "embed": _embed,
         }
 
@@ -725,6 +752,7 @@ class ComicAssetTool:
                         "preview",
                         "compare",
                         "search_similar",
+                        "search_by_description",
                         "embed",
                     ],
                 },
@@ -810,12 +838,11 @@ class ComicAssetTool:
                 "compute_embedding": {
                     "type": "boolean",
                     "description": (
-                        "If true, compute a Gemini embedding for binary assets (panels, covers, "
-                        "avatars, qa_screenshots) at store time and persist it in metadata.json. "
-                        "Has no effect on structured assets (research, storyboard, final). "
-                        "Requires a Gemini client to be configured. Defaults to false."
+                        "Compute a Gemini embedding at store time. Defaults to true. "
+                        "Set to false to skip. Silently skipped when no client is "
+                        "configured or the circuit breaker is open."
                     ),
-                    "default": False,
+                    "default": True,
                 },
                 "name_b": {
                     "type": "string",
@@ -823,8 +850,22 @@ class ComicAssetTool:
                 },
                 "top_k": {
                     "type": "integer",
-                    "description": "Max results for search_similar. Default 5.",
+                    "description": "Max results for search_similar and search_by_description. Default 5.",
                     "default": 5,
+                },
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Text query for search_by_description action. "
+                        "Embedded and compared against stored asset embeddings."
+                    ),
+                },
+                "search_project_id": {
+                    "type": "string",
+                    "description": (
+                        "Project ID to search in for search_by_description. "
+                        "Defaults to the source project."
+                    ),
                 },
             },
             "required": ["action"],
@@ -862,7 +903,7 @@ class ComicAssetTool:
                     data=data_bytes,
                     content=params.get("content"),
                     metadata=params.get("metadata"),
-                    compute_embedding=bool(params.get("compute_embedding", False)),
+                    compute_embedding=bool(params.get("compute_embedding", True)),
                 )
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:
@@ -992,6 +1033,24 @@ class ComicAssetTool:
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
+        async def _search_by_description() -> ToolResult:
+            if m := _require(params, "project", "query"):
+                return _missing_error(m)
+            try:
+                result = await self._service.search_assets_by_description(
+                    params["project"],
+                    params["query"],
+                    top_k=int(params.get("top_k", 5)),
+                    asset_type=params.get("type"),
+                    search_project_id=params.get("search_project_id"),
+                )
+                # Strip embedding vectors from results
+                if "results" in result:
+                    result["results"] = [_strip_embedding(r) for r in result["results"]]
+                return _ok(result)
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
         dispatch: dict[str, Any] = {
             "store": _store,
             "get": _get,
@@ -1000,6 +1059,7 @@ class ComicAssetTool:
             "preview": _preview,
             "compare": _compare,
             "search_similar": _search_similar,
+            "search_by_description": _search_by_description,
             "embed": _embed,
         }
 
@@ -1048,7 +1108,15 @@ class ComicStyleTool:
                 "action": {
                     "type": "string",
                     "description": "Operation to perform.",
-                    "enum": ["store", "get", "list"],
+                    "enum": [
+                        "store",
+                        "get",
+                        "list",
+                        "embed",
+                        "compare",
+                        "search_similar",
+                        "search_by_description",
+                    ],
                 },
                 "project": {
                     "type": "string",
@@ -1087,6 +1155,33 @@ class ComicStyleTool:
                         "Project-scoped format: comic://project/styles/name[?v=N]."
                     ),
                 },
+                "compute_embedding": {
+                    "type": "boolean",
+                    "description": (
+                        "Compute a Gemini embedding at store time. Defaults to true. "
+                        "Set to false to skip embedding generation."
+                    ),
+                },
+                "name_b": {
+                    "type": "string",
+                    "description": "Second style name for the compare action.",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Maximum number of results to return for search_similar and search_by_description. Defaults to 5.",
+                    "default": 5,
+                },
+                "search_project_id": {
+                    "type": "string",
+                    "description": "Project ID to search in for search_similar and search_by_description. Defaults to the source project.",
+                },
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Text query for search_by_description action. "
+                        "Embedded and compared against stored style guide embeddings."
+                    ),
+                },
             },
             "required": ["action"],
         }
@@ -1109,6 +1204,7 @@ class ComicStyleTool:
                     params["name"],
                     params["definition"],
                     metadata=params.get("metadata"),
+                    compute_embedding=bool(params.get("compute_embedding", True)),
                 )
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:
@@ -1126,7 +1222,7 @@ class ComicStyleTool:
                     version=version,
                     include=params.get("include", "metadata"),
                 )
-                return _ok(result)
+                return _ok(_strip_embedding(result))
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
 
@@ -1135,6 +1231,62 @@ class ComicStyleTool:
                 return _missing_error(m)
             try:
                 result = await self._service.list_styles(params["project"])
+                return _ok([_strip_embedding(r) for r in result])
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
+        async def _embed() -> ToolResult:
+            if m := _require(params, "project", "name"):
+                return _missing_error(m)
+            try:
+                result = await self._service.embed_style(
+                    params["project"],
+                    params["name"],
+                )
+                return _ok(_strip_embedding(result))
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
+        async def _compare() -> ToolResult:
+            if m := _require(params, "project", "name", "name_b"):
+                return _missing_error(m)
+            try:
+                result = await self._service.compare_styles(
+                    params["project"],
+                    params["name"],
+                    params["name_b"],
+                )
+                return _ok(result)
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
+        async def _search_similar() -> ToolResult:
+            if m := _require(params, "project", "name"):
+                return _missing_error(m)
+            try:
+                result = await self._service.search_similar_styles(
+                    params["project"],
+                    params["name"],
+                    top_k=int(params.get("top_k", 5)),
+                    search_project_id=params.get("search_project_id"),
+                )
+                return _ok(result)
+            except (ValueError, FileNotFoundError) as exc:
+                return _exc_error(exc)
+
+        async def _search_by_description() -> ToolResult:
+            if m := _require(params, "project", "query"):
+                return _missing_error(m)
+            try:
+                result = await self._service.search_styles_by_description(
+                    params["project"],
+                    params["query"],
+                    top_k=int(params.get("top_k", 5)),
+                    search_project_id=params.get("search_project_id"),
+                )
+                # Strip embedding vectors from results
+                if "results" in result:
+                    result["results"] = [_strip_embedding(r) for r in result["results"]]
                 return _ok(result)
             except (ValueError, FileNotFoundError) as exc:
                 return _exc_error(exc)
@@ -1143,6 +1295,10 @@ class ComicStyleTool:
             "store": _store,
             "get": _get,
             "list": _list,
+            "embed": _embed,
+            "compare": _compare,
+            "search_similar": _search_similar,
+            "search_by_description": _search_by_description,
         }
 
         handler = dispatch.get(action)  # type: ignore[arg-type]

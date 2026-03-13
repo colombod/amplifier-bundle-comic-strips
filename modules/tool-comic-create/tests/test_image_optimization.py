@@ -5,10 +5,8 @@ from __future__ import annotations
 import base64
 import io
 
-import pytest
 
 from amplifier_module_comic_create import (
-    _detect_mime,
     _optimize_for_html,
     _optimize_resolved_images,
 )

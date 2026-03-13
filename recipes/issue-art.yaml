@@ -105,7 +105,7 @@ stages:
         timeout: 1800  # 30m per panel — image gen + vision review + up to 3 retries + cross-provider fallback
 
       # ============================================
-      # STEP 1.5: INSPECT FLAGGED PANELS
+      # STEP: INSPECT FLAGGED PANELS
       # Scans panel_results for any panels that were
       # flagged during generation (e.g. moderation,
       # quality issues) and surfaces a summary report
@@ -138,6 +138,52 @@ stages:
         output: "flagged_panel_report"
         parse_json: true
         timeout: 300  # 5m — lightweight scan of panel metadata
+
+      # ============================================
+      # STEP: VALIDATE AND FIX LAYOUTS
+      # Counts actual panels in panel_results and
+      # compares against page_layouts panel assignments.
+      # Corrects layout if counts diverge, ensuring
+      # every generated panel lands on a page.
+      # ============================================
+      - id: "validate-and-fix-layouts"
+        depends_on: ["inspect-flagged-panels"]
+        agent: "comic-strips:style-curator"
+        model_role: fast
+        prompt: |
+          You are validating and correcting the page layout assignments for this comic issue.
+
+          Count the actual panels available from panel_results:
+          {{panel_results}}
+
+          Compare against the panel_list page assignments from the storyboard:
+          {{issue_storyboard.panel_list}}
+
+          Current page_layouts from the storyboard:
+          {{issue_storyboard.page_layouts}}
+
+          Steps:
+          1. Count the total number of panels in panel_results.
+          2. Count the total number of panels assigned across all pages in
+             issue_storyboard.page_layouts.
+          3. If the counts differ, correct the page_layouts so that every panel in
+             panel_results is assigned to a page — redistribute panels evenly or
+             follow the original layout intent as closely as possible.
+          4. Call:
+             comic_create(action='validate_storyboard',
+                          page_layouts=<corrected or original page_layouts>,
+                          panel_list=<issue_storyboard.panel_list>)
+          5. Return the corrected page_layouts (or the original if no correction was needed).
+
+          Return a JSON object with exactly these fields:
+          - page_layouts: the validated (and possibly corrected) page layout list
+          - panel_count_expected: number of panels in issue_storyboard.page_layouts
+          - panel_count_actual: number of panels in panel_results
+          - correction_applied: true if any layout correction was made, false otherwise
+          - notes: brief description of what was checked and any corrections made
+        output: "layout_validation"
+        parse_json: true
+        timeout: 300  # 5m — lightweight validation and layout correction
 
       # ============================================
       # STEP 2: COVER ART GENERATION
@@ -196,7 +242,7 @@ stages:
         timeout: 1800  # 30m — image gen + vision review + up to 3 retries + composition-biased model selection
 
       # ============================================
-      # STEP 2.5: REVIEW PANEL COMPOSITIONS
+      # STEP: REVIEW PANEL COMPOSITIONS
       # Pre-computes character positions and overlay
       # placement for each panel before final assembly.
       # Makes bubble positioning deterministic and
@@ -250,7 +296,7 @@ stages:
       # ============================================
       - id: "composition"
         agent: "comic-strips:strip-compositor"
-        depends_on: ["review-panel-compositions", "generate-cover"]
+        depends_on: ["review-panel-compositions", "generate-cover", "validate-and-fix-layouts"]
         prompt: |
           Project tracking: project_id={{project_id}}, issue_id={{issue_id}}, style={{style}}
 
@@ -269,6 +315,9 @@ stages:
 
           Storyboard (for dialogue, captions, sound effects per panel):
           {{issue_storyboard}}
+
+          Validated Page Layouts (corrected panel-to-page assignments — use these for page structure):
+          {{layout_validation.page_layouts}}
 
           Style Guide URI: {{style_uri}}
           Load layout conventions using: comic_style(action='get', uri='{{style_uri}}')
@@ -289,8 +338,9 @@ stages:
              and composition_notes. Use these directly for precise text overlay placement.
              Do NOT call review_asset again — the reviews are already computed by the previous step.
           4. Build a layout object mapping each panel URI to its storyboard dialogue, captions,
-             and sound effects. Use overlay coordinates (0-100% of panel dimensions) informed by
-             the visual composition analysis.
+             and sound effects. Use {{layout_validation.page_layouts}} for page structure and
+             panel-to-page assignments. Use overlay coordinates (0-100% of panel dimensions)
+             informed by the visual composition analysis.
           5. If saga_context is non-empty and saga_context indicates more issues follow:
              - Add a "To Be Continued..." tease panel or text block at the end of the last
                story page, hinting at the next issue's conflict or cliffhanger.

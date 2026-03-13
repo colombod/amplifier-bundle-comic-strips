@@ -208,6 +208,51 @@ Return a **single panel result JSON object**:
 - `passed_review`: `true` if all quality checks passed on any attempt; `false` if flagged
 - `flagged`: `true` only if all 3 attempts failed checks 1–3
 
+## Embedding Status Awareness
+
+After generating a panel with `comic_create(action='create_panel')`, the response may include an `embedding_status` field. Use this to understand the health of the vector embedding system:
+
+| `embedding_status` | Meaning | Action |
+|-------------------|---------|--------|
+| `embedded` | Vector embedding was created successfully. Semantic search is fully available. | ✅ No action needed — system is operating normally. |
+| `skipped_circuit_open` | Embedding was skipped because the circuit breaker is open (too many recent failures). Semantic search is degraded. | ℹ️ No action needed. Note in output if relevant. |
+| `skipped_no_client` | Embedding was skipped because no embedding client is configured. Semantic search is unavailable. | ℹ️ No action needed. Note in output if relevant. |
+
+In most cases, `skipped_circuit_open` or `skipped_no_client` do not affect panel generation — they only affect the ability to perform semantic searches (e.g., `search_by_description`). Continue with your workflow normally.
+
+## Semantic Character Discovery (Optional Enhancement)
+
+Normally, character URIs are provided in `{{character_uris}}`. However, if a panel spec references a character by description rather than a URI (e.g., `characters_present` contains a name not found in `{{character_uris}}`), you can attempt to resolve the character reference semantically.
+
+> **Note:** This enhancement is Optional. If `{{character_uris}}` already covers all characters in `characters_present`, skip this section entirely and proceed directly to Step 3.
+
+### Primary Path: Semantic Search by Description
+
+If embedding is available (i.e., `embedding_status` is `embedded` or not yet known), use:
+
+```
+comic_character(
+  action='search_by_description',
+  project='{{project_id}}',
+  query='<character description from scene>'
+)
+```
+
+This returns the most semantically relevant character reference from the project roster.
+
+### Fallback Path: Text Search
+
+If `embedding_status` shows unavailable (`skipped_circuit_open` or `skipped_no_client`), fall back to name-based search with a note:
+
+```
+comic_character(
+  action='search',
+  project='{{project_id}}'
+)
+```
+
+Then filter the results by name match from the `characters_present` list. Note in your output that semantic search was unavailable and text-based fallback was used.
+
 ## Asset Integration
 
 `comic_create(action='create_panel')` handles all storage internally. Do NOT call `comic_asset(action='store')` or `comic_character(action='get')` separately.

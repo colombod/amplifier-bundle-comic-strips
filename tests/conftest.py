@@ -10,6 +10,7 @@ _ISSUE_ART_PATH = pathlib.Path(__file__).parent.parent / "recipes" / "issue-art.
 EXPECTED_STEP_IDS = [
     "generate-panels",
     "inspect-flagged-panels",
+    "validate-and-fix-layouts",
     "generate-cover",
     "review-panel-compositions",
     "composition",

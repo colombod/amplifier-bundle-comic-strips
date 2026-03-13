@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import math
+import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -13,9 +14,14 @@ import pytest
 from amplifier_module_comic_assets import (
     ComicAssetTool,
     ComicCharacterTool,
+    ComicStyleTool,
     _strip_embedding,
 )
-from amplifier_module_comic_assets.service import ComicProjectService, cosine_similarity
+from amplifier_module_comic_assets.service import (
+    ComicProjectService,
+    EmbeddingCircuitBreaker,
+    cosine_similarity,
+)
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -255,7 +261,7 @@ class TestStoreCharacterEmbedding:
     async def test_store_without_embedding_has_no_embedding_fields(
         self, service: ComicProjectService
     ) -> None:
-        """Default compute_embedding=False: metadata.json has no embedding fields."""
+        """compute_embedding=False: metadata.json has no embedding fields."""
         pid, iid = await _new_issue(service)
         await service.store_character(
             pid,
@@ -264,6 +270,7 @@ class TestStoreCharacterEmbedding:
             "manga",
             **_CHAR_META,
             data=_PNG,
+            compute_embedding=False,
         )
         char_slug = "hero"
         meta_text = await service._storage.read_text(
@@ -1577,3 +1584,1152 @@ class TestToolEmbedAction:
         data = json.loads(result.output)
         assert data["embedded"] is True
         assert "embedding" not in data
+
+
+# ===========================================================================
+# TestCircuitBreaker — EmbeddingCircuitBreaker unit tests
+# ===========================================================================
+
+
+class TestCircuitBreaker:
+    def test_initial_state_is_closed(self) -> None:
+        """New breaker starts in closed state."""
+        breaker = EmbeddingCircuitBreaker()
+        assert breaker.state == "closed"
+        assert breaker.allow_request() is True
+
+    def test_single_failure_stays_closed(self) -> None:
+        """One failure does not trip the breaker."""
+        breaker = EmbeddingCircuitBreaker()
+        breaker.record_failure()
+        assert breaker.state == "closed"
+        assert breaker.allow_request() is True
+
+    def test_trips_after_3_consecutive_failures(self) -> None:
+        """Three consecutive failures trip the breaker (state becomes 'open')."""
+        breaker = EmbeddingCircuitBreaker()
+        breaker.record_failure()
+        breaker.record_failure()
+        breaker.record_failure()
+        assert breaker.state == "open"
+        assert breaker.allow_request() is False
+
+    def test_success_resets_failure_count(self) -> None:
+        """Success after 2 failures resets count; breaker stays closed."""
+        breaker = EmbeddingCircuitBreaker()
+        breaker.record_failure()
+        breaker.record_failure()
+        breaker.record_success()
+        assert breaker.state == "closed"
+        assert breaker.allow_request() is True
+
+    def test_half_open_after_cooldown(self) -> None:
+        """After cooldown expires, open breaker transitions to half_open."""
+        breaker = EmbeddingCircuitBreaker(cooldown_seconds=0.1)
+        breaker.record_failure()
+        breaker.record_failure()
+        breaker.record_failure()
+        assert breaker.state == "open"
+        time.sleep(0.15)
+        assert breaker.state == "half_open"
+        assert breaker.allow_request() is True
+
+    def test_successful_probe_closes_breaker(self) -> None:
+        """A successful probe in half_open state closes the breaker."""
+        breaker = EmbeddingCircuitBreaker(cooldown_seconds=0.1)
+        breaker.record_failure()
+        breaker.record_failure()
+        breaker.record_failure()
+        time.sleep(0.15)
+        assert breaker.state == "half_open"
+        breaker.record_success()
+        assert breaker.state == "closed"
+        assert breaker.allow_request() is True
+
+    def test_failed_probe_reopens_breaker(self) -> None:
+        """A failed probe in half_open state re-opens the breaker."""
+        breaker = EmbeddingCircuitBreaker(cooldown_seconds=0.1)
+        breaker.record_failure()
+        breaker.record_failure()
+        breaker.record_failure()
+        time.sleep(0.15)
+        assert breaker.state == "half_open"
+        breaker.record_failure()
+        assert breaker.state == "open"
+        assert breaker.allow_request() is False
+
+
+# ===========================================================================
+# TestCircuitBreakerIntegration — breaker wired into ComicProjectService
+# ===========================================================================
+
+
+class TestCircuitBreakerIntegration:
+    def test_service_has_breaker_attribute(self, service: ComicProjectService) -> None:
+        """ComicProjectService.__init__ creates a _breaker as EmbeddingCircuitBreaker."""
+        assert hasattr(service, "_breaker")
+        assert isinstance(service._breaker, EmbeddingCircuitBreaker)
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_open_breaker_skips_embedding_and_doesnt_call_api(
+        self, service: ComicProjectService
+    ) -> None:
+        """Open breaker causes _compute_embedding to return None without calling the API."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        # Trip the breaker by recording 3 failures
+        service._breaker.record_failure()
+        service._breaker.record_failure()
+        service._breaker.record_failure()
+        assert service._breaker.state == "open"
+
+        # _compute_embedding should return None without calling the API
+        result = await service._compute_embedding(None, "hello world")
+        assert result is None
+        client.aio.models.embed_content.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_api_failures_record_on_breaker_and_trip_it(
+        self, service: ComicProjectService
+    ) -> None:
+        """Three API failures record on the breaker and trip it to 'open' state."""
+        client = MagicMock()
+        client.aio = MagicMock()
+        client.aio.models = MagicMock()
+        client.aio.models.embed_content = AsyncMock(
+            side_effect=RuntimeError("API error")
+        )
+        service.set_embedding_client(client, embedding_dim=4)
+
+        # Breaker starts closed
+        assert service._breaker.state == "closed"
+
+        # 3 consecutive failures should trip the breaker
+        await service._compute_embedding(None, "text 1")
+        assert service._breaker.state == "closed"  # still closed after 1
+
+        await service._compute_embedding(None, "text 2")
+        assert service._breaker.state == "closed"  # still closed after 2
+
+        await service._compute_embedding(None, "text 3")
+        assert service._breaker.state == "open"  # tripped after 3
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_api_success_calls_record_success_keeping_breaker_closed(
+        self, service: ComicProjectService
+    ) -> None:
+        """Successful API call records success, keeping the breaker closed."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        # Record 2 failures to get close to the threshold
+        service._breaker.record_failure()
+        service._breaker.record_failure()
+        assert service._breaker.state == "closed"
+
+        # A successful call should record success (reset failure count)
+        result = await service._compute_embedding(None, "hello world")
+        assert result is not None
+        assert service._breaker.state == "closed"
+        # Breaker failure count should be reset — verify by checking we can
+        # take 2 more failures before tripping (would trip at 3 total if reset)
+        service._breaker.record_failure()
+        service._breaker.record_failure()
+        assert service._breaker.state == "closed"  # would be open if not reset
+
+
+# ===========================================================================
+# TestAutoEmbeddingDefault — compute_embedding defaults to True
+# ===========================================================================
+
+
+class TestAutoEmbeddingDefault:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_character_embeds_by_default(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_character with client but no compute_embedding arg: embedding is written."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+            # compute_embedding NOT specified — should default to True
+        )
+        char_slug = "hero"
+        meta_text = await service._storage.read_text(
+            f"projects/{pid}/characters/{char_slug}/manga_v1/metadata.json"
+        )
+        meta = json.loads(meta_text)
+        assert "embedding" in meta, (
+            "embedding should be present when client is configured"
+        )
+        assert "embedding_model" in meta
+        assert "embedding_dimensions" in meta
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_character_skips_when_no_client(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_character with no client: silently skips embedding, no error."""
+        assert service._genai_client is None
+
+        pid, iid = await _new_issue(service)
+        result = await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+            # compute_embedding NOT specified — defaults to True but no client
+        )
+        assert "uri" in result  # store succeeded
+        char_slug = "hero"
+        meta_text = await service._storage.read_text(
+            f"projects/{pid}/characters/{char_slug}/manga_v1/metadata.json"
+        )
+        meta = json.loads(meta_text)
+        assert "embedding" not in meta
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_asset_embeds_by_default_for_binary_types(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_asset (panel) with client but no compute_embedding arg: embedding is written."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "A hero stands tall"},
+            # compute_embedding NOT specified — should default to True
+        )
+
+        version_dir = f"projects/{pid}/issues/{iid}/panels/panel01_v1"
+        meta_text = await service._storage.read_text(f"{version_dir}/metadata.json")
+        meta = json.loads(meta_text)
+        assert "embedding" in meta, (
+            "embedding should be present when client is configured"
+        )
+        assert "embedding_model" in meta
+        assert "embedding_dimensions" in meta
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_structured_types_skip_embedding_by_default(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_asset for research type: embed_content NOT called even with client configured."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        await service.store_asset(
+            pid,
+            iid,
+            "research",
+            "research",
+            content={"data": "some research"},
+            metadata={"description": "research data"},
+            # compute_embedding NOT specified — defaults to True but structured type skips
+        )
+
+        # embed_content should NOT have been called for structured assets
+        client.aio.models.embed_content.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_character_can_opt_out_with_compute_embedding_false(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_character with client but compute_embedding=False: no embedding written."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+            compute_embedding=False,
+        )
+        char_slug = "hero"
+        meta_text = await service._storage.read_text(
+            f"projects/{pid}/characters/{char_slug}/manga_v1/metadata.json"
+        )
+        meta = json.loads(meta_text)
+        assert "embedding" not in meta
+        assert "embedding_model" not in meta
+        assert "embedding_dimensions" not in meta
+
+
+# ===========================================================================
+# TestEmbeddingStatus — embedding_status field in store_character / store_asset
+# ===========================================================================
+
+
+class TestEmbeddingStatus:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_character_returns_embedded_with_client(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_character with client returns embedding_status='embedded'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        result = await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+            compute_embedding=True,
+        )
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "embedded"
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_character_returns_skipped_no_client(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_character without client returns embedding_status='skipped_no_client'."""
+        assert service._genai_client is None
+
+        pid, iid = await _new_issue(service)
+        result = await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+            compute_embedding=True,
+        )
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "skipped_no_client"
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_character_returns_skipped_circuit_open(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_character with tripped breaker returns embedding_status='skipped_circuit_open'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        # Trip the breaker
+        service._breaker.record_failure()
+        service._breaker.record_failure()
+        service._breaker.record_failure()
+        assert service._breaker.state == "open"
+
+        pid, iid = await _new_issue(service)
+        result = await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+            compute_embedding=True,
+        )
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "skipped_circuit_open"
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_asset_structured_returns_skipped_not_applicable(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_asset for structured type returns embedding_status='skipped_not_applicable'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        result = await service.store_asset(
+            pid,
+            iid,
+            "research",
+            "research",
+            content={"data": "some research"},
+            compute_embedding=True,
+        )
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "skipped_not_applicable"
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_asset_panel_returns_embedded(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_asset panel with client returns embedding_status='embedded'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        result = await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "A hero stands tall"},
+            compute_embedding=True,
+        )
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "embedded"
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_character_opt_out_returns_skipped_not_requested(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_character with compute_embedding=False returns status != 'embedded'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        result = await service.store_character(
+            pid,
+            iid,
+            "Hero",
+            "manga",
+            **_CHAR_META,
+            data=_PNG,
+            compute_embedding=False,
+        )
+        assert "embedding_status" in result
+        assert result["embedding_status"] != "embedded"
+        assert result["embedding_status"] == "skipped_not_requested"
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_asset_panel_opt_out_returns_skipped_not_requested(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_asset panel with compute_embedding=False returns embedding_status='skipped_not_requested'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+        result = await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "A hero stands tall"},
+            compute_embedding=False,
+        )
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "skipped_not_requested"
+
+
+# ===========================================================================
+# TestStyleEmbedding — store_style and embed_style embedding support
+# ===========================================================================
+
+
+class TestStyleEmbedding:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_style_embeds_by_default(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_style with client writes embedding and embedding_model to definition.json."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        definition = {
+            "name": "Manga Action",
+            "description": "Fast paced manga style",
+            "aesthetic_direction": "bold lines",
+            "color_palette": {"primary": "black", "secondary": "white"},
+            "panel_conventions": "N/N/N panel grid",
+        }
+        result = await service.store_style(pid, iid, "manga-action", definition)
+
+        # Verify embedding_status in return dict
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "embedded"
+
+        # Verify definition.json has embedding and embedding_model
+        style_slug = "manga-action"
+        version = result["version"]
+        def_path = f"projects/{pid}/styles/{style_slug}_v{version}/definition.json"
+        def_text = await service._storage.read_text(def_path)
+        def_data = json.loads(def_text)
+        assert "embedding" in def_data
+        assert "embedding_model" in def_data
+        assert def_data["embedding_model"] == "gemini-embedding-2-preview"
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_store_style_no_client_skips(
+        self, service: ComicProjectService
+    ) -> None:
+        """store_style without client skips embedding; no embedding fields in definition.json."""
+        assert service._genai_client is None
+
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        definition = {
+            "name": "Manga Action",
+            "description": "Fast paced manga style",
+        }
+        result = await service.store_style(pid, iid, "manga-action", definition)
+
+        assert "uri" in result  # store succeeded
+        assert "embedding_status" in result
+        assert result["embedding_status"] != "embedded"
+
+        # No embedding fields in definition.json
+        style_slug = "manga-action"
+        version = result["version"]
+        def_path = f"projects/{pid}/styles/{style_slug}_v{version}/definition.json"
+        def_text = await service._storage.read_text(def_path)
+        def_data = json.loads(def_text)
+        assert "embedding" not in def_data
+        assert "embedding_model" not in def_data
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_embed_style_backfills_existing(
+        self, service: ComicProjectService
+    ) -> None:
+        """embed_style backfills embedding for a stored style that has no embedding."""
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        # Store style without embedding (no client)
+        definition = {
+            "name": "Manga Action",
+            "description": "Fast paced manga style",
+            "aesthetic_direction": "bold lines",
+        }
+        store_result = await service.store_style(pid, iid, "manga-action", definition)
+        version = store_result["version"]
+
+        # Now set up client and backfill
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        result = await service.embed_style(pid, "manga-action")
+
+        assert result["embedded"] is True
+        assert "uri" in result
+        assert result["uri"].startswith("comic://")
+
+        # Verify definition.json now has embedding fields
+        style_slug = "manga-action"
+        def_path = f"projects/{pid}/styles/{style_slug}_v{version}/definition.json"
+        def_text = await service._storage.read_text(def_path)
+        def_data = json.loads(def_text)
+        assert "embedding" in def_data
+        assert def_data["embedding_model"] == "gemini-embedding-2-preview"
+        assert "embedding_dimensions" in def_data
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_embed_style_no_client_returns_no_client(
+        self, service: ComicProjectService
+    ) -> None:
+        """embed_style without client returns {embedded: False, reason: 'no_client'}."""
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        definition = {"name": "Manga Action", "description": "Fast paced manga style"}
+        await service.store_style(pid, iid, "manga-action", definition)
+
+        # No client set (default)
+        assert service._genai_client is None
+
+        result = await service.embed_style(pid, "manga-action")
+
+        assert result["embedded"] is False
+        assert result["reason"] == "no_client"
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_style_embed_is_text_only(self, service: ComicProjectService) -> None:
+        """Style embeddings are text-only: image_path is None in _compute_embedding call."""
+        captured_args: list[tuple[str | None, str | None]] = []
+
+        async def mock_compute(image_path: str | None, text: str | None) -> list[float]:
+            captured_args.append((image_path, text))
+            return [0.1] * 4
+
+        # Give the service a non-None client so the compute_embedding branch fires.
+        service._genai_client = MagicMock()
+
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        definition = {
+            "name": "Manga Action",
+            "description": "Fast paced manga style",
+            "aesthetic_direction": "bold lines",
+            "color_palette": {"primary": "black"},
+            "panel_conventions": "N/N/N panel grid",
+        }
+        with patch.object(service, "_compute_embedding", side_effect=mock_compute):
+            await service.store_style(pid, iid, "manga-action", definition)
+
+        assert captured_args, "Expected _compute_embedding to be called"
+        image_path, text = captured_args[0]
+        # Must be text-only: no image
+        assert image_path is None
+        # Text must contain definition content
+        assert text is not None
+
+
+# ===========================================================================
+# TestCompareStyles — compare_styles service method
+# ===========================================================================
+
+
+class TestCompareStyles:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_compare_identical_styles_returns_similarity(
+        self, service: ComicProjectService
+    ) -> None:
+        """Two styles with the same embedding vector: similarity ~1.0, a_uri and b_uri present."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        definition = {
+            "name": "Manga Action",
+            "description": "Fast paced manga style",
+            "aesthetic_direction": "bold lines",
+            "color_palette": {"primary": "black", "secondary": "white"},
+            "panel_conventions": "N/N/N panel grid",
+        }
+
+        # Both styles get the same mock embedding (identical vectors → similarity 1.0)
+        await service.store_style(
+            pid, iid, "manga-action", definition, compute_embedding=True
+        )
+        await service.store_style(
+            pid, iid, "superhero", definition, compute_embedding=True
+        )
+
+        result = await service.compare_styles(pid, "manga-action", "superhero")
+
+        assert result["similarity"] == pytest.approx(1.0)
+        assert "a_uri" in result
+        assert "b_uri" in result
+        assert result["a_uri"].startswith("comic://")
+        assert result["b_uri"].startswith("comic://")
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_compare_styles_without_embeddings_returns_missing(
+        self, service: ComicProjectService
+    ) -> None:
+        """Styles without embeddings return similarity=None with reason='missing_embedding'."""
+        # No client configured → no embeddings stored
+        assert service._genai_client is None
+
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        definition = {"name": "Manga Action", "description": "Fast paced manga style"}
+
+        await service.store_style(
+            pid, iid, "manga-action", definition, compute_embedding=False
+        )
+        await service.store_style(
+            pid, iid, "superhero", definition, compute_embedding=False
+        )
+
+        result = await service.compare_styles(pid, "manga-action", "superhero")
+
+        assert result["similarity"] is None
+        assert result["reason"] == "missing_embedding"
+        assert "a_uri" in result
+        assert "b_uri" in result
+
+
+# ===========================================================================
+# TestSearchSimilarStyles — search_similar_styles service method
+# ===========================================================================
+
+
+class TestSearchSimilarStyles:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_returns_sorted_results_excluding_source(
+        self, service: ComicProjectService
+    ) -> None:
+        """3 styles with same embedding, top_k=2: returns top 2 sorted descending, source excluded."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        definition = {
+            "name": "Manga Action",
+            "description": "Fast paced manga style",
+            "aesthetic_direction": "bold lines",
+        }
+
+        # All three styles get the same mock embedding → similarity 1.0
+        await service.store_style(
+            pid, iid, "manga-action", definition, compute_embedding=True
+        )
+        await service.store_style(
+            pid, iid, "superhero", definition, compute_embedding=True
+        )
+        await service.store_style(pid, iid, "indie", definition, compute_embedding=True)
+
+        result = await service.search_similar_styles(pid, "manga-action", top_k=2)
+
+        assert "query_uri" in result
+        assert "results" in result
+        assert len(result["results"]) == 2
+
+        # Source should NOT be in results
+        query_uri = result["query_uri"]
+        result_uris = [r["uri"] for r in result["results"]]
+        assert query_uri not in result_uris
+
+        # All results have similarity ~1.0 (same mock embedding)
+        for r in result["results"]:
+            assert r["similarity"] == pytest.approx(1.0)
+            assert "uri" in r
+            assert "name" in r
+            assert "originating_project" in r
+
+        # Verify sorted descending
+        sims = [r["similarity"] for r in result["results"]]
+        assert sims == sorted(sims, reverse=True)
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_missing_source_embedding_returns_error(
+        self, service: ComicProjectService
+    ) -> None:
+        """Returns error dict when source style has no embedding."""
+        # No client configured → no embeddings stored
+        assert service._genai_client is None
+
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        definition = {"name": "Manga Action", "description": "Fast paced manga style"}
+        await service.store_style(
+            pid, iid, "manga-action", definition, compute_embedding=False
+        )
+
+        result = await service.search_similar_styles(pid, "manga-action")
+
+        assert result["similarity"] is None
+        assert result["reason"] == "missing_embedding"
+        assert "query_uri" in result
+
+
+# ===========================================================================
+# TestStyleStripEmbedding — tool layer must strip embedding vectors from style responses
+# ===========================================================================
+
+
+class TestStyleStripEmbedding:
+    """Verify that get/list style tool actions strip the embedding vector.
+
+    Styles can carry an ``embedding`` field in their stored definition.
+    That vector is large and must not be returned to agent context.
+    ``embedding_model`` and ``embedding_dimensions`` *should* be preserved so
+    callers can still identify the model used.
+    """
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_get_style_strips_embedding(
+        self, service: ComicProjectService
+    ) -> None:
+        """ComicStyleTool get with include='full': 'embedding' absent; embedding_model/dimensions present."""
+        raw_style = {
+            "name": "manga-action",
+            "project_id": "test_proj",
+            "version": 1,
+            "uri": "comic://test_proj/styles/manga-action?v=1",
+            "definition": {
+                "name": "Manga Action",
+                "description": "Fast paced manga style",
+            },
+            "embedding": [0.1, 0.2, 0.3, 0.4],
+            "embedding_model": "gemini-embedding-2-preview",
+            "embedding_dimensions": 4,
+        }
+        service.get_style = AsyncMock(return_value=raw_style)  # type: ignore[method-assign]
+
+        tool = ComicStyleTool(service)
+        result = await tool.execute(
+            {
+                "action": "get",
+                "project": "test_proj",
+                "name": "manga-action",
+                "include": "full",
+            }
+        )
+
+        assert result.success is True
+        data = json.loads(result.output)
+        assert "embedding" not in data
+        assert "embedding_model" in data
+        assert "embedding_dimensions" in data
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_list_styles_strips_embedding(
+        self, service: ComicProjectService
+    ) -> None:
+        """ComicStyleTool list: no item in the list contains an 'embedding' key."""
+        raw_entries = [
+            {
+                "name": "manga-action",
+                "version": 1,
+                "uri": "comic://proj/styles/manga-action?v=1",
+                "embedding": [0.1, 0.2, 0.3, 0.4],
+                "embedding_model": "gemini-embedding-2-preview",
+                "embedding_dimensions": 4,
+            },
+            {
+                "name": "superhero",
+                "version": 1,
+                "uri": "comic://proj/styles/superhero?v=1",
+                "embedding": [0.5, 0.6, 0.7, 0.8],
+                "embedding_model": "gemini-embedding-2-preview",
+                "embedding_dimensions": 4,
+            },
+        ]
+        service.list_styles = AsyncMock(return_value=raw_entries)  # type: ignore[method-assign]
+
+        tool = ComicStyleTool(service)
+        result = await tool.execute({"action": "list", "project": "test_proj"})
+
+        assert result.success is True
+        entries = json.loads(result.output)
+        assert len(entries) == 2
+        for entry in entries:
+            assert "embedding" not in entry
+
+
+# ===========================================================================
+# TestSearchCharactersByDescription — cross-modal text search
+# ===========================================================================
+
+
+class TestSearchCharactersByDescription:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_returns_matching_characters_with_embedded_status(
+        self, service: ComicProjectService
+    ) -> None:
+        """Text query is embedded and matched against stored character embeddings; returns embedding_status='embedded'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+
+        # Store two characters with embeddings
+        await service.store_character(
+            pid, iid, "Alpha", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+        await service.store_character(
+            pid, iid, "Beta", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+
+        result = await service.search_characters_by_description(
+            pid, "a tall hero with blue eyes", top_k=5
+        )
+
+        assert "query_text" in result
+        assert result["query_text"] == "a tall hero with blue eyes"
+        assert "results" in result
+        assert len(result["results"]) >= 1
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "embedded"
+
+        # Verify result fields
+        for r in result["results"]:
+            assert "uri" in r
+            assert "name" in r
+            assert "style" in r
+            assert "similarity" in r
+            assert "originating_project" in r
+
+        # Verify sorted descending by similarity
+        sims = [r["similarity"] for r in result["results"]]
+        assert sims == sorted(sims, reverse=True)
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_circuit_open_returns_empty_with_skipped_circuit_open(
+        self, service: ComicProjectService
+    ) -> None:
+        """Open circuit breaker: returns empty results with embedding_status='skipped_circuit_open'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        # Trip the circuit breaker
+        service._breaker.record_failure()
+        service._breaker.record_failure()
+        service._breaker.record_failure()
+        assert service._breaker.state == "open"
+
+        result = await service.search_characters_by_description(
+            "some_project", "a tall hero with blue eyes"
+        )
+
+        assert result["query_text"] == "a tall hero with blue eyes"
+        assert result["results"] == []
+        assert result["embedding_status"] == "skipped_circuit_open"
+        assert "message" in result
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_no_client_returns_empty_with_skipped_no_client(
+        self, service: ComicProjectService
+    ) -> None:
+        """No embedding client: returns empty results with embedding_status='skipped_no_client'."""
+        assert service._genai_client is None
+
+        result = await service.search_characters_by_description(
+            "some_project", "a tall hero with blue eyes"
+        )
+
+        assert result["query_text"] == "a tall hero with blue eyes"
+        assert result["results"] == []
+        assert result["embedding_status"] == "skipped_no_client"
+        assert "message" in result
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_results_exclude_raw_embedding_vectors(
+        self, service: ComicProjectService
+    ) -> None:
+        """Results must not contain raw embedding vectors."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+
+        await service.store_character(
+            pid, iid, "Alpha", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+        await service.store_character(
+            pid, iid, "Beta", "manga", **_CHAR_META, data=_PNG, compute_embedding=True
+        )
+
+        result = await service.search_characters_by_description(
+            pid, "a tall hero with blue eyes", top_k=5
+        )
+
+        assert result["embedding_status"] == "embedded"
+        assert len(result["results"]) >= 1
+
+        for r in result["results"]:
+            assert "embedding" not in r, (
+                "Raw embedding vector must not appear in results"
+            )
+
+
+# ===========================================================================
+# TestSearchAssetsByDescription — cross-modal text search for assets
+# ===========================================================================
+
+
+class TestSearchAssetsByDescription:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_returns_matching_assets_with_embedded_status(
+        self, service: ComicProjectService
+    ) -> None:
+        """Text query is embedded and matched against stored asset embeddings; returns embedding_status='embedded'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+
+        # Store two panels with embeddings
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "A hero stands tall"},
+            compute_embedding=True,
+        )
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel02",
+            data=_PNG,
+            metadata={"prompt": "A villain looms"},
+            compute_embedding=True,
+        )
+
+        result = await service.search_assets_by_description(
+            pid, "a tall hero with blue eyes", top_k=5
+        )
+
+        assert "query_text" in result
+        assert result["query_text"] == "a tall hero with blue eyes"
+        assert "results" in result
+        assert len(result["results"]) >= 1
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "embedded"
+
+        # Verify result fields
+        for r in result["results"]:
+            assert "uri" in r
+            assert "name" in r
+            assert "asset_type" in r
+            assert "similarity" in r
+            assert "issue_id" in r
+
+        # Verify sorted descending by similarity
+        sims = [r["similarity"] for r in result["results"]]
+        assert sims == sorted(sims, reverse=True)
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_no_client_returns_empty_with_skipped_no_client(
+        self, service: ComicProjectService
+    ) -> None:
+        """No embedding client: returns empty results with embedding_status='skipped_no_client'."""
+        assert service._genai_client is None
+
+        result = await service.search_assets_by_description(
+            "some_project", "a tall hero with blue eyes"
+        )
+
+        assert result["query_text"] == "a tall hero with blue eyes"
+        assert result["results"] == []
+        assert result["embedding_status"] == "skipped_no_client"
+        assert "message" in result
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_asset_type_filter_narrows_results(
+        self, service: ComicProjectService
+    ) -> None:
+        """asset_type filter: stores panel and cover, searches only panel type; cover not in results."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        pid, iid = await _new_issue(service)
+
+        # Store a panel with embedding
+        await service.store_asset(
+            pid,
+            iid,
+            "panel",
+            "panel01",
+            data=_PNG,
+            metadata={"prompt": "A hero stands tall"},
+            compute_embedding=True,
+        )
+        # Store a cover with embedding
+        await service.store_asset(
+            pid,
+            iid,
+            "cover",
+            "cover01",
+            data=_PNG,
+            metadata={"prompt": "Epic cover art"},
+            compute_embedding=True,
+        )
+
+        # Search only for panels
+        result = await service.search_assets_by_description(
+            pid, "a hero standing", top_k=5, asset_type="panel"
+        )
+
+        assert result["embedding_status"] == "embedded"
+        assert "results" in result
+
+        # Verify all results are panels (no covers)
+        result_types = [r["asset_type"] for r in result["results"]]
+        assert "cover" not in result_types
+        # Panel should be in results
+        result_names = [r["name"] for r in result["results"]]
+        assert "panel01" in result_names
+        assert "cover01" not in result_names
+
+
+# ===========================================================================
+# TestSearchStylesByDescription — cross-modal text search for style guides
+# ===========================================================================
+
+
+class TestSearchStylesByDescription:
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_returns_matching_styles_with_embedded_status(
+        self, service: ComicProjectService
+    ) -> None:
+        """Text query is embedded and matched against stored style embeddings; returns embedding_status='embedded'."""
+        client = _make_embedding_client(dim=4)
+        service.set_embedding_client(client, embedding_dim=4)
+
+        r = await service.create_issue("test_project", "Issue 1")
+        pid, iid = r["project_id"], r["issue_id"]
+
+        definition = {
+            "name": "Manga Action",
+            "description": "Fast paced manga style",
+            "aesthetic_direction": "bold lines",
+            "color_palette": {"primary": "black", "secondary": "white"},
+            "panel_conventions": "N/N/N panel grid",
+        }
+
+        # Store two styles with embeddings
+        await service.store_style(
+            pid, iid, "manga-action", definition, compute_embedding=True
+        )
+        await service.store_style(
+            pid, iid, "superhero", definition, compute_embedding=True
+        )
+
+        result = await service.search_styles_by_description(
+            pid, "fast paced bold manga", top_k=5
+        )
+
+        assert "query_text" in result
+        assert result["query_text"] == "fast paced bold manga"
+        assert "results" in result
+        assert len(result["results"]) >= 1
+        assert "embedding_status" in result
+        assert result["embedding_status"] == "embedded"
+
+        # Verify result fields
+        for r in result["results"]:
+            assert "uri" in r
+            assert "name" in r
+            assert "similarity" in r
+            assert "originating_project" in r
+
+        # Verify sorted descending by similarity
+        sims = [r["similarity"] for r in result["results"]]
+        assert sims == sorted(sims, reverse=True)
+
+    @pytest.mark.asyncio(loop_scope="function")
+    async def test_no_client_returns_empty_with_skipped_no_client(
+        self, service: ComicProjectService
+    ) -> None:
+        """No embedding client: returns empty results with embedding_status='skipped_no_client'."""
+        assert service._genai_client is None
+
+        result = await service.search_styles_by_description(
+            "some_project", "fast paced bold manga"
+        )
+
+        assert result["query_text"] == "fast paced bold manga"
+        assert result["results"] == []
+        assert result["embedding_status"] == "skipped_no_client"
+        assert "message" in result

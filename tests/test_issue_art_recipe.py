@@ -103,10 +103,14 @@ def test_dependency_graph(find_step):
     # Review depends on inspect (changed from generate-panels)
     assert review.get("depends_on") == ["inspect-flagged-panels"]
 
-    # Composition waits for review and cover
+    # Composition waits for review, cover, and validate-and-fix-layouts
     comp_deps = sorted(comp.get("depends_on", []))
-    assert comp_deps == ["generate-cover", "review-panel-compositions"], (
-        f"Composition depends_on must be [review-panel-compositions, generate-cover], got {comp_deps}"
+    assert comp_deps == [
+        "generate-cover",
+        "review-panel-compositions",
+        "validate-and-fix-layouts",
+    ], (
+        f"Composition depends_on must be [review-panel-compositions, generate-cover, validate-and-fix-layouts], got {comp_deps}"
     )
 
 

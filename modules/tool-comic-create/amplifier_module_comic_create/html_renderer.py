@@ -212,6 +212,184 @@ def validate_layout_ids(
 
 
 # ---------------------------------------------------------------------------
+# Layout slot counts
+# ---------------------------------------------------------------------------
+
+# Maps every legacy alias (non-primary-name layout) to its panel slot count.
+# Primary layouts (matching ^(\d+)p-) have their count embedded in the name.
+_LEGACY_SLOT_COUNTS: dict[str, int] = {
+    # 1-panel
+    "1x1": 1,
+    "full-bleed": 1,
+    "hero_splash": 1,
+    # 2-panel
+    "1x2": 2,
+    "2-row": 2,
+    "2x1": 2,
+    "dialogue-focus": 2,
+    "manga_dynamic_2": 2,
+    "splash_plus_strip": 2,
+    # 3-panel
+    "3-row": 3,
+    "3x1": 3,
+    "manga_3_panel": 3,
+    "action-sequence": 3,
+    "manga_widescreen": 3,
+    "manga_vertical_triptych": 3,
+    "panoramic": 3,
+    "asymmetric_3": 3,
+    # 4-panel
+    "2x2": 4,
+    "wide-establishing-plus-grid": 4,
+    "crescendo": 4,
+    "spotlight": 4,
+    "cliffhanger": 4,
+    "manga_action": 4,
+    "manga_dramatic": 4,
+    "manga_impact": 4,
+    "split_action": 4,
+    "dramatic_reveal": 4,
+    "corner_focus": 4,
+    # 5-panel
+    "hero_plus_grid": 5,
+    "t_shape": 5,
+    "diagonal_energy": 5,
+    "widescreen_stack": 5,
+    # 6-panel
+    "3x2": 6,
+    "2x3": 6,
+    "classic_6": 6,
+    "conversation": 6,
+    "montage": 6,
+    "manga_split": 6,
+    "l_shape": 6,
+    "bookend": 6,
+    "cinematic_widescreen": 6,
+    # 7+ panel
+    "stacked_wides": 4,
+    "grid_9": 9,
+    "classic_9": 9,
+}
+
+
+def get_layout_slot_count(layout_id: str) -> int:
+    """Return the number of panel slots for the given layout identifier.
+
+    Algorithm:
+    1. Raise ``ValueError`` if *layout_id* is not a known template.
+    2. Parse the count from the primary-name prefix ``^(\\d+)p-``.
+    3. Fall back to ``_LEGACY_SLOT_COUNTS`` for legacy aliases.
+    4. Raise ``ValueError`` if the layout is in ``_GRID_TEMPLATES`` but has
+       no entry in ``_LEGACY_SLOT_COUNTS`` (defensive guard for future gaps).
+
+    Args:
+        layout_id: A layout identifier from ``_GRID_TEMPLATES``.
+
+    Returns:
+        Integer panel slot count (>= 1).
+
+    Raises:
+        ValueError: For unknown layout IDs or layouts missing a slot count.
+    """
+    if layout_id not in _GRID_TEMPLATES:
+        raise ValueError(
+            f"unknown layout ID {layout_id!r}. "
+            "Call get_available_layouts() to see valid options."
+        )
+
+    # Primary layouts encode the count in their name, e.g. "3p-top-wide" → 3
+    m = re.match(r"^(\d+)p-", layout_id)
+    if m:
+        return int(m.group(1))
+
+    # Legacy aliases look up the explicit mapping
+    if layout_id in _LEGACY_SLOT_COUNTS:
+        return _LEGACY_SLOT_COUNTS[layout_id]
+
+    raise ValueError(
+        f"layout {layout_id!r} is registered in _GRID_TEMPLATES but has no "
+        "entry in _LEGACY_SLOT_COUNTS. Add a mapping to fix this."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Layout preference ordering for tie-breaking in find_best_layout()
+# ---------------------------------------------------------------------------
+
+_SIMPLE_LAYOUT_PREFERENCE: list[str] = [
+    "splash",
+    "split",
+    "grid",
+    "rows",
+    "classic",
+    "stacked",
+    "columns",
+    "top-wide",
+    "bottom-wide",
+    "vertical",
+    "wide",
+    "manga",
+    "dense",
+]
+
+
+def find_best_layout(panel_count: int) -> str:
+    """Return the best primary layout for the given panel count.
+
+    Primary layouts are those matching the ``{count}p-{description}`` naming
+    convention (e.g. ``"4p-grid"``).
+
+    Algorithm:
+    1. Collect all primary layouts with their slot counts from ``_GRID_TEMPLATES``.
+    2. For exact matches (slot count == panel_count), sort by simplicity using
+       the layout suffix against ``_SIMPLE_LAYOUT_PREFERENCE``; lower index wins.
+    3. If no exact match exists, find the smallest primary layout with >= slots.
+    4. If no layout has enough slots, return the largest available primary layout.
+    5. Final fallback: ``'4p-grid'``.
+
+    Args:
+        panel_count: Number of panels to accommodate.
+
+    Returns:
+        A layout identifier that is a key in ``_GRID_TEMPLATES``.
+    """
+    # Collect all primary layouts ({count}p-*) with their slot counts
+    primary_layouts: list[tuple[str, int]] = []
+    for layout_id in _GRID_TEMPLATES:
+        m = re.match(r"^(\d+)p-", layout_id)
+        if m:
+            count = int(m.group(1))
+            primary_layouts.append((layout_id, count))
+
+    if not primary_layouts:
+        return "4p-grid"
+
+    def _suffix_rank(layout_id: str) -> int:
+        """Return the preference rank for a layout's suffix (lower = simpler)."""
+        suffix = re.sub(r"^\d+p-", "", layout_id)
+        try:
+            return _SIMPLE_LAYOUT_PREFERENCE.index(suffix)
+        except ValueError:
+            return len(_SIMPLE_LAYOUT_PREFERENCE)
+
+    # Step 2: exact matches — pick simplest by preference
+    exact = [(lid, c) for lid, c in primary_layouts if c == panel_count]
+    if exact:
+        exact.sort(key=lambda x: _suffix_rank(x[0]))
+        return exact[0][0]
+
+    # Step 3: no exact match — smallest primary layout with >= slots
+    larger = [(lid, c) for lid, c in primary_layouts if c >= panel_count]
+    if larger:
+        larger.sort(key=lambda x: (x[1], _suffix_rank(x[0])))
+        return larger[0][0]
+
+    # Step 4: nothing large enough — return largest available primary layout
+    primary_layouts.sort(key=lambda x: (-x[1], _suffix_rank(x[0])))
+    return primary_layouts[0][0]
+
+
+# ---------------------------------------------------------------------------
 # Default CSS custom properties (theming)
 # ---------------------------------------------------------------------------
 

@@ -466,6 +466,16 @@ class ComicCreateTool:
                         "Each must have a 'layout' field with a layout ID."
                     ),
                 },
+                "panel_list": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": (
+                        "Optional list of panel objects for validate_storyboard Phase 2. "
+                        "Each panel must have a 'page' field (integer page number). "
+                        "When provided, actual panel counts per page are compared against "
+                        "layout slot counts and mismatches are auto-corrected."
+                    ),
+                },
             },
             "required": ["action"],
         }
@@ -497,11 +507,21 @@ class ComicCreateTool:
     async def _validate_storyboard(self, params: dict[str, Any]) -> ToolResult:
         """Validate page layout IDs from a storyboard against available templates.
 
-        Accepts ``page_layouts`` (list of objects with a ``layout`` key) and
-        checks every layout ID against the renderer's template dictionary.
-        Returns structured errors with suggestions on failure.
+        Phase 1 (always): Validates layout IDs against ``_GRID_TEMPLATES``.
+        Phase 2 (when ``panel_list`` provided): Counts actual panels per page
+        from ``panel_list`` (each panel must have a ``page`` field), compares
+        actual count against the layout's slot count, and auto-corrects
+        mismatches using ``find_best_layout``.
+
+        Returns validation='CORRECTED' with corrections and
+        corrected_page_layouts when mismatches are found; 'PASSED' with empty
+        corrections when all match; 'FAILED' when layout IDs are invalid.
         """
-        from .html_renderer import validate_layout_ids
+        from .html_renderer import (
+            find_best_layout,
+            get_layout_slot_count,
+            validate_layout_ids,
+        )
 
         page_layouts = params.get("page_layouts")
         if not page_layouts or not isinstance(page_layouts, list):
@@ -521,6 +541,7 @@ class ComicCreateTool:
                 "Each entry must have a 'layout' field."
             )
 
+        # Phase 1: validate layout IDs against _GRID_TEMPLATES
         invalid_ids, suggestions = validate_layout_ids(layout_ids)
         if invalid_ids:
             return _error(
@@ -539,6 +560,73 @@ class ComicCreateTool:
                     }
                 )
             )
+
+        # Phase 2: auto-correct layout/panel count mismatches when panel_list provided
+        panel_list = params.get("panel_list")
+        if panel_list and isinstance(panel_list, list):
+            # Count actual panels per page from panel_list
+            actual_panels_per_page: dict[int, int] = {}
+            for panel in panel_list:
+                if isinstance(panel, dict) and "page" in panel:
+                    page_num = panel["page"]
+                    actual_panels_per_page[page_num] = (
+                        actual_panels_per_page.get(page_num, 0) + 1
+                    )
+
+            corrections: list[dict[str, Any]] = []
+            corrected_page_layouts: list[dict[str, Any]] = []
+
+            for page_entry in page_layouts:
+                if not isinstance(page_entry, dict):
+                    corrected_page_layouts.append(page_entry)
+                    continue
+
+                page_num = page_entry.get("page")
+                layout_id = page_entry.get("layout", "")
+                original_panel_count = page_entry.get("panel_count")
+                actual_count = (
+                    actual_panels_per_page.get(int(page_num), 0)
+                    if page_num is not None
+                    else 0
+                )
+
+                slot_count = get_layout_slot_count(layout_id)
+
+                if actual_count != slot_count:
+                    corrected_layout = find_best_layout(actual_count)
+                    corrections.append(
+                        {
+                            "page": page_num,
+                            "original_layout": layout_id,
+                            "original_panel_count": original_panel_count,
+                            "actual_panels": actual_count,
+                            "corrected_layout": corrected_layout,
+                        }
+                    )
+                    corrected_entry = dict(page_entry)
+                    corrected_entry["layout"] = corrected_layout
+                    corrected_entry["panel_count"] = actual_count
+                    corrected_page_layouts.append(corrected_entry)
+                else:
+                    corrected_page_layouts.append(dict(page_entry))
+
+            if corrections:
+                return _ok(
+                    {
+                        "validation": "CORRECTED",
+                        "corrections": corrections,
+                        "corrected_page_layouts": corrected_page_layouts,
+                    }
+                )
+            else:
+                return _ok(
+                    {
+                        "validation": "PASSED",
+                        "corrections": [],
+                        "layout_ids": layout_ids,
+                        "page_count": len(layout_ids),
+                    }
+                )
 
         return _ok(
             {
@@ -1245,15 +1333,17 @@ class ComicCreateTool:
                     char_name = entry.get("name", "")
                     try:
                         full = await svc.get_character(project, char_name)
-                        characters.append({
-                            "uri": full.get("uri", ""),
-                            "name": full.get("name", char_name),
-                            "role": full.get("role", ""),
-                            "backstory": (
-                                full.get("backstory", "")
-                                or full.get("description", "")
-                            ),
-                        })
+                        characters.append(
+                            {
+                                "uri": full.get("uri", ""),
+                                "name": full.get("name", char_name),
+                                "role": full.get("role", ""),
+                                "backstory": (
+                                    full.get("backstory", "")
+                                    or full.get("description", "")
+                                ),
+                            }
+                        )
                     except Exception:
                         characters.append({"name": char_name})
                 if characters:

@@ -30,6 +30,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -63,6 +64,56 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
     if norm_a == 0.0 or norm_b == 0.0:
         return 0.0
     return dot / (norm_a * norm_b)
+
+
+class EmbeddingCircuitBreaker:
+    """Counter-based circuit breaker for embedding API calls.
+
+    States:
+    - closed:    Healthy; all requests allowed.
+    - open:      Tripped; requests are blocked (embeddings silently skip).
+    - half_open: Cooldown expired; next call is a probe.
+
+    Instance-level — not persisted across restarts.
+    """
+
+    def __init__(
+        self,
+        failure_threshold: int = 3,
+        cooldown_seconds: float = 60.0,
+    ) -> None:
+        self._failure_threshold = failure_threshold
+        self._cooldown_seconds = cooldown_seconds
+        self._failure_count: int = 0
+        self._opened_at: float | None = None
+
+    @property
+    def state(self) -> str:
+        """Return current state: 'closed', 'open', or 'half_open'."""
+        if self._failure_count < self._failure_threshold:
+            return "closed"
+        # Threshold reached — check if cooldown has elapsed.
+        if self._opened_at is not None:
+            elapsed = time.monotonic() - self._opened_at
+            if elapsed >= self._cooldown_seconds:
+                return "half_open"
+        return "open"
+
+    def allow_request(self) -> bool:
+        """Return True if the breaker is closed or half_open."""
+        return self.state in ("closed", "half_open")
+
+    def record_success(self) -> None:
+        """Reset the circuit breaker to closed state."""
+        self._failure_count = 0
+        self._opened_at = None
+
+    def record_failure(self) -> None:
+        """Increment failure count; trip (or re-trip) the breaker at threshold."""
+        self._failure_count += 1
+        if self._failure_count >= self._failure_threshold:
+            # Reset the cooldown timer: covers initial trip and failed probes.
+            self._opened_at = time.monotonic()
 
 
 def _validate_id(value: str, label: str) -> str:
@@ -1667,13 +1718,17 @@ class ComicProjectService:
         version: int = asset["version"]
 
         # Read metadata.json from the versioned directory.
-        version_dir = self._asset_version_dir(project_id, issue_id, asset_type, name, version)
+        version_dir = self._asset_version_dir(
+            project_id, issue_id, asset_type, name, version
+        )
         metadata_rel = f"{version_dir}/metadata.json"
         meta = json.loads(await self._storage.read_text(metadata_rel))
 
         # Get embedding text from metadata prompt or description.
         asset_metadata: dict[str, Any] = meta.get("metadata", {})
-        emb_text: str | None = asset_metadata.get("prompt") or asset_metadata.get("description")
+        emb_text: str | None = asset_metadata.get("prompt") or asset_metadata.get(
+            "description"
+        )
 
         # Get image absolute path from storage_path.
         image_rel: str | None = meta.get("storage_path")
@@ -1695,7 +1750,9 @@ class ComicProjectService:
             meta["embedding_dimensions"] = self._embedding_dim
             await self._storage.write_text(metadata_rel, json.dumps(meta, indent=2))
 
-        uri = ComicURI.for_asset(project_id, issue_id, asset_type, name, version=version)
+        uri = ComicURI.for_asset(
+            project_id, issue_id, asset_type, name, version=version
+        )
         return {"embedded": True, "uri": str(uri)}
 
     async def batch_encode(

@@ -15,7 +15,11 @@ from amplifier_module_comic_assets import (
     ComicCharacterTool,
     _strip_embedding,
 )
-from amplifier_module_comic_assets.service import ComicProjectService, cosine_similarity
+from amplifier_module_comic_assets.service import (
+    ComicProjectService,
+    EmbeddingCircuitBreaker,
+    cosine_similarity,
+)
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -1577,3 +1581,82 @@ class TestToolEmbedAction:
         data = json.loads(result.output)
         assert data["embedded"] is True
         assert "embedding" not in data
+
+
+# ===========================================================================
+# TestCircuitBreaker — EmbeddingCircuitBreaker unit tests
+# ===========================================================================
+
+
+class TestCircuitBreaker:
+    def test_initial_state_is_closed(self) -> None:
+        """New breaker starts in closed state."""
+        breaker = EmbeddingCircuitBreaker()
+        assert breaker.state == "closed"
+        assert breaker.allow_request() is True
+
+    def test_single_failure_stays_closed(self) -> None:
+        """One failure does not trip the breaker."""
+        breaker = EmbeddingCircuitBreaker()
+        breaker.record_failure()
+        assert breaker.state == "closed"
+        assert breaker.allow_request() is True
+
+    def test_trips_after_3_consecutive_failures(self) -> None:
+        """Three consecutive failures trip the breaker (state becomes 'open')."""
+        breaker = EmbeddingCircuitBreaker()
+        breaker.record_failure()
+        breaker.record_failure()
+        breaker.record_failure()
+        assert breaker.state == "open"
+        assert breaker.allow_request() is False
+
+    def test_success_resets_failure_count(self) -> None:
+        """Success after 2 failures resets count; breaker stays closed."""
+        breaker = EmbeddingCircuitBreaker()
+        breaker.record_failure()
+        breaker.record_failure()
+        breaker.record_success()
+        assert breaker.state == "closed"
+        assert breaker.allow_request() is True
+
+    def test_half_open_after_cooldown(self) -> None:
+        """After cooldown expires, open breaker transitions to half_open."""
+        import time
+
+        breaker = EmbeddingCircuitBreaker(cooldown_seconds=0.1)
+        breaker.record_failure()
+        breaker.record_failure()
+        breaker.record_failure()
+        assert breaker.state == "open"
+        time.sleep(0.15)
+        assert breaker.state == "half_open"
+        assert breaker.allow_request() is True
+
+    def test_successful_probe_closes_breaker(self) -> None:
+        """A successful probe in half_open state closes the breaker."""
+        import time
+
+        breaker = EmbeddingCircuitBreaker(cooldown_seconds=0.1)
+        breaker.record_failure()
+        breaker.record_failure()
+        breaker.record_failure()
+        time.sleep(0.15)
+        assert breaker.state == "half_open"
+        breaker.record_success()
+        assert breaker.state == "closed"
+        assert breaker.allow_request() is True
+
+    def test_failed_probe_reopens_breaker(self) -> None:
+        """A failed probe in half_open state re-opens the breaker."""
+        import time
+
+        breaker = EmbeddingCircuitBreaker(cooldown_seconds=0.1)
+        breaker.record_failure()
+        breaker.record_failure()
+        breaker.record_failure()
+        time.sleep(0.15)
+        assert breaker.state == "half_open"
+        breaker.record_failure()
+        assert breaker.state == "open"
+        assert breaker.allow_request() is False

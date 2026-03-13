@@ -105,7 +105,7 @@ stages:
         timeout: 1800  # 30m per panel — image gen + vision review + up to 3 retries + cross-provider fallback
 
       # ============================================
-      # STEP 1.5: INSPECT FLAGGED PANELS
+      # STEP: INSPECT FLAGGED PANELS
       # Scans panel_results for any panels that were
       # flagged during generation (e.g. moderation,
       # quality issues) and surfaces a summary report
@@ -140,7 +140,7 @@ stages:
         timeout: 300  # 5m — lightweight scan of panel metadata
 
       # ============================================
-      # STEP 1.6: VALIDATE AND FIX LAYOUTS
+      # STEP: VALIDATE AND FIX LAYOUTS
       # Counts actual panels in panel_results and
       # compares against page_layouts panel assignments.
       # Corrects layout if counts diverge, ensuring
@@ -242,7 +242,7 @@ stages:
         timeout: 1800  # 30m — image gen + vision review + up to 3 retries + composition-biased model selection
 
       # ============================================
-      # STEP 2.5: REVIEW PANEL COMPOSITIONS
+      # STEP: REVIEW PANEL COMPOSITIONS
       # Pre-computes character positions and overlay
       # placement for each panel before final assembly.
       # Makes bubble positioning deterministic and

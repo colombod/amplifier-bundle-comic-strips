@@ -1178,10 +1178,7 @@ class ComicProjectService:
                 "query_text": query_text,
                 "results": [],
                 "embedding_status": "skipped_no_client",
-                "message": (
-                    "No embedding client configured. "
-                    "Results fall back to empty list."
-                ),
+                "message": "No embedding client configured. Results fall back to empty list.",
             }
 
         # Embed the query text.

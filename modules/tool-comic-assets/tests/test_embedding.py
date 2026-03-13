@@ -2535,4 +2535,6 @@ class TestSearchCharactersByDescription:
         assert len(result["results"]) >= 1
 
         for r in result["results"]:
-            assert "embedding" not in r, "Raw embedding vector must not appear in results"
+            assert "embedding" not in r, (
+                "Raw embedding vector must not appear in results"
+            )
